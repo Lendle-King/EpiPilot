@@ -18,7 +18,7 @@ from epipilot.core.models import (
     TaskId,
     TaskStatus,
 )
-from epipilot.core.transitions import InvalidTaskTransition, transition_task
+from epipilot.core.transitions import transition_task
 from epipilot.epistemics.models import Hypothesis, Unknown, UnknownId
 from epipilot.events.codec import decode_event_payload
 from epipilot.events.payloads import (
@@ -209,9 +209,7 @@ def _reduce_payload(
             evidence_id = EvidenceId(item.completion_evidence_id)
             completion_evidence = _require_evidence(state, evidence_id)
             if not any(
-                record.task_id == task_id
-                and record.passed
-                and record.evidence_id == evidence_id
+                record.task_id == task_id and record.passed and record.evidence_id == evidence_id
                 for record in state.verifications
             ):
                 raise InvalidEventOrder(
@@ -293,7 +291,9 @@ def _reduce_payload(
         item = _expect(payload, PlanVersionCreatedPayload)
         expected_version = 1 if not state.plans else state.plans[-1].version + 1
         if item.version != expected_version:
-            raise InvalidEventOrder(f"plan version must advance monotonically to {expected_version}")
+            raise InvalidEventOrder(
+                f"plan version must advance monotonically to {expected_version}"
+            )
         tasks = tuple(_require_task(state, TaskId(task_id)) for task_id in item.task_ids)
         dependencies = tuple(
             TaskDependency(
