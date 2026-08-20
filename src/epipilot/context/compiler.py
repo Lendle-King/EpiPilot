@@ -42,13 +42,7 @@ class ContextItem:
     @property
     def score(self) -> float:
         """Return a deterministic relevance/authority/confidence score."""
-        return (
-            self.relevance
-            * self.authority
-            * self.confidence
-            * self.freshness
-            * self.scope_match
-        )
+        return self.relevance * self.authority * self.confidence * self.freshness * self.scope_match
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,9 +65,7 @@ class ContextBudgetExceeded(ValueError):
     """Raised when mandatory project context alone exceeds the allowed budget."""
 
 
-def compile_context(
-    candidates: tuple[ContextItem, ...], *, token_budget: int
-) -> CompiledContext:
+def compile_context(candidates: tuple[ContextItem, ...], *, token_budget: int) -> CompiledContext:
     """Compile a bounded context without ever silently dropping mandatory items.
 
     Non-mandatory items are ranked by information value per token. Ties are resolved by
@@ -100,9 +92,7 @@ def compile_context(
     remaining_budget = token_budget - mandatory_cost
 
     optional = [item for item in candidates if not item.mandatory]
-    optional.sort(
-        key=lambda item: (-(item.score / item.token_cost), -item.score, item.item_id)
-    )
+    optional.sort(key=lambda item: (-(item.score / item.token_cost), -item.score, item.item_id))
 
     for item in optional:
         if item.token_cost <= remaining_budget:
