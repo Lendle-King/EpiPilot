@@ -169,6 +169,16 @@ Examples:
 
 Derived views may be rebuilt. Audit history must not be rewritten silently.
 
+Canonical replay begins with event payload schema version 2. Every current `EventType` is bound to one strict typed payload schema, and serialization is deterministic. The V0 schema-version-1 runtime used ad-hoc payload bytes that do not contain enough information to reconstruct complete canonical state; canonical replay therefore rejects schema version 1 rather than guessing a migration. Unknown versions and malformed payloads also fail closed.
+
+The canonical projection is reconstructed as an ordered reduction:
+
+```text
+ProjectState_n = Reduce(ProjectState_0, Event_1, ..., Event_n)
+```
+
+Reducers are deterministic and side-effect free. Replay rejects duplicate event IDs, aggregate mismatches, missing referenced entities, illegal task transitions, invalid plan provenance, and orderings that would permit a task to become `PASSED` without prior matching independent verification evidence. Runtime/session/context metadata stored in `ProjectState` is a projection of authoritative events, not a second source of truth.
+
 ## Failure policy
 
 Failures are classified before retrying:
