@@ -122,7 +122,7 @@ class PlanGraph:
 
 
 def _assert_acyclic(task_ids: set[TaskId], dependencies: tuple[TaskDependency, ...]) -> None:
-    indegree: dict[TaskId, int] = {task_id: 0 for task_id in task_ids}
+    indegree: dict[TaskId, int] = dict.fromkeys(task_ids, 0)
     children: dict[TaskId, list[TaskId]] = {task_id: [] for task_id in task_ids}
 
     for dependency in dependencies:
