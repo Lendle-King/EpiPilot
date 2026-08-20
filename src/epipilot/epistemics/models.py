@@ -97,11 +97,10 @@ class Hypothesis:
             raise ValueError("hypothesis confidence must be within [0, 1]")
         if set(self.supporting_evidence) & set(self.contradicting_evidence):
             raise ValueError("the same evidence cannot both support and contradict a hypothesis")
-        if self.status is not HypothesisStatus.PROPOSED:
-            if not self.predictions or not self.falsification_conditions:
-                raise ValueError(
-                    "active hypotheses require predictions and falsification conditions"
-                )
+        if self.status is not HypothesisStatus.PROPOSED and (
+            not self.predictions or not self.falsification_conditions
+        ):
+            raise ValueError("active hypotheses require predictions and falsification conditions")
         if self.status is HypothesisStatus.SUPPORTED and not self.supporting_evidence:
             raise ValueError("supported hypothesis requires supporting evidence")
         if self.status is HypothesisStatus.REFUTED and not self.contradicting_evidence:
