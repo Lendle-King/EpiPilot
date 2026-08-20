@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from epipilot.core.models import Provenance
 from epipilot.memory.models import (
     CanonicalMemoryRef,
     MemoryKind,
@@ -9,7 +10,6 @@ from epipilot.memory.models import (
     StructuralMemory,
     new_memory_id,
 )
-from epipilot.core.models import Provenance
 
 
 def test_broad_memory_is_visible_from_child_scope() -> None:
