@@ -51,9 +51,12 @@ def decide_action(question: DecisionQuestion) -> DecisionAction:
     User-owned, high-impact choices are never silently defaulted. Technical/system-owned
     questions should normally be investigated rather than pushed to the user.
     """
-    if question.owner is DecisionOwner.USER and question.impact is DecisionImpact.HIGH:
-        if not question.safely_inferable:
-            return DecisionAction.ASK_USER
+    if (
+        question.owner is DecisionOwner.USER
+        and question.impact is DecisionImpact.HIGH
+        and not question.safely_inferable
+    ):
+        return DecisionAction.ASK_USER
 
     if question.owner is DecisionOwner.SYSTEM and question.cheaply_testable:
         return DecisionAction.INVESTIGATE

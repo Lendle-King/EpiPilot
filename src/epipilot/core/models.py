@@ -6,7 +6,7 @@ This module intentionally contains no database, network, subprocess, or model-pr
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import NewType
 from uuid import UUID, uuid4
@@ -19,7 +19,7 @@ RequirementId = NewType("RequirementId", UUID)
 
 def utc_now() -> datetime:
     """Return a timezone-aware UTC timestamp."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def new_task_id() -> TaskId:
