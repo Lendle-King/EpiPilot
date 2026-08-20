@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from epipilot.core.models import Task, TaskStatus, new_task_id
+from epipilot.core.models import Task, TaskStatus, new_evidence_id, new_task_id
 from epipilot.planning.graph import PlanBasis, PlanBasisKind, PlanGraph, TaskDependency
 
 
@@ -38,6 +38,7 @@ def test_runnable_tasks_require_verified_predecessors() -> None:
         id=new_task_id(),
         objective="Reproduce baseline",
         status=TaskStatus.PASSED,
+        linked_evidence=(new_evidence_id(),),
     )
     second = Task(
         id=new_task_id(),
@@ -73,3 +74,12 @@ def test_ready_task_is_not_runnable_until_dependency_passes() -> None:
     )
 
     assert graph.runnable_tasks() == ()
+
+
+def test_direct_passed_task_without_evidence_is_rejected() -> None:
+    with pytest.raises(ValueError, match="completion evidence"):
+        Task(
+            id=new_task_id(),
+            objective="Pretend to be complete",
+            status=TaskStatus.PASSED,
+        )
