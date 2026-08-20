@@ -106,3 +106,5 @@ class Task:
     def __post_init__(self) -> None:
         if not self.objective.strip():
             raise ValueError("task objective must not be empty")
+        if self.status is TaskStatus.PASSED and not self.linked_evidence:
+            raise ValueError("a passed task must reference completion evidence")
