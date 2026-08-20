@@ -59,22 +59,28 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-## Initial domain skeleton
+## V0 foundation
 
-The bootstrap implementation intentionally starts with the contracts that are hardest to retrofit later:
+The current V0 foundation intentionally starts with contracts that are difficult to retrofit safely later:
 
 - typed task states and legal transitions;
 - explicit evidence and provenance;
 - separation of observations, hypotheses, facts, and unknowns;
+- an append-only event-store contract with optimistic concurrency;
+- a deterministic user/system Decision Frontier;
+- immutable, versioned, traceable task DAGs;
+- a Context Compiler that never silently drops mandatory state;
+- an evidence-gated verification pipeline;
 - a replaceable coding-agent executor protocol;
-- tests that forbid executor self-certification of task completion.
+- a minimal single-task runtime from `READY` through independent verification;
+- regression tests for executor self-certification, graph cycles, stale event writers, context truncation, and verification bypasses.
 
-The next implementation milestones are the event store, versioned task graph, context compiler, verifier pipeline, Pi adapter, and the V0 orchestration runtime.
+The next V0 milestones are persistent PostgreSQL event storage, project-state reduction/checkpointing, a concrete Pi adapter, failure-signature supervision, and a project-level scheduler loop over runnable DAG nodes.
 
 ## Project status
 
-EpiPilot is in early design and bootstrap development. The initial repository work focuses on architecture contracts, contribution standards, automated quality gates, and a minimal typed runtime skeleton.
+EpiPilot is in early V0 development. Architecture contracts and quality gates are intentionally being stabilized before adding UI or multi-agent parallelism.
 
 ## License
 
-No open-source license has been selected yet. A license will be added only after an explicit project decision.
+EpiPilot is licensed under the [Apache License 2.0](LICENSE). See [`NOTICE`](NOTICE) for attribution information.
