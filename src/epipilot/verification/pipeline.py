@@ -51,9 +51,12 @@ class VerificationOutcome:
     def completion_evidence(self) -> Evidence:
         """Return evidence strong enough to authorize ``TaskStatus.PASSED``.
 
-        The method fails closed when the pipeline contains only executor self-report or
-        otherwise unverified observations.
+        The method fails closed unless the complete pipeline passed. A successful check
+        cannot mask a failed sibling check.
         """
+        if not self.passed:
+            raise ValueError("failed verification outcome cannot authorize task completion")
+
         for result in self.results:
             evidence = result.evidence
             if (
