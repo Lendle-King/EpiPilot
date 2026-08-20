@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -8,12 +8,25 @@ version = "0.1.0"
 description = "Evidence-driven epistemic orchestration for long-horizon coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [
   { name = "EpiPilot contributors" }
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
   "pydantic>=2.8,<3",
 ]
+
+[project.urls]
+Repository = "https://github.com/Lendle-King/EpiPilot"
+Issues = "https://github.com/Lendle-King/EpiPilot/issues"
 
 [project.optional-dependencies]
 dev = [
