@@ -14,6 +14,9 @@ from epipilot.core.models import (
     new_evidence_id,
     new_task_id,
 )
+from epipilot.events.codec import decode_event_payload
+from epipilot.events.payloads import EvidenceRecordedPayload
+from epipilot.events.registry import TYPED_EVENT_SCHEMA_VERSION
 from epipilot.executors.base import ExecutorObservation, ExecutorState
 from epipilot.runtime.engine import TaskRuntime
 from epipilot.runtime.event_store import InMemoryEventStore
@@ -90,9 +93,19 @@ async def test_runtime_requires_independent_verification_before_passed() -> None
     assert result.task.status is TaskStatus.PASSED
     assert result.task.linked_evidence == (check.evidence.id,)
     assert executor.terminated
-    event_types = tuple(event.type for event in store.load("project-1"))
+    events = store.load("project-1")
+    event_types = tuple(event.type for event in events)
     assert EventType.VERIFICATION_PASSED in event_types
     assert EventType.EVIDENCE_RECORDED in event_types
+    assert all(event.schema_version == TYPED_EVENT_SCHEMA_VERSION for event in events)
+
+    evidence_event = next(
+        event for event in events if event.type is EventType.EVIDENCE_RECORDED
+    )
+    payload = decode_event_payload(evidence_event)
+    assert isinstance(payload, EvidenceRecordedPayload)
+    assert payload.summary == "evidence"
+    assert payload.provenance_source == "test"
 
 
 @pytest.mark.asyncio
