@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from dataclasses import dataclass
+from uuid import UUID
 
-from epipilot.core.events import EventType, ProjectEvent, new_event_id
+from epipilot.core.events import EventType
 from epipilot.core.models import Task, TaskId, TaskStatus
 from epipilot.core.transitions import transition_task
+from epipilot.events.codec import make_project_event
+from epipilot.events.payloads import (
+    EventPayload,
+    EvidenceRecordedPayload,
+    ExecutorObservationRecordedPayload,
+    TaskStartedPayload,
+    TaskStatusChangedPayload,
+    VerificationFailedPayload,
+    VerificationPassedPayload,
+)
 from epipilot.executors.base import CodingAgentExecutor, ExecutorObservation, ExecutorState
 from epipilot.runtime.event_store import EventStore
 from epipilot.verification.pipeline import (
@@ -66,7 +76,7 @@ class TaskRuntime:
 
         self._record(
             EventType.TASK_STARTED,
-            {"task_id": str(task.id), "session_id": session_id},
+            TaskStartedPayload(task_id=task.id, session_id=session_id),
         )
         self._record_status(task.id, TaskStatus.RUNNING)
 
@@ -76,12 +86,13 @@ class TaskRuntime:
                 latest = await self.executor.inspect(session_id)
                 self._record(
                     EventType.EXECUTOR_OBSERVATION_RECORDED,
-                    {
-                        "task_id": str(task.id),
-                        "state": latest.state.value,
-                        "changed_file_count": len(latest.changed_files),
-                        "artifact_count": len(latest.artifacts),
-                    },
+                    ExecutorObservationRecordedPayload(
+                        task_id=task.id,
+                        session_id=session_id,
+                        state=latest.state.value,
+                        changed_file_count=len(latest.changed_files),
+                        artifact_refs=latest.artifacts,
+                    ),
                 )
 
                 if latest.state is ExecutorState.RUNNING:
@@ -128,12 +139,16 @@ class TaskRuntime:
         for evidence in outcome.evidence:
             self._record(
                 EventType.EVIDENCE_RECORDED,
-                {
-                    "task_id": str(task.id),
-                    "evidence_id": str(evidence.id),
-                    "kind": evidence.kind.value,
-                    "independently_verified": evidence.independently_verified,
-                },
+                EvidenceRecordedPayload(
+                    task_id=task.id,
+                    evidence_id=evidence.id,
+                    kind=evidence.kind,
+                    summary=evidence.summary,
+                    provenance_source=evidence.provenance.source,
+                    provenance_scope=evidence.provenance.scope,
+                    provenance_created_at=evidence.provenance.created_at,
+                    independently_verified=evidence.independently_verified,
+                ),
             )
 
         if outcome.passed:
@@ -145,35 +160,47 @@ class TaskRuntime:
             )
             self._record(
                 EventType.VERIFICATION_PASSED,
-                {
-                    "task_id": str(task.id),
-                    "evidence_id": str(completion_evidence.id),
-                },
+                VerificationPassedPayload(
+                    task_id=task.id,
+                    evidence_id=completion_evidence.id,
+                ),
+            )
+            self._record_status(
+                task.id,
+                current.status,
+                completion_evidence_id=completion_evidence.id,
             )
         else:
             current = transition_task(current, TaskStatus.FAILED)
             self._record(
                 EventType.VERIFICATION_FAILED,
-                {"task_id": str(task.id)},
+                VerificationFailedPayload(
+                    task_id=task.id,
+                    reason="verification pipeline did not pass",
+                ),
             )
+            self._record_status(task.id, current.status)
 
-        self._record_status(task.id, current.status)
         return TaskRunResult(current, session_id, observation, outcome)
 
-    def _record_status(self, task_id: TaskId, status: TaskStatus) -> None:
+    def _record_status(
+        self,
+        task_id: TaskId,
+        status: TaskStatus,
+        *,
+        completion_evidence_id: UUID | None = None,
+    ) -> None:
         self._record(
             EventType.TASK_STATUS_CHANGED,
-            {"task_id": str(task_id), "status": status.value},
+            TaskStatusChangedPayload(
+                task_id=task_id,
+                status=status,
+                completion_evidence_id=completion_evidence_id,
+            ),
         )
 
-    def _record(self, event_type: EventType, payload: dict[str, object]) -> None:
-        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        event = ProjectEvent(
-            id=new_event_id(),
-            type=event_type,
-            aggregate_id=self.project_id,
-            payload=encoded,
-        )
+    def _record(self, event_type: EventType, payload: EventPayload) -> None:
+        event = make_project_event(event_type, self.project_id, payload)
         self.event_store.append(
             event,
             expected_version=self.event_store.version(self.project_id),
