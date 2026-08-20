@@ -102,9 +102,7 @@ class ProjectContract:
     @property
     def execution_ready(self) -> bool:
         """Return whether the contract has at least one explicit success criterion."""
-        return any(
-            item.kind is RequirementKind.SUCCESS_CRITERION for item in self.requirements
-        )
+        return any(item.kind is RequirementKind.SUCCESS_CRITERION for item in self.requirements)
 
     def hard_requirements(self) -> tuple[Requirement, ...]:
         """Return requirements that must be mandatory during context compilation."""
