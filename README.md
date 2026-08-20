@@ -15,8 +15,8 @@ Goal -> Requirements -> Unknowns/Hypotheses -> Plan -> Execute
 
 1. No completion without evidence.
 2. Executor self-report alone can never create a canonical fact.
-3. Every plan mutation must trace to a requirement, decision, or evidence item.
-4. Canonical project state is separate from the LLM context compiled for a task.
+3. Every structural plan mutation must trace to a requirement, decision, or evidence item.
+4. Canonical project state is separate from long-term memory and from the LLM context compiled for a task.
 5. The same failure may not be retried without new information or a changed strategy.
 
 ## Architecture
@@ -28,7 +28,10 @@ EpiPilot is organized around four planes:
 - **Execution plane** — replaceable coding-agent adapters running in isolated workspaces.
 - **State plane** — requirements, decisions, unknowns, hypotheses, evidence, task graph, memory, events, and artifacts.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the architecture contract.
+Architecture contracts:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module boundaries, state ownership, runtime flow, and invariants.
+- [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context, memory classes, scope, consolidation, and retrieval rules.
 
 ## Repository standards
 
@@ -63,23 +66,40 @@ pre-commit run --all-files
 
 The current V0 foundation intentionally starts with contracts that are difficult to retrofit safely later:
 
-- typed task states and legal transitions;
-- explicit evidence and provenance;
-- separation of observations, hypotheses, facts, and unknowns;
-- an append-only event-store contract with optimistic concurrency;
-- a deterministic user/system Decision Frontier;
-- immutable, versioned, traceable task DAGs;
-- a Context Compiler that never silently drops mandatory state;
-- an evidence-gated verification pipeline;
+- canonical `ProjectContract`, requirements, decisions, and a deterministic user/system Decision Frontier;
+- typed task states and explicit legal transitions;
+- explicit observations, unknowns, falsifiable hypotheses, evidence, temporal facts, and provenance;
+- append-only Event Store semantics with optimistic concurrency plus durable local SQLite persistence;
+- immutable, versioned, traceable task DAG topology separated from runtime task-state projections;
+- information-gain-aware scheduling with explicit impact, unblocking, urgency, cost, and risk inputs;
+- scoped typed long-term memory with canonical references, episodic lessons, trigger-based procedures, and revision-pinned structural memory;
+- a Context Compiler that never silently drops mandatory authoritative state;
+- an evidence-gated verification pipeline and independent argv-based command verifier;
 - a replaceable coding-agent executor protocol;
-- a minimal single-task runtime from `READY` through independent verification;
-- regression tests for executor self-certification, graph cycles, stale event writers, context truncation, and verification bypasses.
+- a concrete headless Pi JSONL RPC executor using `pi --mode rpc`;
+- Pi `agent_end` mapped only to `AGENT_REPORTED_DONE`, never directly to `PASSED`;
+- interactive Pi confirmation/input requests surfaced as `BLOCKED` rather than auto-approved;
+- a single-task runtime from `READY` through independent verification with guaranteed executor cleanup;
+- a sequential project-level DAG runner that unlocks successors only after verified predecessor completion and can continue independent branches;
+- regression tests for executor self-certification, graph cycles, stale event writers, memory scope leakage, context truncation, verification bypasses, Pi RPC control flow, and DAG execution semantics.
 
-The next V0 milestones are persistent PostgreSQL event storage, project-state reduction/checkpointing, a concrete Pi adapter, failure-signature supervision, and a project-level scheduler loop over runnable DAG nodes.
+## Next V0 milestones
+
+The next implementation slice focuses on state reconstruction and robust supervision rather than UI:
+
+1. event payload codecs and deterministic project-state reducers/replay;
+2. checkpoint/resume on top of the append-only stream;
+3. typed task contracts for allowed/forbidden paths, outputs, resources, and acceptance rules;
+4. failure-signature tracking and no-blind-retry supervision;
+5. artifact metadata/store contracts and revision-aware repository indexing;
+6. wiring `ProjectContract.execution_ready` and Decision Frontier interrupts into the project runtime;
+7. Git worktree isolation and resource locks as prerequisites for parallel execution;
+8. PostgreSQL Event Store adapter for multi-process/server deployment;
+9. CLI/API surfaces after the control/state contracts stabilize.
 
 ## Project status
 
-EpiPilot is in early V0 development. Architecture contracts and quality gates are intentionally being stabilized before adding UI or multi-agent parallelism.
+EpiPilot is in early V0 development. Architecture contracts and quality gates are intentionally being stabilized before UI or multi-agent parallelism is added.
 
 ## License
 
