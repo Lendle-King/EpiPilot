@@ -99,7 +99,9 @@ class Hypothesis:
             raise ValueError("the same evidence cannot both support and contradict a hypothesis")
         if self.status is not HypothesisStatus.PROPOSED:
             if not self.predictions or not self.falsification_conditions:
-                raise ValueError("active hypotheses require predictions and falsification conditions")
+                raise ValueError(
+                    "active hypotheses require predictions and falsification conditions"
+                )
         if self.status is HypothesisStatus.SUPPORTED and not self.supporting_evidence:
             raise ValueError("supported hypothesis requires supporting evidence")
         if self.status is HypothesisStatus.REFUTED and not self.contradicting_evidence:
