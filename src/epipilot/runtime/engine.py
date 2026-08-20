@@ -7,11 +7,15 @@ import json
 from dataclasses import dataclass
 
 from epipilot.core.events import EventType, ProjectEvent, new_event_id
-from epipilot.core.models import Task, TaskStatus
+from epipilot.core.models import Task, TaskId, TaskStatus
 from epipilot.core.transitions import transition_task
 from epipilot.executors.base import CodingAgentExecutor, ExecutorObservation, ExecutorState
 from epipilot.runtime.event_store import EventStore
-from epipilot.verification.pipeline import VerificationOutcome, VerificationRequest, VerifierPipeline
+from epipilot.verification.pipeline import (
+    VerificationOutcome,
+    VerificationRequest,
+    VerifierPipeline,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,42 +71,45 @@ class TaskRuntime:
         self._record_status(task.id, TaskStatus.RUNNING)
 
         latest: ExecutorObservation | None = None
-        for _ in range(max_observations):
-            latest = await self.executor.inspect(session_id)
-            self._record(
-                EventType.EXECUTOR_OBSERVATION_RECORDED,
-                {
-                    "task_id": str(task.id),
-                    "state": latest.state.value,
-                    "changed_file_count": len(latest.changed_files),
-                    "artifact_count": len(latest.artifacts),
-                },
+        try:
+            for _ in range(max_observations):
+                latest = await self.executor.inspect(session_id)
+                self._record(
+                    EventType.EXECUTOR_OBSERVATION_RECORDED,
+                    {
+                        "task_id": str(task.id),
+                        "state": latest.state.value,
+                        "changed_file_count": len(latest.changed_files),
+                        "artifact_count": len(latest.artifacts),
+                    },
+                )
+
+                if latest.state is ExecutorState.RUNNING:
+                    await asyncio.sleep(self.poll_interval_seconds)
+                    continue
+
+                if latest.state is ExecutorState.BLOCKED:
+                    current = transition_task(current, TaskStatus.BLOCKED)
+                    self._record_status(task.id, current.status)
+                    return TaskRunResult(current, session_id, latest, None)
+
+                if latest.state is ExecutorState.FAILED:
+                    current = transition_task(current, TaskStatus.FAILED)
+                    self._record_status(task.id, current.status)
+                    return TaskRunResult(current, session_id, latest, None)
+
+                if latest.state is ExecutorState.REPORTED_DONE:
+                    return await self._verify_reported_done(current, session_id, latest)
+
+            await self.executor.interrupt(
+                session_id,
+                "supervision observation budget exhausted",
             )
-
-            if latest.state is ExecutorState.RUNNING:
-                await asyncio.sleep(self.poll_interval_seconds)
-                continue
-
-            if latest.state is ExecutorState.BLOCKED:
-                current = transition_task(current, TaskStatus.BLOCKED)
-                self._record_status(task.id, current.status)
-                await self.executor.terminate(session_id)
-                return TaskRunResult(current, session_id, latest, None)
-
-            if latest.state is ExecutorState.FAILED:
-                current = transition_task(current, TaskStatus.FAILED)
-                self._record_status(task.id, current.status)
-                await self.executor.terminate(session_id)
-                return TaskRunResult(current, session_id, latest, None)
-
-            if latest.state is ExecutorState.REPORTED_DONE:
-                return await self._verify_reported_done(current, session_id, latest)
-
-        await self.executor.interrupt(session_id, "supervision observation budget exhausted")
-        current = transition_task(current, TaskStatus.BLOCKED)
-        self._record_status(task.id, current.status)
-        await self.executor.terminate(session_id)
-        return TaskRunResult(current, session_id, latest, None)
+            current = transition_task(current, TaskStatus.BLOCKED)
+            self._record_status(task.id, current.status)
+            return TaskRunResult(current, session_id, latest, None)
+        finally:
+            await self.executor.terminate(session_id)
 
     async def _verify_reported_done(
         self,
@@ -151,10 +158,9 @@ class TaskRuntime:
             )
 
         self._record_status(task.id, current.status)
-        await self.executor.terminate(session_id)
         return TaskRunResult(current, session_id, observation, outcome)
 
-    def _record_status(self, task_id: object, status: TaskStatus) -> None:
+    def _record_status(self, task_id: TaskId, status: TaskStatus) -> None:
         self._record(
             EventType.TASK_STATUS_CHANGED,
             {"task_id": str(task_id), "status": status.value},
