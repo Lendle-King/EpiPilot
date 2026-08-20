@@ -2,12 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from epipilot.context.compiler import (
-    ContextBudgetExceeded,
-    ContextItem,
-    ContextKind,
-    compile_context,
-)
+from epipilot.context.compiler import ContextBudgetExceeded, ContextItem, compile_context
+from epipilot.memory.models import MemoryKind
 
 
 def _item(
@@ -20,7 +16,7 @@ def _item(
 ) -> ContextItem:
     return ContextItem(
         item_id=item_id,
-        kind=ContextKind.NORMATIVE if mandatory else ContextKind.SEMANTIC,
+        kind=MemoryKind.NORMATIVE if mandatory else MemoryKind.SEMANTIC,
         content=f"content for {item_id}",
         token_cost=token_cost,
         mandatory=mandatory,
