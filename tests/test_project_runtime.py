@@ -97,7 +97,9 @@ async def test_project_runtime_unlocks_successor_only_after_predecessor_passes()
 async def test_failed_branch_does_not_unlock_dependent_but_independent_branch_continues() -> None:
     failing = Task(id=new_task_id(), objective="Risky approach", status=TaskStatus.READY)
     dependent = Task(id=new_task_id(), objective="Build on risky approach", status=TaskStatus.READY)
-    independent = Task(id=new_task_id(), objective="Independent diagnostic", status=TaskStatus.READY)
+    independent = Task(
+        id=new_task_id(), objective="Independent diagnostic", status=TaskStatus.READY
+    )
     plan = PlanGraph(
         version=1,
         tasks=(failing, dependent, independent),
