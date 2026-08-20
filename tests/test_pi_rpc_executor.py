@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import textwrap
 
@@ -15,7 +16,13 @@ _AGENT_END_SCRIPT = textwrap.dedent(
     import sys
 
     command = json.loads(sys.stdin.readline())
-    print(json.dumps({"type": "response", "id": command.get("id"), "command": "prompt", "success": True}), flush=True)
+    response = {
+        "type": "response",
+        "id": command.get("id"),
+        "command": "prompt",
+        "success": True,
+    }
+    print(json.dumps(response), flush=True)
     print(json.dumps({"type": "agent_start"}), flush=True)
     print(json.dumps({"type": "agent_end"}), flush=True)
     for line in sys.stdin:
@@ -31,12 +38,13 @@ _INTERACTIVE_SCRIPT = textwrap.dedent(
     import sys
 
     json.loads(sys.stdin.readline())
-    print(json.dumps({
+    request = {
         "type": "extension_ui_request",
         "id": "ui-1",
         "method": "confirm",
-        "title": "Deploy to production?"
-    }), flush=True)
+        "title": "Deploy to production?",
+    }
+    print(json.dumps(request), flush=True)
     for line in sys.stdin:
         message = json.loads(line)
         if message.get("type") == "abort":
@@ -50,7 +58,7 @@ async def _wait_for_non_running(executor: PiRpcExecutor, session_id: str) -> Exe
         observation = await executor.inspect(session_id)
         if observation.state is not ExecutorState.RUNNING:
             return observation.state
-        await __import__("asyncio").sleep(0.01)
+        await asyncio.sleep(0.01)
     raise AssertionError("Pi RPC test agent did not reach a terminal observation")
 
 
