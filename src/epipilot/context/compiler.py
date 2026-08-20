@@ -1,20 +1,10 @@
-"""Deterministic context compilation from canonical project state projections."""
+"""Deterministic context compilation from canonical project-state projections."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
-
-class ContextKind(StrEnum):
-    """Logical memory/state class from which a context item is projected."""
-
-    NORMATIVE = "normative"
-    SEMANTIC = "semantic"
-    EPISTEMIC = "epistemic"
-    EPISODIC = "episodic"
-    PROCEDURAL = "procedural"
-    STRUCTURAL = "structural"
+from epipilot.memory.models import MemoryKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +12,7 @@ class ContextItem:
     """One candidate projection into an executor context."""
 
     item_id: str
-    kind: ContextKind
+    kind: MemoryKind
     content: str
     token_cost: int
     mandatory: bool = False
@@ -96,7 +86,10 @@ def compile_context(
     if len(set(item_ids)) != len(item_ids):
         raise ValueError("context item ids must be unique")
 
-    mandatory = sorted((item for item in candidates if item.mandatory), key=lambda item: item.item_id)
+    mandatory = sorted(
+        (item for item in candidates if item.mandatory),
+        key=lambda item: item.item_id,
+    )
     mandatory_cost = sum(item.token_cost for item in mandatory)
     if mandatory_cost > token_budget:
         raise ContextBudgetExceeded(
