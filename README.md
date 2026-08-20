@@ -72,6 +72,7 @@ The current V0 foundation intentionally starts with contracts that are difficult
 - append-only Event Store semantics with optimistic concurrency plus durable local SQLite persistence;
 - immutable, versioned, traceable task DAG topology separated from runtime task-state projections;
 - information-gain-aware scheduling with explicit impact, unblocking, urgency, cost, and risk inputs;
+- bounded `TaskContract` models for repository revision, read/write/forbidden paths, expected outputs, resources, and independent acceptance commands;
 - scoped typed long-term memory with canonical references, episodic lessons, trigger-based procedures, and revision-pinned structural memory;
 - a Context Compiler that never silently drops mandatory authoritative state;
 - an evidence-gated verification pipeline and independent argv-based command verifier;
@@ -81,21 +82,21 @@ The current V0 foundation intentionally starts with contracts that are difficult
 - interactive Pi confirmation/input requests surfaced as `BLOCKED` rather than auto-approved;
 - a single-task runtime from `READY` through independent verification with guaranteed executor cleanup;
 - a sequential project-level DAG runner that unlocks successors only after verified predecessor completion and can continue independent branches;
-- regression tests for executor self-certification, graph cycles, stale event writers, memory scope leakage, context truncation, verification bypasses, Pi RPC control flow, and DAG execution semantics.
+- failure-signature-aware supervision that forbids unchanged blind retries and escalates repeated failures;
+- regression tests for executor self-certification, graph cycles, stale event writers, memory scope leakage, context truncation, verification bypasses, Pi RPC control flow, retry loops, task-scope violations, and DAG execution semantics.
 
 ## Next V0 milestones
 
-The next implementation slice focuses on state reconstruction and robust supervision rather than UI:
+The next implementation slice focuses on state reconstruction and enforcement rather than UI:
 
 1. event payload codecs and deterministic project-state reducers/replay;
 2. checkpoint/resume on top of the append-only stream;
-3. typed task contracts for allowed/forbidden paths, outputs, resources, and acceptance rules;
-4. failure-signature tracking and no-blind-retry supervision;
-5. artifact metadata/store contracts and revision-aware repository indexing;
-6. wiring `ProjectContract.execution_ready` and Decision Frontier interrupts into the project runtime;
-7. Git worktree isolation and resource locks as prerequisites for parallel execution;
-8. PostgreSQL Event Store adapter for multi-process/server deployment;
-9. CLI/API surfaces after the control/state contracts stabilize.
+3. artifact metadata/store contracts and revision-aware repository indexing;
+4. runtime enforcement of `TaskContract` path/resource boundaries;
+5. wiring `ProjectContract.execution_ready`, Decision Frontier interrupts, and retry policy into the project runtime;
+6. Git worktree isolation and resource locks as prerequisites for parallel execution;
+7. PostgreSQL Event Store adapter for multi-process/server deployment;
+8. CLI/API surfaces after the control/state contracts stabilize.
 
 ## Project status
 
