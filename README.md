@@ -28,8 +28,10 @@ EpiPilot is organized around four planes:
 - **Execution plane** — replaceable coding-agent adapters running in isolated workspaces.
 - **State plane** — requirements, decisions, unknowns, hypotheses, evidence, task graph, memory, events, and artifacts.
 
-Architecture contracts:
+Architecture and planning documents:
 
+- [`docs/FRAMEWORK.md`](docs/FRAMEWORK.md) — overall EpiPilot methodology, system responsibilities, epistemic loop, task planning, execution, verification, memory, recovery, replanning, and non-negotiable invariants.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — detailed staged plan from the current V0 foundation to V1.0, including milestone scope, gates, tests, and acceptance criteria.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module boundaries, state ownership, runtime flow, and invariants.
 - [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context, memory classes, scope, consolidation, and retrieval rules.
 
@@ -97,6 +99,8 @@ The next implementation slice focuses on state reconstruction and enforcement ra
 6. Git worktree isolation and resource locks as prerequisites for parallel execution;
 7. PostgreSQL Event Store adapter for multi-process/server deployment;
 8. CLI/API surfaces after the control/state contracts stabilize.
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full milestone plan through V1.0.
 
 ## Project status
 
