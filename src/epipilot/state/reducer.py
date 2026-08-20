@@ -259,9 +259,7 @@ def _reduce_payload(
             artifact_refs=observation_payload.artifact_refs,
         )
         sessions = tuple(
-            updated_session
-            if current.session_id == observation_payload.session_id
-            else current
+            updated_session if current.session_id == observation_payload.session_id else current
             for current in state.sessions
         )
         artifact_refs = tuple(
@@ -320,9 +318,7 @@ def _reduce_payload(
             raise InvalidEventOrder(
                 f"plan version must advance monotonically to {expected_version}"
             )
-        tasks = tuple(
-            _require_task(state, TaskId(task_id)) for task_id in plan_payload.task_ids
-        )
+        tasks = tuple(_require_task(state, TaskId(task_id)) for task_id in plan_payload.task_ids)
         dependencies = tuple(
             TaskDependency(
                 predecessor=TaskId(dependency.predecessor),
