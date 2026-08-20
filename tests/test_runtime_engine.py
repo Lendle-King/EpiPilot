@@ -99,9 +99,7 @@ async def test_runtime_requires_independent_verification_before_passed() -> None
     assert EventType.EVIDENCE_RECORDED in event_types
     assert all(event.schema_version == TYPED_EVENT_SCHEMA_VERSION for event in events)
 
-    evidence_event = next(
-        event for event in events if event.type is EventType.EVIDENCE_RECORDED
-    )
+    evidence_event = next(event for event in events if event.type is EventType.EVIDENCE_RECORDED)
     payload = decode_event_payload(evidence_event)
     assert isinstance(payload, EvidenceRecordedPayload)
     assert payload.summary == "evidence"
