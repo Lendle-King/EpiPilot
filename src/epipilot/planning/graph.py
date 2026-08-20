@@ -42,7 +42,11 @@ class TaskDependency:
 
 @dataclass(frozen=True, slots=True)
 class PlanGraph:
-    """One immutable, auditable version of the execution DAG."""
+    """One immutable, auditable topology version plus its execution-state projection.
+
+    Runtime task-state changes keep ``version`` unchanged. Only structural replanning
+    creates a new topology version and therefore requires a fresh traceable basis.
+    """
 
     version: int
     tasks: tuple[Task, ...]
@@ -71,6 +75,35 @@ class PlanGraph:
             if task.id == task_id:
                 return task
         raise KeyError(task_id)
+
+    def with_task_state(self, updated: Task) -> PlanGraph:
+        """Project a runtime state update without pretending that replanning occurred."""
+        original = self.task(updated.id)
+        if original.objective != updated.objective:
+            raise ValueError("task objective changes require structural replanning")
+
+        tasks = tuple(updated if task.id == updated.id else task for task in self.tasks)
+        return PlanGraph(
+            version=self.version,
+            tasks=tasks,
+            dependencies=self.dependencies,
+            basis=self.basis,
+        )
+
+    def replan(
+        self,
+        *,
+        tasks: tuple[Task, ...],
+        dependencies: tuple[TaskDependency, ...],
+        basis: tuple[PlanBasis, ...],
+    ) -> PlanGraph:
+        """Create the next structural topology version from explicit canonical reasons."""
+        return PlanGraph(
+            version=self.version + 1,
+            tasks=tasks,
+            dependencies=dependencies,
+            basis=basis,
+        )
 
     def runnable_tasks(self) -> tuple[Task, ...]:
         """Return READY tasks whose predecessors have all passed verification."""
