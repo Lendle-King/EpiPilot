@@ -25,6 +25,8 @@ class EventType(StrEnum):
     EVIDENCE_RECORDED = "evidence_recorded"
     TASK_CREATED = "task_created"
     TASK_STARTED = "task_started"
+    TASK_STATUS_CHANGED = "task_status_changed"
+    CONTEXT_COMPILED = "context_compiled"
     EXECUTOR_OBSERVATION_RECORDED = "executor_observation_recorded"
     VERIFICATION_PASSED = "verification_passed"
     VERIFICATION_FAILED = "verification_failed"
