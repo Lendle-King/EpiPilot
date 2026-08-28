@@ -200,9 +200,7 @@ class HermesFrontendBridge:
     def require_active_project(self) -> ProjectState:
         project_id = self.active_project_id()
         if project_id is None:
-            raise HermesFrontendError(
-                "no EpiPilot project is active; run /epipilot start <goal>"
-            )
+            raise HermesFrontendError("no EpiPilot project is active; run /epipilot start <goal>")
         return self.load_project(project_id)
 
     @staticmethod
@@ -350,8 +348,7 @@ def _make_command_handler(bridge: HermesFrontendBridge) -> SlashHandler:
         except Exception:
             logger.exception("Hermes frontend integration failed closed")
             return (
-                "[EpiPilot] canonical state could not be loaded safely; "
-                "the operation was refused."
+                "[EpiPilot] canonical state could not be loaded safely; the operation was refused."
             )
 
     return handle
