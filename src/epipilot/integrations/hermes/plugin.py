@@ -369,7 +369,9 @@ def _executor_child_tool_policy(tool_name: object, args_obj: object) -> object:
 
     workspace = _executor_workspace()
     if workspace is None:
-        return _block("EpiPilot executor workspace binding is missing or invalid; blocked fail-closed.")
+        return _block(
+            "EpiPilot executor workspace binding is missing or invalid; blocked fail-closed."
+        )
 
     # Hermes' native cross-profile escape is intentionally unavailable inside a bounded child.
     if args_obj.get("cross_profile") not in (None, False):
