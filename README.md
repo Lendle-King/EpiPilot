@@ -34,6 +34,7 @@ Architecture and planning documents:
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — detailed staged plan from the current V0 foundation to V1.0, including milestone scope, gates, tests, and acceptance criteria.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module boundaries, state ownership, runtime flow, and invariants.
 - [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context, memory classes, scope, consolidation, and retrieval rules.
+- [`docs/HERMES_INTEGRATION.md`](docs/HERMES_INTEGRATION.md) — Hermes as the human-facing frontend plus a bounded EpiPilot-owned executor adapter.
 
 ## Repository standards
 
@@ -64,6 +65,29 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+## Hermes frontend and executor
+
+EpiPilot exposes a native Hermes plugin entry point. Hermes can be used as the human-facing
+conversation surface while EpiPilot remains the owner of canonical requirements, event history,
+task state, and verification.
+
+After installing EpiPilot into the same Python environment as Hermes:
+
+```text
+/epipilot start <goal>
+/epipilot success <criterion>
+/epipilot constrain <rule>
+/epipilot status
+/epipilot exit
+/epipilot resume <project-id>
+```
+
+The interactive Hermes session remains interface-only. Coding attempts are launched separately
+through `HermesExecutor`, which uses a private `--query-file`, disables ambient Hermes rules and
+memory injection, restricts the child to workspace-contained file operations, and maps Hermes
+completion only to `REPORTED_DONE`. EpiPilot's independent verifier remains the sole authority
+that can produce `PASSED`. See [`docs/HERMES_INTEGRATION.md`](docs/HERMES_INTEGRATION.md).
+
 ## V0 foundation
 
 The current V0 foundation intentionally starts with contracts that are difficult to retrofit safely later:
@@ -80,12 +104,13 @@ The current V0 foundation intentionally starts with contracts that are difficult
 - an evidence-gated verification pipeline and independent argv-based command verifier;
 - a replaceable coding-agent executor protocol;
 - a concrete headless Pi JSONL RPC executor using `pi --mode rpc`;
-- Pi `agent_end` mapped only to `AGENT_REPORTED_DONE`, never directly to `PASSED`;
-- interactive Pi confirmation/input requests surfaced as `BLOCKED` rather than auto-approved;
+- a bounded Hermes single-query executor using private prompt-file transport and workspace-contained file tools;
+- executor completion reports mapped only to `AGENT_REPORTED_DONE`, never directly to `PASSED`;
+- interactive executor confirmation/input requests surfaced as `BLOCKED` rather than auto-approved;
 - a single-task runtime from `READY` through independent verification with guaranteed executor cleanup;
 - a sequential project-level DAG runner that unlocks successors only after verified predecessor completion and can continue independent branches;
 - failure-signature-aware supervision that forbids unchanged blind retries and escalates repeated failures;
-- regression tests for executor self-certification, graph cycles, stale event writers, memory scope leakage, context truncation, verification bypasses, Pi RPC control flow, retry loops, task-scope violations, and DAG execution semantics.
+- regression tests for executor self-certification, graph cycles, stale event writers, memory scope leakage, context truncation, verification bypasses, Pi RPC control flow, Hermes executor containment, retry loops, task-scope violations, and DAG execution semantics.
 
 ## Next V0 milestones
 
