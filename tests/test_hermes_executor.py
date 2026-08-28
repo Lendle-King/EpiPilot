@@ -44,7 +44,7 @@ _SUCCESS_SCRIPT = textwrap.dedent(
         raise SystemExit(24)
 
     workspace = Path(os.environ[{EXECUTOR_WORKSPACE_ENV!r}])
-    (workspace / "result.txt").write_text("bounded change\n", encoding="utf-8")
+    (workspace / "result.txt").write_text("bounded change", encoding="utf-8")
     (workspace / "child-argv.json").write_text(json.dumps(argv), encoding="utf-8")
     print("implemented the requested bounded change")
     """
@@ -101,6 +101,7 @@ async def test_hermes_executor_uses_private_query_file_and_reports_changes(tmp_p
     task = Task(id=new_task_id(), objective="Implement bounded change")
 
     session_id = await executor.start_task(task, _SECRET_CONTEXT)
+    prompt_path: Path | None = None
     try:
         observation = await _wait_terminal(executor, session_id)
         assert observation.state is ExecutorState.REPORTED_DONE
@@ -116,10 +117,9 @@ async def test_hermes_executor_uses_private_query_file_and_reports_changes(tmp_p
         if os.name != "nt":
             assert _file_mode(prompt_path) == 0o600
     finally:
-        argv = json.loads((tmp_path / "child-argv.json").read_text(encoding="utf-8"))
-        prompt_path = Path(argv[argv.index("--query-file") + 1])
         await executor.terminate(session_id)
 
+    assert prompt_path is not None
     assert not prompt_path.exists()
 
 
