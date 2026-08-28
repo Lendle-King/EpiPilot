@@ -69,7 +69,9 @@ _SLEEP_SCRIPT = textwrap.dedent(
 
 def _init_repo(path: Path) -> None:
     subprocess.run(["git", "init", "-q", str(path)], check=True)
-    subprocess.run(["git", "-C", str(path), "config", "user.email", "tests@example.invalid"], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.email", "tests@example.invalid"], check=True
+    )
     subprocess.run(["git", "-C", str(path), "config", "user.name", "EpiPilot Tests"], check=True)
     (path / "README.md").write_text("fixture\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(path), "add", "README.md"], check=True)
