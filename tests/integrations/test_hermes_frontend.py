@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from epipilot.integrations.hermes import register
+from epipilot.integrations.hermes.runtime_contract import EXECUTOR_GUARD_TOOL
 from epipilot.requirements.models import ProjectContract, RequirementKind
 from epipilot.runtime.sqlite_event_store import SqliteEventStore
 from epipilot.state.replay import replay_project
@@ -28,6 +29,7 @@ class FakeHermesContext:
         self.state = FakeHermesState(data_dir)
         self.commands: dict[str, Callable[[str], str | None]] = {}
         self.hooks: dict[str, Callable[..., object]] = {}
+        self.tools: dict[str, dict[str, object]] = {}
 
     def register_command(
         self,
@@ -41,6 +43,22 @@ class FakeHermesContext:
 
     def register_hook(self, name: str, callback: Callable[..., object]) -> None:
         self.hooks[name] = callback
+
+    def register_tool(
+        self,
+        *,
+        name: str,
+        toolset: str,
+        schema: dict[str, object],
+        handler: Callable[..., object],
+        check_fn: Callable[[], bool] | None = None,
+    ) -> None:
+        self.tools[name] = {
+            "toolset": toolset,
+            "schema": schema,
+            "handler": handler,
+            "check_fn": check_fn,
+        }
 
 
 def _registered(tmp_path: Path) -> FakeHermesContext:
@@ -64,11 +82,15 @@ def _replay(context: FakeHermesContext, project_id: str):
     return replay_project(project_id, store.load(project_id))
 
 
-def test_registers_one_command_and_fail_closed_hooks(tmp_path: Path) -> None:
+def test_registers_one_command_fail_closed_hooks_and_executor_sentinel(tmp_path: Path) -> None:
     context = _registered(tmp_path)
 
     assert set(context.commands) == {"epipilot"}
     assert set(context.hooks) == {"pre_llm_call", "pre_tool_call"}
+    assert set(context.tools) == {EXECUTOR_GUARD_TOOL}
+    check_fn = context.tools[EXECUTOR_GUARD_TOOL]["check_fn"]
+    assert callable(check_fn)
+    assert check_fn() is False
 
 
 def test_start_records_goal_as_canonical_user_requirement(tmp_path: Path) -> None:
