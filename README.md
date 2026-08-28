@@ -34,6 +34,7 @@ Architecture and planning documents:
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — detailed staged plan from the current V0 foundation to V1.0, including milestone scope, gates, tests, and acceptance criteria.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module boundaries, state ownership, runtime flow, and invariants.
 - [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context, memory classes, scope, consolidation, and retrieval rules.
+- [`docs/HERMES_INTEGRATION.md`](docs/HERMES_INTEGRATION.md) — Hermes as the human-facing frontend while EpiPilot retains canonical control authority.
 
 ## Repository standards
 
@@ -63,6 +64,28 @@ For automatic local checks:
 pre-commit install
 pre-commit run --all-files
 ```
+
+## Hermes frontend
+
+EpiPilot exposes a native Hermes plugin entry point. Hermes can be used as the human-facing
+conversation surface while EpiPilot remains the owner of canonical requirements, event history,
+task state, and verification.
+
+After installing EpiPilot into the same Python environment as Hermes:
+
+```text
+/epipilot start <goal>
+/epipilot success <criterion>
+/epipilot constrain <rule>
+/epipilot status
+/epipilot exit
+/epipilot resume <project-id>
+```
+
+The current integration slice is intentionally interface-only. While EpiPilot mode is active,
+ordinary Hermes tool calls are blocked fail-closed until a Hermes executor adapter is routed
+through EpiPilot `TaskRuntime` and independent verification. See
+[`docs/HERMES_INTEGRATION.md`](docs/HERMES_INTEGRATION.md).
 
 ## V0 foundation
 
