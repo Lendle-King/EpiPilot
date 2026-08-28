@@ -102,6 +102,8 @@ class HermesExecutor:
 
     def __post_init__(self) -> None:
         self.workspace = self.workspace.expanduser().resolve()
+        if not self.workspace.is_dir():
+            raise ValueError(f"Hermes workspace does not exist: {self.workspace}")
         if not self.command or any(not item for item in self.command):
             raise ValueError("Hermes command must contain non-empty argv entries")
         if self.max_turns < 1:
@@ -303,8 +305,6 @@ class HermesExecutor:
         )
 
     async def _validate_workspace(self) -> None:
-        if not os.path.isdir(self.workspace):
-            raise ValueError(f"Hermes workspace does not exist: {self.workspace}")
         returncode, stdout, _stderr = await self._git("rev-parse", "--show-toplevel")
         if returncode != 0:
             raise ValueError("HermesExecutor requires a Git working tree")

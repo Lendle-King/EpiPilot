@@ -78,6 +78,10 @@ def _init_repo(path: Path) -> None:
     subprocess.run(["git", "-C", str(path), "commit", "-q", "-m", "fixture"], check=True)
 
 
+def _file_mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
+
+
 async def _wait_terminal(executor: HermesExecutor, session_id: str):
     for _ in range(200):
         observation = await executor.inspect(session_id)
@@ -110,7 +114,7 @@ async def test_hermes_executor_uses_private_query_file_and_reports_changes(tmp_p
         assert _SECRET_CONTEXT not in " ".join(argv)
         prompt_path = Path(argv[argv.index("--query-file") + 1])
         if os.name != "nt":
-            assert stat.S_IMODE(os.stat(prompt_path).st_mode) == 0o600
+            assert _file_mode(prompt_path) == 0o600
     finally:
         argv = json.loads((tmp_path / "child-argv.json").read_text(encoding="utf-8"))
         prompt_path = Path(argv[argv.index("--query-file") + 1])
