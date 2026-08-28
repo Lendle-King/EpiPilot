@@ -362,7 +362,8 @@ def _executor_child_tool_policy(tool_name: object, args_obj: object) -> object:
     if not isinstance(tool_name, str) or tool_name not in EXECUTOR_ALLOWED_NATIVE_TOOLS:
         return _block(
             "EpiPilot HermesExecutor permits only bounded file tools. Terminal/process, "
-            "network, delegation, memory mutation, and other tools are outside this task's authority."
+            "network, delegation, memory mutation, and other tools are outside "
+            "this task's authority."
         )
     if not isinstance(args_obj, dict):
         return _block("EpiPilot could not validate Hermes tool arguments; blocked fail-closed.")
@@ -382,7 +383,8 @@ def _executor_child_tool_policy(tool_name: object, args_obj: object) -> object:
         if mode != "replace":
             return _block(
                 "EpiPilot HermesExecutor currently permits patch mode='replace' only; "
-                "multi-file patch payloads are blocked until every embedded path is contract-validated."
+                "multi-file patch payloads are blocked until every embedded path is "
+                "contract-validated."
             )
 
     raw_path = args_obj.get("path", "." if tool_name == "search_files" else None)
@@ -491,7 +493,8 @@ def _make_pre_tool_hook(bridge: HermesFrontendBridge) -> HookHandler:
                 return None
         except Exception:
             return _block(
-                "EpiPilot frontend state is malformed or unavailable; tool execution is blocked fail-closed."
+                "EpiPilot frontend state is malformed or unavailable; tool execution "
+                "is blocked fail-closed."
             )
         return _block(
             "The interactive EpiPilot Hermes session is interface-only. Tool execution must "
@@ -523,7 +526,8 @@ def register(ctx: HermesPluginContext) -> None:
         schema={
             "name": EXECUTOR_GUARD_TOOL,
             "description": (
-                "Internal EpiPilot executor-policy sentinel. Do not call this tool during normal work."
+                "Internal EpiPilot executor-policy sentinel. Do not call this tool "
+                "during normal work."
             ),
             "parameters": {
                 "type": "object",

@@ -110,7 +110,7 @@ async def test_hermes_executor_uses_private_query_file_and_reports_changes(tmp_p
         assert _SECRET_CONTEXT not in " ".join(argv)
         prompt_path = Path(argv[argv.index("--query-file") + 1])
         if os.name != "nt":
-            assert stat.S_IMODE(prompt_path.stat().st_mode) == 0o600
+            assert stat.S_IMODE(os.stat(prompt_path).st_mode) == 0o600
     finally:
         argv = json.loads((tmp_path / "child-argv.json").read_text(encoding="utf-8"))
         prompt_path = Path(argv[argv.index("--query-file") + 1])

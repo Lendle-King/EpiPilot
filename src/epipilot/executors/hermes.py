@@ -1,7 +1,7 @@
 """Bounded Hermes coding-agent executor adapter.
 
-Hermes is treated as a non-authoritative editing executor.  It may report that a
- task is complete, but only EpiPilot's verifier can transition that task to PASSED.
+Hermes is treated as a non-authoritative editing executor. It may report that a
+task is complete, but only EpiPilot's verifier can transition that task to PASSED.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
@@ -63,18 +64,14 @@ async def _drain_stream(
 
 def _write_private_text(path: Path, content: str) -> None:
     """Create one owner-only prompt file without ever placing content in argv."""
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_BINARY"):
-        flags |= os.O_BINARY
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | int(getattr(os, "O_BINARY", 0))
     fd = os.open(path, flags, 0o600)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(content)
     except Exception:
-        try:
+        with suppress(OSError):
             path.unlink(missing_ok=True)
-        except OSError:
-            pass
         raise
 
 
@@ -83,12 +80,12 @@ class HermesExecutor:
     """Run one bounded Hermes single-query child per EpiPilot task attempt.
 
     The child receives the task through Hermes' ``chat --query-file`` transport so
-    project context is not exposed through the process argument list.  ``--ignore-rules``
+    project context is not exposed through the process argument list. ``--ignore-rules``
     prevents ambient Hermes memory/SOUL/AGENTS state from becoming executor context.
     Only the native ``file`` toolset plus EpiPilot's guard sentinel are enabled; the
     EpiPilot Hermes plugin then enforces workspace containment on every file call.
 
-    This adapter intentionally does not expose terminal/process execution yet.  Command
+    This adapter intentionally does not expose terminal/process execution yet. Command
     execution remains on EpiPilot's verifier side until TaskContract command/resource
     policy is enforced at this boundary.
     """
@@ -306,13 +303,13 @@ class HermesExecutor:
         )
 
     async def _validate_workspace(self) -> None:
-        if not self.workspace.is_dir():
+        if not os.path.isdir(self.workspace):
             raise ValueError(f"Hermes workspace does not exist: {self.workspace}")
         returncode, stdout, _stderr = await self._git("rev-parse", "--show-toplevel")
         if returncode != 0:
             raise ValueError("HermesExecutor requires a Git working tree")
-        repository_root = Path(stdout.decode("utf-8", errors="replace").strip()).resolve()
-        if repository_root != self.workspace:
+        repository_root = stdout.decode("utf-8", errors="replace").strip()
+        if os.path.normcase(repository_root) != os.path.normcase(str(self.workspace)):
             raise ValueError("HermesExecutor workspace must be the Git repository root")
         if self.require_clean_worktree:
             returncode, stdout, _stderr = await self._git(
@@ -325,7 +322,8 @@ class HermesExecutor:
                 raise RuntimeError("could not inspect Git workspace cleanliness")
             if stdout:
                 raise ValueError(
-                    "HermesExecutor requires a clean workspace so executor changes remain attributable"
+                    "HermesExecutor requires a clean workspace so executor changes "
+                    "remain attributable"
                 )
 
     async def _changed_files(self) -> tuple[str, ...]:
