@@ -54,16 +54,16 @@ ProjectContract
   -> next research directive
 ```
 
-Quick development-branch install:
+One-command development-branch install:
 
 ```bash
-uv tool install "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin"
-epipilot-mcp --self-check
-codex plugin marketplace add Lendle-King/EpiPilot --ref feat/codex-epistemic-research-plugin
-codex plugin add epipilot@epipilot
+uvx --from "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin" \
+  epipilot-install-codex --ref feat/codex-epistemic-research-plugin
 ```
 
-Then start a new Codex thread. See [`docs/CODEX_PLUGIN.md`](docs/CODEX_PLUGIN.md) for pip fallback, update instructions, verification workflow, and troubleshooting.
+The bootstrap persistently installs the Python runtime, adds/upgrades the EpiPilot Git marketplace, installs the Codex plugin, and verifies through Codex JSON output that the plugin is installed and enabled. Then start a new Codex thread.
+
+See [`docs/CODEX_PLUGIN.md`](docs/CODEX_PLUGIN.md) for the manual fallback, update instructions, verification workflow, and troubleshooting.
 
 The plugin deliberately does not let Codex self-report become verified evidence, does not expose arbitrary command execution through MCP, and does not turn research-frontier exhaustion into automatic project acceptance.
 
