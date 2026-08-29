@@ -45,3 +45,17 @@ def test_marketplace_and_source_tree_skill_do_not_drift() -> None:
     marketplace_skill = ROOT / "plugins/epipilot/skills/epistemic-research/SKILL.md"
     source_skill = ROOT / "skills/epistemic-research/SKILL.md"
     assert marketplace_skill.read_text(encoding="utf-8") == source_skill.read_text(encoding="utf-8")
+
+
+def test_natural_language_install_contract_is_discoverable() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    contract = (ROOT / "CODEX_INSTALL.md").read_text(encoding="utf-8")
+
+    assert "Install from inside Codex" in readme
+    assert "CODEX_INSTALL.md" in readme
+    assert "Codex installation intent" in agents
+    assert "CODEX_INSTALL.md" in agents
+    assert "Natural-language install intent" in contract
+    assert "epipilot-install-codex" in contract
+    assert "installed" in contract and "enabled" in contract
