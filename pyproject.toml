@@ -28,6 +28,9 @@ dependencies = [
 Repository = "https://github.com/Lendle-King/EpiPilot"
 Issues = "https://github.com/Lendle-King/EpiPilot/issues"
 
+[project.scripts]
+epipilot-codex = "epipilot.integrations.codex.cli:main"
+
 [project.optional-dependencies]
 dev = [
   "mypy>=1.11",

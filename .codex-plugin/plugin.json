@@ -1,0 +1,25 @@
+{
+  "name": "epipilot",
+  "version": "0.1.0",
+  "description": "Evidence-driven epistemic research mode for long-horizon Codex work.",
+  "author": {
+    "name": "EpiPilot contributors"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "EpiPilot",
+    "shortDescription": "Run Codex as an evidence-driven research agent.",
+    "longDescription": "EpiPilot adds a durable epistemic research loop: clarify user-owned decisions, track unknowns and falsifiable hypotheses, run discriminative experiments, admit independently verified evidence, update beliefs, and replan.",
+    "developerName": "EpiPilot contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Investigate this research problem with EpiPilot.",
+      "Build and test competing hypotheses for this failure.",
+      "Show the current epistemic map and next experiment."
+    ]
+  }
+}

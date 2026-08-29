@@ -19,7 +19,14 @@ from epipilot.core.models import (
     TaskStatus,
 )
 from epipilot.core.transitions import transition_task
-from epipilot.epistemics.models import Hypothesis, Unknown, UnknownId
+from epipilot.epistemics.models import (
+    Hypothesis,
+    HypothesisStatus,
+    ResolutionMode,
+    Unknown,
+    UnknownId,
+    UnknownStatus,
+)
 from epipilot.events.codec import decode_event_payload
 from epipilot.events.payloads import (
     ContextCompiledPayload,
@@ -28,6 +35,7 @@ from epipilot.events.payloads import (
     EvidenceRecordedPayload,
     ExecutorObservationRecordedPayload,
     HypothesisCreatedPayload,
+    HypothesisUpdatedPayload,
     PlanVersionCreatedPayload,
     RequirementAddedPayload,
     TaskCreatedPayload,
@@ -35,11 +43,17 @@ from epipilot.events.payloads import (
     TaskStatusChangedPayload,
     TaskSupersededPayload,
     UnknownRegisteredPayload,
+    UnknownResolvedPayload,
     VerificationFailedPayload,
     VerificationPassedPayload,
 )
 from epipilot.planning.graph import PlanBasis, PlanBasisKind, PlanGraph, TaskDependency
-from epipilot.requirements.models import Decision, DecisionId, Requirement
+from epipilot.requirements.models import (
+    Decision,
+    DecisionAuthority,
+    DecisionId,
+    Requirement,
+)
 from epipilot.state.errors import (
     AggregateMismatch,
     DuplicateEntity,
@@ -129,15 +143,76 @@ def _reduce_payload(
         )
         return replace(state, unknowns=(*state.unknowns, unknown))
 
+    if event_type is EventType.UNKNOWN_RESOLVED:
+        resolution_payload = _expect(payload, UnknownResolvedPayload)
+        unknown_id = UnknownId(resolution_payload.unknown_id)
+        unknown = _require_unknown(state, unknown_id)
+        if unknown.status is not UnknownStatus.OPEN:
+            raise InvalidEventOrder("only an open unknown may be resolved")
+
+        evidence_ids = tuple(EvidenceId(value) for value in resolution_payload.evidence_ids)
+        decision_ids = tuple(DecisionId(value) for value in resolution_payload.decision_ids)
+        decisions = tuple(_require_decision(state, value) for value in decision_ids)
+
+        if unknown.resolution_mode in {
+            ResolutionMode.EXPERIMENT,
+            ResolutionMode.INVESTIGATION,
+        }:
+            if not evidence_ids:
+                raise InvalidEventOrder(
+                    "technical unknown resolution requires independently verified evidence"
+                )
+            for evidence_id in evidence_ids:
+                _require_independent_evidence(state, evidence_id)
+
+        if unknown.resolution_mode is ResolutionMode.ASK_USER:
+            if not any(decision.authority is DecisionAuthority.USER for decision in decisions):
+                raise InvalidEventOrder("user-owned unknown requires an explicit user decision")
+
+        if unknown.resolution_mode is ResolutionMode.SAFE_DEFAULT:
+            safe_decisions = tuple(
+                decision
+                for decision in decisions
+                if decision.authority is DecisionAuthority.USER
+                or (
+                    decision.authority is DecisionAuthority.SYSTEM
+                    and decision.reversible
+                )
+            )
+            if not safe_decisions:
+                raise InvalidEventOrder(
+                    "safe-default unknown requires a reversible system decision or user decision"
+                )
+
+        for evidence_id in evidence_ids:
+            _require_evidence(state, evidence_id)
+
+        updated_unknown = replace(
+            unknown,
+            status=UnknownStatus.RESOLVED,
+            resolution_evidence=evidence_ids,
+            resolution_decisions=tuple(str(value) for value in decision_ids),
+        )
+        return _replace_unknown(state, updated_unknown)
+
     if event_type is EventType.HYPOTHESIS_CREATED:
         hypothesis_payload = _expect(payload, HypothesisCreatedPayload)
         hypothesis_id = HypothesisId(hypothesis_payload.hypothesis_id)
         _ensure_new(hypothesis_id, (entry.id for entry in state.hypotheses), "hypothesis")
-        for evidence_uuid in (
-            *hypothesis_payload.supporting_evidence,
-            *hypothesis_payload.contradicting_evidence,
-        ):
-            _require_evidence(state, EvidenceId(evidence_uuid))
+        supporting = tuple(
+            EvidenceId(value) for value in hypothesis_payload.supporting_evidence
+        )
+        contradicting = tuple(
+            EvidenceId(value) for value in hypothesis_payload.contradicting_evidence
+        )
+        for evidence_id in (*supporting, *contradicting):
+            _require_evidence(state, evidence_id)
+        if hypothesis_payload.status is HypothesisStatus.SUPPORTED:
+            for evidence_id in supporting:
+                _require_independent_evidence(state, evidence_id)
+        if hypothesis_payload.status is HypothesisStatus.REFUTED:
+            for evidence_id in contradicting:
+                _require_independent_evidence(state, evidence_id)
         hypothesis = Hypothesis(
             id=hypothesis_id,
             statement=hypothesis_payload.statement,
@@ -145,12 +220,8 @@ def _reduce_payload(
             confidence=hypothesis_payload.confidence,
             predictions=hypothesis_payload.predictions,
             falsification_conditions=hypothesis_payload.falsification_conditions,
-            supporting_evidence=tuple(
-                EvidenceId(value) for value in hypothesis_payload.supporting_evidence
-            ),
-            contradicting_evidence=tuple(
-                EvidenceId(value) for value in hypothesis_payload.contradicting_evidence
-            ),
+            supporting_evidence=supporting,
+            contradicting_evidence=contradicting,
             superseded_by=(
                 HypothesisId(hypothesis_payload.superseded_by)
                 if hypothesis_payload.superseded_by is not None
@@ -158,6 +229,45 @@ def _reduce_payload(
             ),
         )
         return replace(state, hypotheses=(*state.hypotheses, hypothesis))
+
+    if event_type is EventType.HYPOTHESIS_UPDATED:
+        update_payload = _expect(payload, HypothesisUpdatedPayload)
+        hypothesis_id = HypothesisId(update_payload.hypothesis_id)
+        hypothesis = _require_hypothesis(state, hypothesis_id)
+
+        supporting = tuple(EvidenceId(value) for value in update_payload.supporting_evidence)
+        contradicting = tuple(
+            EvidenceId(value) for value in update_payload.contradicting_evidence
+        )
+        for evidence_id in (*supporting, *contradicting):
+            _require_evidence(state, evidence_id)
+
+        if update_payload.status is HypothesisStatus.SUPPORTED:
+            for evidence_id in supporting:
+                _require_independent_evidence(state, evidence_id)
+        if update_payload.status is HypothesisStatus.REFUTED:
+            for evidence_id in contradicting:
+                _require_independent_evidence(state, evidence_id)
+
+        replacement = (
+            HypothesisId(update_payload.superseded_by)
+            if update_payload.superseded_by is not None
+            else None
+        )
+        if replacement is not None:
+            if replacement == hypothesis_id:
+                raise InvalidEventOrder("a hypothesis cannot supersede itself")
+            _require_hypothesis(state, replacement)
+
+        updated_hypothesis = replace(
+            hypothesis,
+            status=update_payload.status,
+            confidence=update_payload.confidence,
+            supporting_evidence=supporting,
+            contradicting_evidence=contradicting,
+            superseded_by=replacement,
+        )
+        return _replace_hypothesis(state, updated_hypothesis)
 
     if event_type is EventType.EVIDENCE_RECORDED:
         evidence_payload = _expect(payload, EvidenceRecordedPayload)
@@ -362,11 +472,39 @@ def _require_task(state: ProjectState, task_id: TaskId) -> Task:
         raise MissingEntity(f"task {task_id!s} does not exist") from exc
 
 
+def _require_unknown(state: ProjectState, unknown_id: UnknownId) -> Unknown:
+    for unknown in state.unknowns:
+        if unknown.id == unknown_id:
+            return unknown
+    raise MissingEntity(f"unknown {unknown_id!s} does not exist")
+
+
+def _require_hypothesis(state: ProjectState, hypothesis_id: HypothesisId) -> Hypothesis:
+    for hypothesis in state.hypotheses:
+        if hypothesis.id == hypothesis_id:
+            return hypothesis
+    raise MissingEntity(f"hypothesis {hypothesis_id!s} does not exist")
+
+
+def _require_decision(state: ProjectState, decision_id: DecisionId) -> Decision:
+    for decision in state.decisions:
+        if decision.id == decision_id:
+            return decision
+    raise MissingEntity(f"decision {decision_id!s} does not exist")
+
+
 def _require_evidence(state: ProjectState, evidence_id: EvidenceId) -> Evidence:
     try:
         return state.evidence_item(evidence_id)
     except KeyError as exc:
         raise MissingEntity(f"evidence {evidence_id!s} does not exist") from exc
+
+
+def _require_independent_evidence(state: ProjectState, evidence_id: EvidenceId) -> Evidence:
+    evidence = _require_evidence(state, evidence_id)
+    if evidence.kind is EvidenceKind.EXECUTOR_REPORT or not evidence.independently_verified:
+        raise InvalidEventOrder("epistemic resolution requires independently verified evidence")
+    return evidence
 
 
 def _require_session(state: ProjectState, task_id: TaskId, session_id: str) -> SessionState:
@@ -382,6 +520,21 @@ def _replace_task(state: ProjectState, updated: Task) -> ProjectState:
     if plans and any(task.id == updated.id for task in plans[-1].tasks):
         plans = (*plans[:-1], plans[-1].with_task_state(updated))
     return replace(state, tasks=tasks, plans=plans)
+
+
+def _replace_unknown(state: ProjectState, updated: Unknown) -> ProjectState:
+    unknowns = tuple(
+        updated if unknown.id == updated.id else unknown for unknown in state.unknowns
+    )
+    return replace(state, unknowns=unknowns)
+
+
+def _replace_hypothesis(state: ProjectState, updated: Hypothesis) -> ProjectState:
+    hypotheses = tuple(
+        updated if hypothesis.id == updated.id else hypothesis
+        for hypothesis in state.hypotheses
+    )
+    return replace(state, hypotheses=hypotheses)
 
 
 def _validate_plan_basis(state: ProjectState, basis: tuple[PlanBasis, ...]) -> None:

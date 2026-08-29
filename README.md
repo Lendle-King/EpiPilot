@@ -34,6 +34,26 @@ Architecture and planning documents:
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — detailed staged plan from the current V0 foundation to V1.0, including milestone scope, gates, tests, and acceptance criteria.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module boundaries, state ownership, runtime flow, and invariants.
 - [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context, memory classes, scope, consolidation, and retrieval rules.
+- [`docs/CODEX_PLUGIN.md`](docs/CODEX_PLUGIN.md) — Codex plugin alpha, durable research bridge, epistemic transitions, and current limitations.
+
+## Codex plugin alpha
+
+This repository can also act as a Codex plugin. The `epistemic-research` skill turns Codex into an interactive research frontend while EpiPilot remains the canonical control layer.
+
+The alpha vertical slice supports:
+
+```text
+ProjectContract
+  -> Unknown
+  -> falsifiable Hypothesis
+  -> experiment / measurement
+  -> independently verified Evidence
+  -> Hypothesis update
+  -> Unknown resolution
+  -> next research directive
+```
+
+The plugin deliberately does not allow Codex self-report to support/refute a hypothesis or resolve an unknown, and it never turns research-frontier exhaustion into automatic project acceptance. See [`docs/CODEX_PLUGIN.md`](docs/CODEX_PLUGIN.md).
 
 ## Repository standards
 

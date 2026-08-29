@@ -56,6 +56,13 @@ class UnknownImpact(StrEnum):
     HIGH = "high"
 
 
+class UnknownStatus(StrEnum):
+    """Lifecycle state for a decision-relevant unknown."""
+
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
 class ResolutionMode(StrEnum):
     ASK_USER = "ask_user"
     EXPERIMENT = "experiment"
@@ -107,6 +114,8 @@ class Hypothesis:
             raise ValueError("refuted hypothesis requires contradicting evidence")
         if self.status is HypothesisStatus.SUPERSEDED and self.superseded_by is None:
             raise ValueError("superseded hypothesis must reference its replacement")
+        if self.status is not HypothesisStatus.SUPERSEDED and self.superseded_by is not None:
+            raise ValueError("only a superseded hypothesis may reference a replacement")
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +129,9 @@ class Unknown:
     blocking_tasks: tuple[TaskId, ...] = ()
     value_of_information: float = 1.0
     decision_sensitivity: float = 1.0
+    status: UnknownStatus = UnknownStatus.OPEN
+    resolution_evidence: tuple[EvidenceId, ...] = ()
+    resolution_decisions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.question.strip():
@@ -130,6 +142,16 @@ class Unknown:
         ):
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be within [0, 1]")
+        if self.status is UnknownStatus.OPEN and (
+            self.resolution_evidence or self.resolution_decisions
+        ):
+            raise ValueError("open unknown cannot already carry resolution basis")
+        if self.status is UnknownStatus.RESOLVED and not (
+            self.resolution_evidence or self.resolution_decisions
+        ):
+            raise ValueError("resolved unknown requires evidence or a canonical decision")
+        if any(not item.strip() for item in self.resolution_decisions):
+            raise ValueError("unknown resolution decision references must not be empty")
 
 
 @dataclass(frozen=True, slots=True)

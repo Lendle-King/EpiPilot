@@ -49,6 +49,18 @@ class UnknownRegisteredPayload(EventPayload):
     decision_sensitivity: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
+class UnknownResolvedPayload(EventPayload):
+    unknown_id: UUID
+    evidence_ids: tuple[UUID, ...] = ()
+    decision_ids: tuple[UUID, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_resolution_basis(self) -> Self:
+        if not self.evidence_ids and not self.decision_ids:
+            raise ValueError("unknown resolution requires evidence or a canonical decision")
+        return self
+
+
 class HypothesisCreatedPayload(EventPayload):
     hypothesis_id: UUID
     statement: str = Field(min_length=1)
@@ -56,6 +68,17 @@ class HypothesisCreatedPayload(EventPayload):
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     predictions: tuple[str, ...] = ()
     falsification_conditions: tuple[str, ...] = ()
+    supporting_evidence: tuple[UUID, ...] = ()
+    contradicting_evidence: tuple[UUID, ...] = ()
+    superseded_by: UUID | None = None
+
+
+class HypothesisUpdatedPayload(EventPayload):
+    """Full cumulative evidence projection for one hypothesis transition."""
+
+    hypothesis_id: UUID
+    status: HypothesisStatus
+    confidence: float = Field(ge=0.0, le=1.0)
     supporting_evidence: tuple[UUID, ...] = ()
     contradicting_evidence: tuple[UUID, ...] = ()
     superseded_by: UUID | None = None
