@@ -60,7 +60,8 @@ class SqliteEventStore:
             connection.execute(
                 """
                 INSERT INTO project_events (
-                    aggregate_id, version, event_id, event_type, payload, occurred_at, schema_version
+                    aggregate_id, version, event_id, event_type,
+                    payload, occurred_at, schema_version
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
