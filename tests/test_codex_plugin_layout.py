@@ -1,4 +1,5 @@
 import json
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,20 @@ def test_codex_marketplace_plugin_layout_is_self_consistent() -> None:
     assert server["type"] == "stdio"
     assert server["command"] == "epipilot-mcp"
     assert server["cwd"] == "${PLUGIN_DATA}"
+
+
+def test_plugin_versions_match_python_package() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    package_version = project["project"]["version"]
+    manifests = (
+        ROOT / ".codex-plugin/plugin.json",
+        ROOT / "plugins/epipilot/plugin.json",
+        ROOT / "plugins/epipilot/.codex-plugin/plugin.json",
+    )
+
+    for path in manifests:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        assert manifest["version"] == package_version
 
 
 def test_marketplace_and_source_tree_skill_do_not_drift() -> None:
