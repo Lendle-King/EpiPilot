@@ -37,16 +37,61 @@ It deliberately does **not** provide automatic project acceptance or an arbitrar
 
 - Python 3.11+
 - a recent Codex build with `codex plugin` support
-- `epipilot-mcp` available on the PATH visible to Codex
+- [`uv`](https://github.com/astral-sh/uv) on PATH for the one-command bootstrap
 
-## Install from the current development branch
+## One-command install from the current development branch
+
+Run exactly one command:
+
+```bash
+uvx --from "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin" \
+  epipilot-install-codex --ref feat/codex-epistemic-research-plugin
+```
+
+The bootstrap performs the complete deployment sequence with argv-based subprocesses and no shell interpolation:
+
+```text
+verify `codex` + `uv` are available
+        -> persist EpiPilot with `uv tool install --force`
+        -> `codex plugin marketplace add ... --json`
+        -> `codex plugin marketplace upgrade epipilot --json`
+        -> `codex plugin add epipilot@epipilot --json`
+        -> `codex plugin list --json`
+        -> require installed=true && enabled=true
+```
+
+The command fails closed if Codex does not report the expected marketplace/plugin state. On success, start a **new Codex thread** so the plugin manifest, skill catalog, and MCP tools are loaded from a clean session.
+
+For machine-readable automation, append `--json`:
+
+```bash
+uvx --from "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin" \
+  epipilot-install-codex --ref feat/codex-epistemic-research-plugin --json
+```
+
+## One-command install after merge to `main`
+
+After this branch is merged, the normal installation becomes:
+
+```bash
+uvx --from "git+https://github.com/Lendle-King/EpiPilot.git" epipilot-install-codex
+```
+
+The installed bootstrap can also be rerun later to refresh the runtime, marketplace snapshot, and plugin:
+
+```bash
+epipilot-install-codex
+```
+
+## Manual install fallback
+
+Use this only when you want to inspect each installation stage individually.
 
 ### 1. Install the EpiPilot runtime
 
-Preferred with `uv`:
-
 ```bash
-uv tool install "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin"
+uv tool install --force \
+  "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin"
 ```
 
 If the `uv` tool bin directory is not already on PATH:
@@ -55,55 +100,36 @@ If the `uv` tool bin directory is not already on PATH:
 uv tool update-shell
 ```
 
-Alternatively:
-
-```bash
-python -m pip install "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin"
-```
-
-Verify that the executable Codex will launch is available:
+Verify the MCP executable:
 
 ```bash
 epipilot-mcp --self-check
 ```
 
-### 2. Add this repository as a Codex plugin marketplace
+### 2. Add or refresh the Codex marketplace
 
 ```bash
-codex plugin marketplace add Lendle-King/EpiPilot --ref feat/codex-epistemic-research-plugin
+codex plugin marketplace add Lendle-King/EpiPilot \
+  --ref feat/codex-epistemic-research-plugin
+codex plugin marketplace upgrade epipilot
 ```
 
-Confirm it is visible:
-
-```bash
-codex plugin marketplace list
-```
-
-### 3. Install the plugin
+### 3. Install and inspect the plugin
 
 ```bash
 codex plugin add epipilot@epipilot
-```
-
-Confirm installation:
-
-```bash
 codex plugin list
 ```
 
-Start a **new Codex thread** after installation so the plugin manifest, skill catalog, and MCP tools are loaded from a clean session.
+Then start a new Codex thread.
 
-## Install after this branch is merged to `main`
-
-The commands simplify to:
+If the Python runtime was installed separately (for example with pip), the bootstrap can skip the `uv tool install` step:
 
 ```bash
-uv tool install "git+https://github.com/Lendle-King/EpiPilot.git"
-codex plugin marketplace add Lendle-King/EpiPilot
-codex plugin add epipilot@epipilot
+epipilot-install-codex \
+  --ref feat/codex-epistemic-research-plugin \
+  --skip-runtime-install
 ```
-
-Then start a new Codex thread.
 
 ## First use
 
@@ -199,36 +225,44 @@ This prevents repeated redesign of the same experiment and prevents research-fro
 
 ## Update the plugin
 
-For a Git marketplace, refresh its snapshot, reinstall the plugin, and start a new thread:
+The recommended update path is the same bootstrap command used for installation. For this development branch:
 
 ```bash
-codex plugin marketplace upgrade epipilot
-codex plugin add epipilot@epipilot
+epipilot-install-codex --ref feat/codex-epistemic-research-plugin
 ```
 
-Update the Python runtime separately when EpiPilot code changes:
-
-```bash
-uv tool install --force "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin"
-```
-
-Then run `epipilot-mcp --self-check` again.
+It refreshes the persistent Python runtime, upgrades the Git marketplace snapshot, reinstalls the plugin, and verifies the final Codex state. Start a new thread afterwards.
 
 ## Troubleshooting
 
-### `epipilot-mcp` not found
+### `uvx` or `uv` not found
 
-The Python package executable is not on the PATH inherited by Codex. Run:
+Install `uv` and ensure it is on PATH, then rerun the one-command bootstrap. The bootstrap intentionally does not download or execute an installer script by itself.
+
+### `epipilot-mcp` not found after bootstrap
+
+The persistent `uv tool` bin directory is not on the PATH inherited by Codex. Run:
 
 ```bash
+uv tool update-shell
 epipilot-mcp --self-check
 ```
 
-from the same environment that starts Codex. With `uv`, `uv tool update-shell` usually fixes the PATH.
+Then restart the shell/application that launches Codex and rerun the bootstrap.
 
 ### `codex plugin` is unavailable
 
 Use a recent Codex build with Plugins support. Older builds cannot consume the marketplace/Agent Plugin layout.
+
+### marketplace source/ref conflict
+
+The bootstrap does not silently delete an existing marketplace configuration. If a marketplace named `epipilot` was previously configured from a different repository/ref, inspect it with:
+
+```bash
+codex plugin marketplace list --json
+```
+
+Resolve the source mismatch explicitly, then rerun the bootstrap.
 
 ### MCP tools are missing after install/update
 
