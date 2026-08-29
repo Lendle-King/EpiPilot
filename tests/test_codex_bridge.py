@@ -48,7 +48,7 @@ def test_codex_bridge_closes_verified_epistemic_loop() -> None:
         project_id="query-collapse",
         name="frozen-probe-check",
         argv=(sys.executable, "-c", "raise SystemExit(0)"),
-        cwd=Path("."),
+        cwd=Path(),
         scope="project/query-collapse/experiment/frozen-probe",
     )
     assert verification.passed

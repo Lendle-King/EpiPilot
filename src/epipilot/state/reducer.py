@@ -165,9 +165,10 @@ def _reduce_payload(
             for evidence_id in evidence_ids:
                 _require_independent_evidence(state, evidence_id)
 
-        if unknown.resolution_mode is ResolutionMode.ASK_USER:
-            if not any(decision.authority is DecisionAuthority.USER for decision in decisions):
-                raise InvalidEventOrder("user-owned unknown requires an explicit user decision")
+        if unknown.resolution_mode is ResolutionMode.ASK_USER and not any(
+            decision.authority is DecisionAuthority.USER for decision in decisions
+        ):
+            raise InvalidEventOrder("user-owned unknown requires an explicit user decision")
 
         if unknown.resolution_mode is ResolutionMode.SAFE_DEFAULT:
             safe_decisions = tuple(

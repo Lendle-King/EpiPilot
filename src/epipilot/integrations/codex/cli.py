@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 from uuid import UUID
 
 from epipilot.core.models import EvidenceId, EvidenceKind, HypothesisId, Provenance
@@ -88,7 +88,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_project_id(verify)
     verify.add_argument("--name", required=True)
     verify.add_argument("--scope", required=True)
-    verify.add_argument("--cwd", type=Path, default=Path("."))
+    verify.add_argument("--cwd", type=Path, default=Path())
     verify.add_argument("--timeout", type=float, default=300.0)
     verify.add_argument("argv", nargs=argparse.REMAINDER)
 

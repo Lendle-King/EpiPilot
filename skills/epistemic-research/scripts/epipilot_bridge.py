@@ -9,7 +9,7 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PLUGIN_ROOT / "src"))
 
-from epipilot.integrations.codex.cli import main  # noqa: E402
+from epipilot.integrations.codex.cli import main  # noqa: E402, I001
 
 
 if __name__ == "__main__":
