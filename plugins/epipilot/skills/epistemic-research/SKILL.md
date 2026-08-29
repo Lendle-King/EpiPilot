@@ -86,19 +86,31 @@ Execute the returned canonical task using its existing task/verification contrac
 
 ### `synthesize`
 
-Stop exploration only when additional information is unlikely to change the decision enough to justify its cost. `synthesize` is not automatic success.
+`SYNTHESIZE` means the current action/unknown frontier is exhausted; it is not automatic success. Every `SYNTHESIZE` directive carries a `synthesis_contract`. Treat every required dimension in that contract as a completion gate.
 
-Produce an epistemic report that distinguishes:
+Before claiming the goal is complete:
 
-- verified facts and acceptance evidence;
-- current causal explanation;
-- supported hypotheses;
-- refuted hypotheses and decisive evidence;
-- experiments that changed the decision;
-- unresolved or explicitly accepted uncertainty;
-- remaining limitations and conditions that should trigger reopening the investigation.
+1. call `epipilot_get_state` again and reason from canonical requirements, hypotheses, experiments, evidence, decisions, and remaining unknowns;
+2. assess the requested outcome against the canonical goal and success criteria;
+3. characterize the **nature of the subject under this goal**, not as an encyclopedia entry: identify the problem/system/phenomenon class, dominant structural or causal properties, constraints, invariants, boundary conditions, and tradeoffs that matter to achieving the goal;
+4. reconstruct the **hypothesis landscape**: competing explanations considered, supported/refuted/inconclusive/active hypotheses, confidence, decisive evidence, and plausible alternatives;
+5. distinguish verified facts from causal inference and from post-hoc candidate hypotheses;
+6. if synthesis exposes a new decision-relevant unknown that could change acceptance or the recommended action, register it and resume the research loop instead of declaring completion.
 
-Run the project's independent acceptance contract before claiming completion.
+The final report must cover all eight goal-conditioned dimensions returned by `synthesis_contract`:
+
+1. **Outcome against goal** — what was achieved, what criterion proves it, and what was not achieved.
+2. **Subject nature** — what this subject is *for the current goal*: its relevant structure, mechanisms, constraints, invariants, tradeoffs, and boundary conditions.
+3. **Hypothesis landscape** — material competing hypotheses and their current status/confidence; explicitly label untested post-hoc hypotheses rather than upgrading them to supported.
+4. **Causal or structural explanation** — the best evidence-bounded mechanism explaining why the result occurred.
+5. **Decisive evidence** — experiments/checks that changed belief or decision, with provenance.
+6. **Uncertainty and alternatives** — unresolved uncertainty, accepted uncertainty, and still-plausible alternative explanations.
+7. **Generalization boundaries** — where the current understanding should and should not be expected to hold.
+8. **Reopen conditions** — observations, regressions, distribution shifts, or failed assumptions that should reopen investigation.
+
+The report is explicitly **goal-conditioned**. Do not claim an absolute theory of the subject when the evidence only establishes properties relevant to the current objective.
+
+Run the project's independent acceptance contract before claiming completion. Goal completion requires both an accepted outcome and the mandatory epistemic synthesis above.
 
 ## Invariants
 

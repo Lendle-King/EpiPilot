@@ -79,13 +79,13 @@ def _responses(*, enabled: bool = True) -> dict[tuple[str, ...], ProcessResult]:
         commands["add_plugin"]: _ok(
             commands["add_plugin"],
             '{"pluginId":"epipilot@epipilot","name":"epipilot",'
-            '"marketplaceName":"epipilot","version":"0.2.1",'
+            '"marketplaceName":"epipilot","version":"0.2.2",'
             '"installedPath":"/cache/plugin","authPolicy":"ON_INSTALL"}',
         ),
         commands["list_plugins"]: _ok(
             commands["list_plugins"],
             '{"installed":[{"pluginId":"epipilot","name":"epipilot",'
-            '"marketplaceName":"epipilot","version":"0.2.1","installed":true,'
+            '"marketplaceName":"epipilot","version":"0.2.2","installed":true,'
             f'"enabled":{str(enabled).lower()}}}],"available":[]}}',
         ),
     }
@@ -109,7 +109,7 @@ def test_bootstrap_installs_runtime_marketplace_and_plugin() -> None:
         commands["add_plugin"],
         commands["list_plugins"],
     ]
-    assert report.plugin_version == "0.2.1"
+    assert report.plugin_version == "0.2.2"
     assert report.installed is True
     assert report.enabled is True
     assert report.runtime_installed is True

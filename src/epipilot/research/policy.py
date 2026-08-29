@@ -9,9 +9,10 @@ from epipilot.epistemics.models import (
     UnknownStatus,
 )
 from epipilot.requirements.frontier import DecisionAction, DecisionQuestion, decide_action
-from epipilot.requirements.models import ProjectContract
+from epipilot.requirements.models import ProjectContract, RequirementKind
 from epipilot.research.contracts import (
     ExperimentStatus,
+    GoalConditionedSynthesisContract,
     ResearchDirective,
     ResearchDirectiveKind,
 )
@@ -33,8 +34,9 @@ def choose_research_directive(
     """Choose the next bounded research action without treating model intuition as truth.
 
     The policy deliberately does not return an automatic ``ACCEPT`` action. When no open
-    unknown or runnable task remains it returns ``SYNTHESIZE``; project acceptance still
-    belongs to the independent acceptance contract.
+    unknown or runnable task remains it returns ``SYNTHESIZE`` with a mandatory goal-conditioned
+    epistemic report contract; project acceptance still belongs to the independent acceptance
+    contract.
     """
     if contract.project_id != state.project_id:
         raise ValueError("project contract and canonical state refer to different projects")
@@ -142,11 +144,27 @@ def choose_research_directive(
     return ResearchDirective(
         kind=ResearchDirectiveKind.SYNTHESIZE,
         reason=(
-            "no runnable task or open research unknown remains; synthesize the epistemic "
-            "map and run the project acceptance contract before declaring completion"
+            "no runnable task or open research unknown remains; before acceptance, synthesize "
+            "both goal achievement and a goal-conditioned account of the subject's nature, "
+            "hypothesis landscape, evidence, boundaries, and remaining uncertainty"
         ),
         canonical_event_version=state.event_version,
+        synthesis_contract=_goal_conditioned_synthesis_contract(contract),
     )
+
+
+def _goal_conditioned_synthesis_contract(
+    contract: ProjectContract,
+) -> GoalConditionedSynthesisContract:
+    goal = next(
+        item.statement for item in contract.requirements if item.kind is RequirementKind.GOAL
+    )
+    success_criteria = tuple(
+        item.statement
+        for item in contract.requirements
+        if item.kind is RequirementKind.SUCCESS_CRITERION
+    )
+    return GoalConditionedSynthesisContract(goal=goal, success_criteria=success_criteria)
 
 
 def _unknown_priority(unknown: Unknown) -> tuple[int, float, str]:

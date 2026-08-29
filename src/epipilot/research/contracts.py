@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import NewType
 from uuid import UUID, uuid4
@@ -35,6 +35,69 @@ class ExperimentStatus(StrEnum):
     PREREGISTERED = "preregistered"
     CONCLUDED = "concluded"
     INCONCLUSIVE = "inconclusive"
+
+
+class SynthesisDimension(StrEnum):
+    """Mandatory dimensions of a goal-conditioned completion synthesis."""
+
+    OUTCOME_AGAINST_GOAL = "outcome_against_goal"
+    SUBJECT_NATURE = "subject_nature"
+    HYPOTHESIS_LANDSCAPE = "hypothesis_landscape"
+    CAUSAL_OR_STRUCTURAL_EXPLANATION = "causal_or_structural_explanation"
+    DECISIVE_EVIDENCE = "decisive_evidence"
+    UNCERTAINTY_AND_ALTERNATIVES = "uncertainty_and_alternatives"
+    GENERALIZATION_BOUNDARIES = "generalization_boundaries"
+    REOPEN_CONDITIONS = "reopen_conditions"
+
+
+_REQUIRED_SYNTHESIS_DIMENSIONS = (
+    SynthesisDimension.OUTCOME_AGAINST_GOAL,
+    SynthesisDimension.SUBJECT_NATURE,
+    SynthesisDimension.HYPOTHESIS_LANDSCAPE,
+    SynthesisDimension.CAUSAL_OR_STRUCTURAL_EXPLANATION,
+    SynthesisDimension.DECISIVE_EVIDENCE,
+    SynthesisDimension.UNCERTAINTY_AND_ALTERNATIVES,
+    SynthesisDimension.GENERALIZATION_BOUNDARIES,
+    SynthesisDimension.REOPEN_CONDITIONS,
+)
+
+_GOAL_CONDITIONED_EXPLORATION_QUESTIONS = (
+    "Under the current goal, what kind of problem, system, or phenomenon is this?",
+    "Which structural properties, mechanisms, constraints, invariants, or tradeoffs matter to the goal?",
+    "Which competing hypotheses explain the observed behavior, and what is each hypothesis status?",
+    "Which alternative explanations remain plausible, and what evidence would change the conclusion?",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class GoalConditionedSynthesisContract:
+    """Mandatory epistemic report contract attached to every completion synthesis.
+
+    Completion is not merely a statement that the requested output exists. The report must also
+    characterize the subject and its hypothesis landscape relative to the user's goal. The fixed
+    dimensions cannot be weakened by a caller.
+    """
+
+    goal: str
+    success_criteria: tuple[str, ...]
+    required_dimensions: tuple[SynthesisDimension, ...] = field(
+        default=_REQUIRED_SYNTHESIS_DIMENSIONS,
+        init=False,
+    )
+    exploration_questions: tuple[str, ...] = field(
+        default=_GOAL_CONDITIONED_EXPLORATION_QUESTIONS,
+        init=False,
+    )
+
+    def __post_init__(self) -> None:
+        if not self.goal.strip():
+            raise ValueError("synthesis goal must not be empty")
+        if not self.success_criteria:
+            raise ValueError("synthesis requires at least one success criterion")
+        if any(not item.strip() for item in self.success_criteria):
+            raise ValueError("synthesis success criteria must not contain empty values")
+        if len(set(self.success_criteria)) != len(self.success_criteria):
+            raise ValueError("synthesis success criteria must be unique")
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +190,7 @@ class ResearchDirective:
     unknown_id: UnknownId | None = None
     experiment_id: ExperimentId | None = None
     task_id: TaskId | None = None
+    synthesis_contract: GoalConditionedSynthesisContract | None = None
 
     def __post_init__(self) -> None:
         if not self.reason.strip():
@@ -150,3 +214,7 @@ class ResearchDirective:
             raise ValueError("RUN_EXPERIMENT directive requires an experiment id")
         if self.kind is ResearchDirectiveKind.EXECUTE and self.task_id is None:
             raise ValueError("EXECUTE directive requires a task id")
+        if self.kind is ResearchDirectiveKind.SYNTHESIZE and self.synthesis_contract is None:
+            raise ValueError("SYNTHESIZE directive requires a goal-conditioned synthesis contract")
+        if self.kind is not ResearchDirectiveKind.SYNTHESIZE and self.synthesis_contract is not None:
+            raise ValueError("only SYNTHESIZE directives may carry a synthesis contract")

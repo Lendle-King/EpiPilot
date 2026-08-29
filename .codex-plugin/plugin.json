@@ -1,6 +1,6 @@
 {
   "name": "epipilot",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Evidence-driven epistemic research control for Codex.",
   "author": {
     "name": "EpiPilot contributors"

@@ -99,6 +99,16 @@ def state_payload(state: ProjectState) -> dict[str, object]:
 
 def directive_payload(directive: ResearchDirective) -> dict[str, object]:
     """Project the deterministic research frontier into a tool-facing structure."""
+    synthesis = directive.synthesis_contract
+    synthesis_payload: dict[str, object] | None = None
+    if synthesis is not None:
+        synthesis_payload = {
+            "goal": synthesis.goal,
+            "success_criteria": list(synthesis.success_criteria),
+            "required_dimensions": [item.value for item in synthesis.required_dimensions],
+            "exploration_questions": list(synthesis.exploration_questions),
+        }
+
     return {
         "kind": directive.kind.value,
         "reason": directive.reason,
@@ -107,4 +117,5 @@ def directive_payload(directive: ResearchDirective) -> dict[str, object]:
         "unknown_id": str(directive.unknown_id) if directive.unknown_id else None,
         "experiment_id": str(directive.experiment_id) if directive.experiment_id else None,
         "task_id": str(directive.task_id) if directive.task_id else None,
+        "synthesis_contract": synthesis_payload,
     }

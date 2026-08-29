@@ -11,6 +11,7 @@ from epipilot.epistemics.models import (
     UnknownImpact,
     UnknownStatus,
 )
+from epipilot.integrations.codex.serialization import directive_payload
 from epipilot.requirements.frontier import DecisionImpact, DecisionOwner, DecisionQuestion
 from epipilot.requirements.models import ProjectContract, Requirement, RequirementKind
 from epipilot.research.contracts import (
@@ -19,6 +20,7 @@ from epipilot.research.contracts import (
     ExperimentPrediction,
     ExperimentRecord,
     ResearchDirectiveKind,
+    SynthesisDimension,
 )
 from epipilot.research.policy import choose_research_directive
 from epipilot.state.project import ProjectState
@@ -88,6 +90,7 @@ def test_policy_investigates_open_technical_unknown() -> None:
 
     assert directive.kind is ResearchDirectiveKind.INVESTIGATE
     assert directive.unknown_id == UNKNOWN_ID
+    assert directive.synthesis_contract is None
 
 
 def test_policy_runs_existing_preregistered_experiment_before_designing_another() -> None:
@@ -137,7 +140,7 @@ def test_policy_asks_for_high_impact_user_decision() -> None:
     assert directive.questions == ("May the evaluator be changed?",)
 
 
-def test_resolved_unknown_reaches_synthesis_not_automatic_acceptance() -> None:
+def test_resolved_unknown_reaches_goal_conditioned_synthesis_not_automatic_acceptance() -> None:
     requirements = _requirements()
     contract = ProjectContract(project_id="research", requirements=requirements)
     unknown = Unknown(
@@ -153,7 +156,24 @@ def test_resolved_unknown_reaches_synthesis_not_automatic_acceptance() -> None:
     directive = choose_research_directive(contract, state)
 
     assert directive.kind is ResearchDirectiveKind.SYNTHESIZE
+    assert directive.synthesis_contract is not None
+    assert directive.synthesis_contract.goal == "Find the root cause"
+    assert directive.synthesis_contract.success_criteria == (
+        "A fresh held-out experiment reproduces the repair",
+    )
+    assert SynthesisDimension.SUBJECT_NATURE in directive.synthesis_contract.required_dimensions
+    assert (
+        SynthesisDimension.HYPOTHESIS_LANDSCAPE
+        in directive.synthesis_contract.required_dimensions
+    )
     assert "acceptance" in directive.reason
+
+    payload = directive_payload(directive)
+    synthesis = payload["synthesis_contract"]
+    assert isinstance(synthesis, dict)
+    assert synthesis["goal"] == "Find the root cause"
+    assert "subject_nature" in synthesis["required_dimensions"]
+    assert "hypothesis_landscape" in synthesis["required_dimensions"]
 
 
 def test_policy_surfaces_reversible_safe_default() -> None:
