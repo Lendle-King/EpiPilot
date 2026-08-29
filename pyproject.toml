@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "epipilot"
-version = "0.2.0"
+version = "0.2.1"
 description = "Evidence-driven epistemic orchestration for long-horizon coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -32,6 +32,7 @@ Issues = "https://github.com/Lendle-King/EpiPilot/issues"
 [project.scripts]
 epipilot-codex = "epipilot.integrations.codex.cli:main"
 epipilot-mcp = "epipilot.integrations.codex.mcp_server:main"
+epipilot-install-codex = "epipilot.integrations.codex.installer:main"
 
 [project.optional-dependencies]
 dev = [
