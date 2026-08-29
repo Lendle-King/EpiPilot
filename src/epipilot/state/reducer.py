@@ -236,9 +236,7 @@ def _reduce_payload(
         update_payload = _expect(payload, HypothesisUpdatedPayload)
         updated_hypothesis_id = HypothesisId(update_payload.hypothesis_id)
         current_hypothesis = _require_hypothesis(state, updated_hypothesis_id)
-        updated_support = tuple(
-            EvidenceId(value) for value in update_payload.supporting_evidence
-        )
+        updated_support = tuple(EvidenceId(value) for value in update_payload.supporting_evidence)
         updated_contradictions = tuple(
             EvidenceId(value) for value in update_payload.contradicting_evidence
         )
