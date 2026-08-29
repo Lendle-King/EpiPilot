@@ -63,9 +63,15 @@ _REQUIRED_SYNTHESIS_DIMENSIONS = (
 
 _GOAL_CONDITIONED_EXPLORATION_QUESTIONS = (
     "Under the current goal, what kind of problem, system, or phenomenon is this?",
-    "Which structural properties, mechanisms, constraints, invariants, or tradeoffs matter to the goal?",
+    (
+        "Which structural properties, mechanisms, constraints, invariants, or tradeoffs "
+        "matter to the goal?"
+    ),
     "Which competing hypotheses explain the observed behavior, and what is each hypothesis status?",
-    "Which alternative explanations remain plausible, and what evidence would change the conclusion?",
+    (
+        "Which alternative explanations remain plausible, and what evidence would change "
+        "the conclusion?"
+    ),
 )
 
 
