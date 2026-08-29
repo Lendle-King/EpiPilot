@@ -281,9 +281,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             contradicting_evidence=tuple(
                 EvidenceId(UUID(value)) for value in args.contradicting_evidence
             ),
-            superseded_by=(
-                HypothesisId(UUID(args.superseded_by)) if args.superseded_by else None
-            ),
+            superseded_by=(HypothesisId(UUID(args.superseded_by)) if args.superseded_by else None),
         )
         payload = {"updated": args.hypothesis_id, "status": args.status}
 

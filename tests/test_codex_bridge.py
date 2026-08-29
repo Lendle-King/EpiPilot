@@ -135,10 +135,7 @@ def test_safe_default_unknown_resolves_from_canonical_decision() -> None:
         resolution_mode=ResolutionMode.SAFE_DEFAULT,
     )
 
-    assert (
-        bridge.next_directive("safe-default").kind
-        is ResearchDirectiveKind.USE_SAFE_DEFAULT
-    )
+    assert bridge.next_directive("safe-default").kind is ResearchDirectiveKind.USE_SAFE_DEFAULT
 
     decision_id = bridge.record_decision(
         project_id="safe-default",

@@ -96,10 +96,14 @@ class ResearchDirective:
             raise ValueError("directive questions must not contain empty values")
         if self.kind is ResearchDirectiveKind.ASK_USER and not self.questions:
             raise ValueError("ASK_USER directive requires at least one question")
-        if self.kind in {
-            ResearchDirectiveKind.INVESTIGATE,
-            ResearchDirectiveKind.USE_SAFE_DEFAULT,
-        } and self.unknown_id is None:
+        if (
+            self.kind
+            in {
+                ResearchDirectiveKind.INVESTIGATE,
+                ResearchDirectiveKind.USE_SAFE_DEFAULT,
+            }
+            and self.unknown_id is None
+        ):
             raise ValueError(f"{self.kind.value} directive requires an unknown id")
         if self.kind is ResearchDirectiveKind.EXECUTE and self.task_id is None:
             raise ValueError("EXECUTE directive requires a task id")

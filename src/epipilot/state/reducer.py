@@ -174,10 +174,7 @@ def _reduce_payload(
                 decision
                 for decision in decisions
                 if decision.authority is DecisionAuthority.USER
-                or (
-                    decision.authority is DecisionAuthority.SYSTEM
-                    and decision.reversible
-                )
+                or (decision.authority is DecisionAuthority.SYSTEM and decision.reversible)
             )
             if not safe_decisions:
                 raise InvalidEventOrder(
@@ -199,9 +196,7 @@ def _reduce_payload(
         hypothesis_payload = _expect(payload, HypothesisCreatedPayload)
         hypothesis_id = HypothesisId(hypothesis_payload.hypothesis_id)
         _ensure_new(hypothesis_id, (entry.id for entry in state.hypotheses), "hypothesis")
-        supporting = tuple(
-            EvidenceId(value) for value in hypothesis_payload.supporting_evidence
-        )
+        supporting = tuple(EvidenceId(value) for value in hypothesis_payload.supporting_evidence)
         contradicting = tuple(
             EvidenceId(value) for value in hypothesis_payload.contradicting_evidence
         )
@@ -236,9 +231,7 @@ def _reduce_payload(
         hypothesis = _require_hypothesis(state, hypothesis_id)
 
         supporting = tuple(EvidenceId(value) for value in update_payload.supporting_evidence)
-        contradicting = tuple(
-            EvidenceId(value) for value in update_payload.contradicting_evidence
-        )
+        contradicting = tuple(EvidenceId(value) for value in update_payload.contradicting_evidence)
         for evidence_id in (*supporting, *contradicting):
             _require_evidence(state, evidence_id)
 
@@ -523,16 +516,13 @@ def _replace_task(state: ProjectState, updated: Task) -> ProjectState:
 
 
 def _replace_unknown(state: ProjectState, updated: Unknown) -> ProjectState:
-    unknowns = tuple(
-        updated if unknown.id == updated.id else unknown for unknown in state.unknowns
-    )
+    unknowns = tuple(updated if unknown.id == updated.id else unknown for unknown in state.unknowns)
     return replace(state, unknowns=unknowns)
 
 
 def _replace_hypothesis(state: ProjectState, updated: Hypothesis) -> ProjectState:
     hypotheses = tuple(
-        updated if hypothesis.id == updated.id else hypothesis
-        for hypothesis in state.hypotheses
+        updated if hypothesis.id == updated.id else hypothesis for hypothesis in state.hypotheses
     )
     return replace(state, hypotheses=hypotheses)
 
