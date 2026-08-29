@@ -73,8 +73,7 @@ def _responses(*, enabled: bool = True) -> dict[tuple[str, ...], ProcessResult]:
         commands["runtime"]: _ok(commands["runtime"]),
         commands["marketplace"]: _ok(
             commands["marketplace"],
-            '{"marketplaceName":"epipilot","installedRoot":"/cache/epipilot",'
-            '"alreadyAdded":false}',
+            '{"marketplaceName":"epipilot","installedRoot":"/cache/epipilot","alreadyAdded":false}',
         ),
         commands["upgrade"]: _ok(commands["upgrade"], "{}"),
         commands["add_plugin"]: _ok(
