@@ -216,5 +216,8 @@ class ResearchDirective:
             raise ValueError("EXECUTE directive requires a task id")
         if self.kind is ResearchDirectiveKind.SYNTHESIZE and self.synthesis_contract is None:
             raise ValueError("SYNTHESIZE directive requires a goal-conditioned synthesis contract")
-        if self.kind is not ResearchDirectiveKind.SYNTHESIZE and self.synthesis_contract is not None:
+        if (
+            self.kind is not ResearchDirectiveKind.SYNTHESIZE
+            and self.synthesis_contract is not None
+        ):
             raise ValueError("only SYNTHESIZE directives may carry a synthesis contract")
