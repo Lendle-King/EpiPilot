@@ -164,11 +164,7 @@ def build_server(db_path: Path | None = None) -> MCPServer[None]:
         resource_claims: list[str] | None = None,
     ) -> dict[str, object]:
         """Persist a bounded discriminative experiment before any experiment execution."""
-        if not (
-            len(hypothesis_ids)
-            == len(expected_observations)
-            == len(falsification_conditions)
-        ):
+        if not (len(hypothesis_ids) == len(expected_observations) == len(falsification_conditions)):
             raise ValueError(
                 "hypothesis_ids, expected_observations, and falsification_conditions "
                 "must have equal lengths"
@@ -310,10 +306,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.self_check:
         bridge = _bridge()
-        print(
-            f"epipilot-mcp {version('epipilot')} ok; "
-            f"event_store={bridge.event_store.path}"
-        )
+        print(f"epipilot-mcp {version('epipilot')} ok; event_store={bridge.event_store.path}")
         return
     build_server().run()
 

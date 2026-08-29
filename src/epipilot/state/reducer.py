@@ -97,7 +97,9 @@ def reduce_event(state: ProjectState, event: ProjectEvent) -> ProjectState:
     return replace(updated, event_version=state.event_version + 1)
 
 
-def _reduce_payload(state: ProjectState, event_type: EventType, payload: EventPayload) -> ProjectState:
+def _reduce_payload(
+    state: ProjectState, event_type: EventType, payload: EventPayload
+) -> ProjectState:
     if event_type is EventType.REQUIREMENT_ADDED:
         item = _expect(payload, RequirementAddedPayload)
         identifier = RequirementId(item.requirement_id)
@@ -355,7 +357,9 @@ def _reduce_payload(state: ProjectState, event_type: EventType, payload: EventPa
                 record.task_id == task_id and record.passed and record.evidence_id == evidence_id
                 for record in state.verifications
             ):
-                raise InvalidEventOrder("PASSED requires a prior matching verification-passed event")
+                raise InvalidEventOrder(
+                    "PASSED requires a prior matching verification-passed event"
+                )
         return _replace_task(
             state,
             transition_task(task, item.status, evidence=completion_evidence),
@@ -390,7 +394,8 @@ def _reduce_payload(state: ProjectState, event_type: EventType, payload: EventPa
             artifact_refs=item.artifact_refs,
         )
         sessions = tuple(
-            updated if current.session_id == item.session_id else current for current in state.sessions
+            updated if current.session_id == item.session_id else current
+            for current in state.sessions
         )
         artifact_refs = tuple(dict.fromkeys((*state.artifact_refs, *item.artifact_refs)))
         return replace(state, sessions=sessions, artifact_refs=artifact_refs)
@@ -430,7 +435,9 @@ def _reduce_payload(state: ProjectState, event_type: EventType, payload: EventPa
         item = _expect(payload, PlanVersionCreatedPayload)
         expected_version = 1 if not state.plans else state.plans[-1].version + 1
         if item.version != expected_version:
-            raise InvalidEventOrder(f"plan version must advance monotonically to {expected_version}")
+            raise InvalidEventOrder(
+                f"plan version must advance monotonically to {expected_version}"
+            )
         tasks = tuple(_require_task(state, TaskId(task_id)) for task_id in item.task_ids)
         dependencies = tuple(
             TaskDependency(
