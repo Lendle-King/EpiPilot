@@ -8,12 +8,11 @@ from epipilot.core.models import Evidence, EvidenceId, Task, TaskId
 from epipilot.epistemics.models import Fact, Hypothesis, Unknown
 from epipilot.planning.graph import PlanGraph
 from epipilot.requirements.models import Decision, Requirement
+from epipilot.research.contracts import ExperimentId, ExperimentRecord
 
 
 @dataclass(frozen=True, slots=True)
 class SessionState:
-    """Authoritative metadata for one executor session known to the event stream."""
-
     task_id: TaskId
     session_id: str
     last_executor_state: str | None = None
@@ -23,8 +22,6 @@ class SessionState:
 
 @dataclass(frozen=True, slots=True)
 class ContextRecord:
-    """Audit record describing one compiled task context."""
-
     task_id: TaskId
     context_id: str
     included_item_ids: tuple[str, ...]
@@ -36,8 +33,6 @@ class ContextRecord:
 
 @dataclass(frozen=True, slots=True)
 class VerificationRecord:
-    """Independent verification outcome projected from verification events."""
-
     task_id: TaskId
     passed: bool
     evidence_id: EvidenceId | None = None
@@ -46,8 +41,6 @@ class VerificationRecord:
 
 @dataclass(frozen=True, slots=True)
 class EvidenceLink:
-    """Optional association between recorded evidence and the producing task."""
-
     evidence_id: EvidenceId
     task_id: TaskId
 
@@ -61,6 +54,7 @@ class ProjectState:
     decisions: tuple[Decision, ...] = ()
     unknowns: tuple[Unknown, ...] = ()
     hypotheses: tuple[Hypothesis, ...] = ()
+    experiments: tuple[ExperimentRecord, ...] = ()
     facts: tuple[Fact, ...] = ()
     evidence: tuple[Evidence, ...] = ()
     evidence_links: tuple[EvidenceLink, ...] = ()
@@ -89,6 +83,12 @@ class ProjectState:
             if item.id == evidence_id:
                 return item
         raise KeyError(evidence_id)
+
+    def experiment(self, experiment_id: ExperimentId) -> ExperimentRecord:
+        for experiment in self.experiments:
+            if experiment.id == experiment_id:
+                return experiment
+        raise KeyError(experiment_id)
 
     @property
     def current_plan(self) -> PlanGraph | None:

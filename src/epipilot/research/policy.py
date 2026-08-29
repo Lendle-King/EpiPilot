@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
-from epipilot.epistemics.models import ResolutionMode, UnknownImpact, UnknownStatus
+from epipilot.epistemics.models import (
+    ResolutionMode,
+    Unknown,
+    UnknownImpact,
+    UnknownStatus,
+)
 from epipilot.requirements.frontier import DecisionAction, DecisionQuestion, decide_action
 from epipilot.requirements.models import ProjectContract
-from epipilot.research.contracts import ResearchDirective, ResearchDirectiveKind
+from epipilot.research.contracts import (
+    ExperimentStatus,
+    ResearchDirective,
+    ResearchDirectiveKind,
+)
 from epipilot.state.project import ProjectState
 
 _IMPACT_WEIGHT = {
@@ -83,13 +92,7 @@ def choose_research_directive(
         if unknown.resolution_mode is ResolutionMode.SAFE_DEFAULT
     ]
     if safe_defaults:
-        safe_defaults.sort(
-            key=lambda unknown: (
-                -_IMPACT_WEIGHT[unknown.impact],
-                -(unknown.value_of_information * unknown.decision_sensitivity),
-                str(unknown.id),
-            )
-        )
+        safe_defaults.sort(key=_unknown_priority)
         target = safe_defaults[0]
         return ResearchDirective(
             kind=ResearchDirectiveKind.USE_SAFE_DEFAULT,
@@ -107,19 +110,30 @@ def choose_research_directive(
         if unknown.resolution_mode in {ResolutionMode.EXPERIMENT, ResolutionMode.INVESTIGATION}
     ]
     if technical_unknowns:
-        technical_unknowns.sort(
-            key=lambda unknown: (
-                -_IMPACT_WEIGHT[unknown.impact],
-                -(unknown.value_of_information * unknown.decision_sensitivity),
-                str(unknown.id),
-            )
-        )
+        technical_unknowns.sort(key=_unknown_priority)
         target = technical_unknowns[0]
+        pending_experiments = tuple(
+            experiment
+            for experiment in state.experiments
+            if experiment.contract.unknown_id == target.id
+            and experiment.status is ExperimentStatus.PREREGISTERED
+        )
+        if pending_experiments:
+            return ResearchDirective(
+                kind=ResearchDirectiveKind.RUN_EXPERIMENT,
+                reason=(
+                    "the highest-priority technical unknown has a preregistered experiment "
+                    "that has not yet produced a verified conclusion"
+                ),
+                canonical_event_version=state.event_version,
+                unknown_id=target.id,
+                experiment_id=pending_experiments[0].id,
+            )
         return ResearchDirective(
             kind=ResearchDirectiveKind.INVESTIGATE,
             reason=(
                 "an unresolved technical unknown has the highest current "
-                "decision-weighted information value"
+                "decision-weighted information value and needs a new discriminative experiment"
             ),
             canonical_event_version=state.event_version,
             unknown_id=target.id,
@@ -132,4 +146,13 @@ def choose_research_directive(
             "map and run the project acceptance contract before declaring completion"
         ),
         canonical_event_version=state.event_version,
+    )
+
+
+def _unknown_priority(unknown: Unknown) -> tuple[int, float, str]:
+    """Return a deterministic sort key exposing impact and information value."""
+    return (
+        -_IMPACT_WEIGHT[unknown.impact],
+        -(unknown.value_of_information * unknown.decision_sensitivity),
+        str(unknown.id),
     )

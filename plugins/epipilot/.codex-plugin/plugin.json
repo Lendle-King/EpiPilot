@@ -5,8 +5,6 @@
   "author": {
     "name": "EpiPilot contributors"
   },
-  "skills": "./skills/",
-  "mcpServers": "./mcp.json",
   "interface": {
     "displayName": "EpiPilot",
     "shortDescription": "Run Codex as an evidence-driven research agent.",

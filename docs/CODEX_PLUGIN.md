@@ -1,160 +1,251 @@
-# Codex Plugin Alpha
+# EpiPilot Codex Plugin
 
-EpiPilot can be used as a Codex plugin that turns an interactive coding agent into an evidence-driven research frontend while keeping canonical project truth in EpiPilot.
+EpiPilot can be installed as a Codex Agent Plugin that keeps research state outside the conversation and exposes a bounded MCP control surface.
 
-## Why this is a plugin, not a prompt
-
-The plugin is intentionally thin:
+## What the initial usable plugin provides
 
 ```text
-User <-> Codex conversation / execution
-              |
-              v
-      EpiPilot plugin skill
-              |
-              v
-      CodexResearchBridge
-              |
-              v
- append-only canonical event state
+User <-> Codex
+          |
+          +-- epistemic-research skill
+          |
+          +-- EpiPilot MCP tools
+                  |
+                  v
+          append-only SQLite event store
+                  |
+        Requirements / Decisions
+        Unknowns / Hypotheses
+        Preregistered Experiments
+        Evidence / Task state
 ```
 
-Codex may propose observations, hypotheses, experiments, code changes, and completion claims. EpiPilot owns canonical requirements, decisions, unknowns, hypothesis state, evidence, and the next research frontier.
+The current plugin can:
 
-This preserves the core invariant:
+- create and resume durable research projects;
+- keep explicit user-owned decisions separate from system-resolvable technical unknowns;
+- preregister falsifiable hypotheses and bounded discriminative experiments;
+- return a deterministic next action: `ask_user`, `investigate`, `run_experiment`, `execute`, `use_safe_default`, or `synthesize`;
+- record executor observations without promoting them to verified truth;
+- admit deterministic independent evidence through the shell-safe `epipilot-codex verify-command` adapter;
+- update hypotheses, conclude experiments, and resolve unknowns only when authority/evidence requirements pass;
+- survive new Codex threads because canonical state is reconstructed from the plugin event store.
 
-```text
-Canonical State != Conversation != Compiled Context
-```
+It deliberately does **not** provide automatic project acceptance or an arbitrary-command MCP tool.
 
-## Alpha vertical slice
+## Requirements
 
-This branch provides a first complete epistemic transition:
+- Python 3.11+
+- a recent Codex build with `codex plugin` support
+- `epipilot-mcp` available on the PATH visible to Codex
 
-```text
-ProjectContract
-  -> UnknownRegistered
-  -> HypothesisCreated(ACTIVE)
-  -> experiment / measurement
-  -> EvidenceRecorded
-  -> HypothesisUpdated(SUPPORTED | REFUTED | ...)
-  -> UnknownResolved
-  -> next research directive
-```
+## Install from the current development branch
 
-`HypothesisUpdated` and `UnknownResolved` fail closed for decisive transitions unless the referenced evidence is independently verified and is not merely `EXECUTOR_REPORT`. Codex cannot set that authority bit directly: the plugin admits verified evidence only through the shell-free `verify-command` adapter, which derives the result from a preregistered argv command.
+### 1. Install the EpiPilot runtime
 
-The research-frontier policy returns only:
-
-```text
-ASK_USER
-INVESTIGATE
-USE_SAFE_DEFAULT
-EXECUTE
-SYNTHESIZE
-```
-
-It deliberately has no automatic `ACCEPT` transition. `SYNTHESIZE` means the open research frontier is exhausted; the project acceptance contract must still pass independently.
-
-## Codex plugin layout
-
-The repository root is the plugin root:
-
-```text
-.codex-plugin/plugin.json
-skills/
-  epistemic-research/
-    SKILL.md
-    scripts/
-      epipilot_bridge.py
-src/epipilot/
-  integrations/codex/
-    bridge.py
-    cli.py
-  research/
-    contracts.py
-    policy.py
-```
-
-The manifest follows Codex's plugin scaffold conventions and exposes the `epistemic-research` skill.
-
-## Development use
-
-Install EpiPilot's Python dependencies in the development environment:
+Preferred with `uv`:
 
 ```bash
-python -m pip install -e '.[dev]'
+uv tool install "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin"
 ```
 
-Then from the target research repository:
+If the `uv` tool bin directory is not already on PATH:
 
 ```bash
-python /path/to/EpiPilot/skills/epistemic-research/scripts/epipilot_bridge.py --help
+uv tool update-shell
 ```
 
-The default durable state is:
-
-```text
-<target-repo>/.epipilot/events.sqlite3
-```
-
-Initialize a project:
+Alternatively:
 
 ```bash
-python /path/to/EpiPilot/skills/epistemic-research/scripts/epipilot_bridge.py init --project-id query-collapse --goal "Explain and repair query-cloud policy collapse" --success "Fresh held-out evaluation verifies the repair" --constraint "Do not change evaluator semantics" --budget "1 GPU; bounded training episodes"
+python -m pip install "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin"
 ```
 
-The bridge prints machine-readable JSON so Codex can use it without parsing conversational prose.
+Verify that the executable Codex will launch is available:
 
-## Research policy
+```bash
+epipilot-mcp --self-check
+```
 
-The deterministic policy applies the following precedence:
+### 2. Add this repository as a Codex plugin marketplace
 
-1. missing explicit success criterion -> ask the user;
-2. blocking user-owned decision -> ask the user;
-3. runnable canonical task -> execute it;
-4. open user-owned unknown -> ask the user and resolve it from the recorded user decision;
-5. reversible safe-default unknown -> record the system decision and resolve it;
-6. open technical unknown -> investigate the highest-impact, highest decision-weighted information-value item;
-7. otherwise -> synthesize and run acceptance.
+```bash
+codex plugin marketplace add Lendle-King/EpiPilot --ref feat/codex-epistemic-research-plugin
+```
 
-Open technical unknowns are ranked by:
+Confirm it is visible:
+
+```bash
+codex plugin marketplace list
+```
+
+### 3. Install the plugin
+
+```bash
+codex plugin add epipilot@epipilot
+```
+
+Confirm installation:
+
+```bash
+codex plugin list
+```
+
+Start a **new Codex thread** after installation so the plugin manifest, skill catalog, and MCP tools are loaded from a clean session.
+
+## Install after this branch is merged to `main`
+
+The commands simplify to:
+
+```bash
+uv tool install "git+https://github.com/Lendle-King/EpiPilot.git"
+codex plugin marketplace add Lendle-King/EpiPilot
+codex plugin add epipilot@epipilot
+```
+
+Then start a new Codex thread.
+
+## First use
+
+A good first prompt is:
 
 ```text
-impact class
-then value_of_information * decision_sensitivity
-then stable unknown id
+Use EpiPilot to investigate why this project is failing.
+First make the goal, observable success criteria, hard constraints and budget explicit.
+Ask me only for genuinely user-owned decisions. Treat technical uncertainty as unknowns,
+form competing falsifiable hypotheses, preregister the cheapest discriminative experiment,
+verify decisive results independently, and keep going until the remaining uncertainty is
+not decision-relevant. Finish with the verified result and an epistemic map.
 ```
 
-The policy decides *what kind of work is needed*, not the scientific answer. Experiment design remains constrained by preregistered predictions, falsification criteria, budget, and independent evidence.
+Codex should first call `epipilot_info`, then `epipilot_list_projects`, and either resume a clearly matching project or create a new one.
 
-## Security and truth boundary
+## MCP tools
 
-The plugin must not:
+The plugin exposes these bounded tools:
 
-- promote Codex self-report to verified evidence;
-- resolve unknowns from unverified observations;
-- support or refute hypotheses using executor-report evidence;
-- use conversation history as the canonical project ledger;
-- silently retry identical failed experiments;
-- automatically declare project acceptance.
+```text
+epipilot_info
+epipilot_list_projects
+epipilot_start_project
+epipilot_get_state
+epipilot_next
+epipilot_register_unknown
+epipilot_preregister_hypothesis
+epipilot_preregister_experiment
+epipilot_record_decision
+epipilot_record_observation
+epipilot_conclude_experiment
+epipilot_update_hypothesis
+epipilot_resolve_unknown
+```
 
-`observe` always records unverified executor-side evidence. `verify-command` runs an argv command with `shell=False`, derives the result from its exit status, suppresses raw stdout/stderr, and is the only alpha CLI path that records independently verified evidence.
+The MCP server does not expose `run_command`, shell access, or a way to set `independently_verified=true` directly.
 
-The bridge validates every event by reducing it against current canonical state before persistence, so an illegal epistemic transition cannot poison the durable event stream.
+## Independent verification
+
+Experiments themselves run through Codex's ordinary tools/shell, so normal Codex sandbox and approval rules continue to apply.
+
+For a decisive deterministic check:
+
+1. call `epipilot_info` and read `event_store_path`;
+2. execute the preregistered verifier through the normal Codex shell:
+
+```bash
+epipilot-codex --db "<event_store_path>" verify-command \
+  --project-id "<project-id>" \
+  --name "<check-name>" \
+  --scope "<revision/task/experiment scope>" \
+  --cwd "<target workspace>" \
+  python -m pytest <focused-target>
+```
+
+3. use the returned evidence id with `epipilot_conclude_experiment`, `epipilot_update_hypothesis`, and—when decision-sufficient—`epipilot_resolve_unknown`.
+
+`verify-command` uses argv execution with `shell=False`, derives evidence from the process result, and does not persist raw stdout/stderr.
+
+## Persistence
+
+When launched as a Codex Agent Plugin, `mcp.json` sets the server working directory to `${PLUGIN_DATA}`. EpiPilot therefore defaults to:
+
+```text
+${PLUGIN_DATA}/events.sqlite3
+```
+
+Codex allocates plugin data separately from the cached plugin source. Reinstalling/upgrading the plugin does not make conversation history canonical state; projects are recovered from the append-only event stream.
+
+For manual development outside the plugin, set:
+
+```bash
+EPIPILOT_DB=/absolute/path/to/events.sqlite3 epipilot-mcp
+```
+
+or use the CLI `--db` option.
+
+## Research frontier
+
+The deterministic policy uses this precedence:
+
+1. missing explicit success criterion -> `ask_user`;
+2. blocking user-owned decision -> `ask_user`;
+3. runnable canonical task -> `execute`;
+4. open user-owned unknown -> `ask_user`;
+5. reversible safe-default unknown -> `use_safe_default`;
+6. highest-priority technical unknown with a pending preregistered experiment -> `run_experiment`;
+7. technical unknown without a pending experiment -> `investigate`;
+8. otherwise -> `synthesize` and run project acceptance separately.
+
+This prevents repeated redesign of the same experiment and prevents research-frontier exhaustion from becoming automatic success.
+
+## Update the plugin
+
+For a Git marketplace, refresh its snapshot, reinstall the plugin, and start a new thread:
+
+```bash
+codex plugin marketplace upgrade epipilot
+codex plugin add epipilot@epipilot
+```
+
+Update the Python runtime separately when EpiPilot code changes:
+
+```bash
+uv tool install --force "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin"
+```
+
+Then run `epipilot-mcp --self-check` again.
+
+## Troubleshooting
+
+### `epipilot-mcp` not found
+
+The Python package executable is not on the PATH inherited by Codex. Run:
+
+```bash
+epipilot-mcp --self-check
+```
+
+from the same environment that starts Codex. With `uv`, `uv tool update-shell` usually fixes the PATH.
+
+### `codex plugin` is unavailable
+
+Use a recent Codex build with Plugins support. Older builds cannot consume the marketplace/Agent Plugin layout.
+
+### MCP tools are missing after install/update
+
+Start a new Codex thread. Plugin changes are not guaranteed to refresh an already-running thread.
+
+### Need to inspect durable state
+
+Ask Codex to call `epipilot_info`, `epipilot_list_projects`, and `epipilot_get_state`. Do not recover state from an old transcript.
 
 ## Current limitations
 
-This is an alpha vertical slice, not yet the full autonomous-research runtime.
+This is an initial usable research plugin, not EpiPilot V1.0. Remaining gaps include:
 
-Still to add:
+- project-level acceptance is not yet wired into the MCP research frontier;
+- evidence-driven `LOCAL_PATCH / SUBGRAPH_REPLAN / GLOBAL_REPLAN` is not yet automatic;
+- experiment artifacts are referenced through evidence summaries rather than a complete first-class artifact store;
+- SQLite is a single-machine persistence backend, not a multi-process server store;
+- task/worktree enforcement and crash reconciliation remain broader EpiPilot roadmap items.
 
-- first-class persisted `ExperimentContract` events and artifact references;
-- Codex MCP transport so the plugin does not depend on a local Python bridge command;
-- automatic task creation from selected experiments;
-- evidence-driven `LOCAL_PATCH / SUBGRAPH_REPLAN / GLOBAL_REPLAN`;
-- project-level acceptance integration;
-- crash-safe resume/reconciliation for interactive Codex sessions;
-- context manifests for every Codex research turn.
-
-These should build on the same canonical state rather than introducing a parallel plugin-specific truth store.
+These limitations are explicit so the plugin can be useful without pretending that open-ended autonomous research is already solved.

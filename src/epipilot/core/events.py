@@ -24,6 +24,8 @@ class EventType(StrEnum):
     UNKNOWN_RESOLVED = "unknown_resolved"
     HYPOTHESIS_CREATED = "hypothesis_created"
     HYPOTHESIS_UPDATED = "hypothesis_updated"
+    EXPERIMENT_PREREGISTERED = "experiment_preregistered"
+    EXPERIMENT_CONCLUDED = "experiment_concluded"
     EVIDENCE_RECORDED = "evidence_recorded"
     TASK_CREATED = "task_created"
     TASK_STARTED = "task_started"

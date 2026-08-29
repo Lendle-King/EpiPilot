@@ -27,6 +27,9 @@ from epipilot.events.payloads import (
     DecisionMadePayload,
     EventPayload,
     EvidenceRecordedPayload,
+    ExperimentConcludedPayload,
+    ExperimentPredictionPayload,
+    ExperimentPreregisteredPayload,
     HypothesisCreatedPayload,
     HypothesisUpdatedPayload,
     RequirementAddedPayload,
@@ -41,7 +44,13 @@ from epipilot.requirements.models import (
     new_decision_id,
     new_requirement_id,
 )
-from epipilot.research.contracts import ResearchDirective
+from epipilot.research.contracts import (
+    ExperimentContract,
+    ExperimentId,
+    ExperimentStatus,
+    ResearchDirective,
+    new_experiment_id,
+)
 from epipilot.research.policy import choose_research_directive
 from epipilot.runtime.event_store import EventStore
 from epipilot.state.project import ProjectState
@@ -54,6 +63,9 @@ class CodexResearchBridge:
     """Persist and expose only typed research transitions needed by the Codex plugin."""
 
     event_store: EventStore
+
+    def project_ids(self) -> tuple[str, ...]:
+        return self.event_store.aggregate_ids()
 
     def state(self, project_id: str) -> ProjectState:
         return replay_project(project_id, self.event_store.load(project_id))
@@ -74,7 +86,6 @@ class CodexResearchBridge:
         values = (goal, *success_criteria, *hard_constraints, *budgets, *forbidden_actions)
         if any(not value.strip() for value in values):
             raise ValueError("project requirements must not contain empty statements")
-
         requirements = (
             (RequirementKind.GOAL, goal),
             *((RequirementKind.SUCCESS_CRITERION, item) for item in success_criteria),
@@ -83,12 +94,12 @@ class CodexResearchBridge:
             *((RequirementKind.FORBIDDEN_ACTION, item) for item in forbidden_actions),
         )
         for kind, statement in requirements:
-            requirement_id = new_requirement_id()
+            identifier = new_requirement_id()
             self._append(
                 EventType.REQUIREMENT_ADDED,
                 project_id,
                 RequirementAddedPayload(
-                    requirement_id=UUID(str(requirement_id)),
+                    requirement_id=UUID(str(identifier)),
                     kind=kind,
                     statement=statement,
                     provenance_source=provenance_source,
@@ -109,12 +120,12 @@ class CodexResearchBridge:
         basis_refs: tuple[str, ...] = (),
         reversible: bool = True,
     ) -> str:
-        decision_id = new_decision_id()
+        identifier = new_decision_id()
         self._append(
             EventType.DECISION_MADE,
             project_id,
             DecisionMadePayload(
-                decision_id=UUID(str(decision_id)),
+                decision_id=UUID(str(identifier)),
                 question=question,
                 choice=choice,
                 authority=authority,
@@ -123,7 +134,7 @@ class CodexResearchBridge:
                 reversible=reversible,
             ),
         )
-        return str(decision_id)
+        return str(identifier)
 
     def register_unknown(
         self,
@@ -135,14 +146,12 @@ class CodexResearchBridge:
         value_of_information: float = 1.0,
         decision_sensitivity: float = 1.0,
     ) -> UnknownId:
-        if not question.strip():
-            raise ValueError("unknown question must not be empty")
-        unknown_id = new_unknown_id()
+        identifier = new_unknown_id()
         self._append(
             EventType.UNKNOWN_REGISTERED,
             project_id,
             UnknownRegisteredPayload(
-                unknown_id=UUID(str(unknown_id)),
+                unknown_id=UUID(str(identifier)),
                 question=question,
                 impact=impact,
                 resolution_mode=resolution_mode,
@@ -150,7 +159,7 @@ class CodexResearchBridge:
                 decision_sensitivity=decision_sensitivity,
             ),
         )
-        return unknown_id
+        return identifier
 
     def create_hypothesis(
         self,
@@ -161,16 +170,14 @@ class CodexResearchBridge:
         falsification_conditions: tuple[str, ...],
         confidence: float = 0.5,
     ) -> HypothesisId:
-        if not statement.strip():
-            raise ValueError("hypothesis statement must not be empty")
         if not predictions or not falsification_conditions:
             raise ValueError("active hypothesis requires predictions and falsification conditions")
-        hypothesis_id = new_hypothesis_id()
+        identifier = new_hypothesis_id()
         self._append(
             EventType.HYPOTHESIS_CREATED,
             project_id,
             HypothesisCreatedPayload(
-                hypothesis_id=UUID(str(hypothesis_id)),
+                hypothesis_id=UUID(str(identifier)),
                 statement=statement,
                 status=HypothesisStatus.ACTIVE,
                 confidence=confidence,
@@ -178,7 +185,59 @@ class CodexResearchBridge:
                 falsification_conditions=falsification_conditions,
             ),
         )
-        return hypothesis_id
+        return identifier
+
+    def preregister_experiment(
+        self,
+        *,
+        project_id: str,
+        contract: ExperimentContract,
+    ) -> ExperimentId:
+        identifier = new_experiment_id()
+        self._append(
+            EventType.EXPERIMENT_PREREGISTERED,
+            project_id,
+            ExperimentPreregisteredPayload(
+                experiment_id=UUID(str(identifier)),
+                unknown_id=UUID(str(contract.unknown_id)),
+                objective=contract.objective,
+                hypothesis_ids=tuple(UUID(str(value)) for value in contract.hypothesis_ids),
+                controlled_variables=contract.controlled_variables,
+                measurements=contract.measurements,
+                predictions=tuple(
+                    ExperimentPredictionPayload(
+                        hypothesis_id=UUID(str(item.hypothesis_id)),
+                        expected_observation=item.expected_observation,
+                        falsification_condition=item.falsification_condition,
+                    )
+                    for item in contract.predictions
+                ),
+                decision_rule=contract.decision_rule,
+                budget=contract.budget,
+                resource_claims=contract.resource_claims,
+            ),
+        )
+        return identifier
+
+    def conclude_experiment(
+        self,
+        *,
+        project_id: str,
+        experiment_id: ExperimentId,
+        status: ExperimentStatus,
+        evidence_ids: tuple[EvidenceId, ...],
+        conclusion: str,
+    ) -> None:
+        self._append(
+            EventType.EXPERIMENT_CONCLUDED,
+            project_id,
+            ExperimentConcludedPayload(
+                experiment_id=UUID(str(experiment_id)),
+                status=status,
+                evidence_ids=tuple(UUID(str(value)) for value in evidence_ids),
+                conclusion=conclusion,
+            ),
+        )
 
     def record_observation(
         self,
@@ -205,7 +264,6 @@ class CodexResearchBridge:
         summary: str,
         provenance: Provenance,
     ) -> EvidenceId:
-        """Record evidence produced by an independent verifier adapter."""
         return self._record_evidence(
             project_id=project_id,
             kind=kind,
@@ -223,12 +281,12 @@ class CodexResearchBridge:
         provenance: Provenance,
         independently_verified: bool,
     ) -> EvidenceId:
-        evidence_id = new_evidence_id()
+        identifier = new_evidence_id()
         self._append(
             EventType.EVIDENCE_RECORDED,
             project_id,
             EvidenceRecordedPayload(
-                evidence_id=UUID(str(evidence_id)),
+                evidence_id=UUID(str(identifier)),
                 kind=kind,
                 summary=summary,
                 provenance_source=provenance.source,
@@ -237,7 +295,7 @@ class CodexResearchBridge:
                 independently_verified=independently_verified,
             ),
         )
-        return evidence_id
+        return identifier
 
     def update_hypothesis(
         self,
@@ -293,11 +351,7 @@ class CodexResearchBridge:
             requirements=state.requirements,
             decisions=state.decisions,
         )
-        return choose_research_directive(
-            contract,
-            state,
-            pending_decisions=pending_decisions,
-        )
+        return choose_research_directive(contract, state, pending_decisions=pending_decisions)
 
     def _append(self, event_type: EventType, project_id: str, payload: EventPayload) -> None:
         state = self.state(project_id)

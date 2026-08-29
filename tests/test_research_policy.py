@@ -3,25 +3,21 @@ from uuid import UUID
 
 from epipilot.core.models import EvidenceId, HypothesisId, Provenance, RequirementId
 from epipilot.epistemics.models import (
+    Hypothesis,
+    HypothesisStatus,
     ResolutionMode,
     Unknown,
     UnknownId,
     UnknownImpact,
     UnknownStatus,
 )
-from epipilot.requirements.frontier import (
-    DecisionImpact,
-    DecisionOwner,
-    DecisionQuestion,
-)
-from epipilot.requirements.models import (
-    ProjectContract,
-    Requirement,
-    RequirementKind,
-)
+from epipilot.requirements.frontier import DecisionImpact, DecisionOwner, DecisionQuestion
+from epipilot.requirements.models import ProjectContract, Requirement, RequirementKind
 from epipilot.research.contracts import (
     ExperimentContract,
+    ExperimentId,
     ExperimentPrediction,
+    ExperimentRecord,
     ResearchDirectiveKind,
 )
 from epipilot.research.policy import choose_research_directive
@@ -34,6 +30,7 @@ UNKNOWN_ID = UnknownId(UUID("00000000-0000-0000-0000-000000000503"))
 EVIDENCE_ID = EvidenceId(UUID("00000000-0000-0000-0000-000000000504"))
 H1 = HypothesisId(UUID("00000000-0000-0000-0000-000000000505"))
 H2 = HypothesisId(UUID("00000000-0000-0000-0000-000000000506"))
+EXPERIMENT_ID = ExperimentId(UUID("00000000-0000-0000-0000-000000000507"))
 
 
 def _requirements() -> tuple[Requirement, ...]:
@@ -50,6 +47,28 @@ def _requirements() -> tuple[Requirement, ...]:
             kind=RequirementKind.SUCCESS_CRITERION,
             statement="A fresh held-out experiment reproduces the repair",
             provenance=provenance,
+        ),
+    )
+
+
+def _experiment() -> ExperimentRecord:
+    return ExperimentRecord(
+        id=EXPERIMENT_ID,
+        contract=ExperimentContract(
+            unknown_id=UNKNOWN_ID,
+            objective="Discriminate representation failure from head-boundary failure",
+            hypothesis_ids=(H1,),
+            controlled_variables=("frozen representation",),
+            measurements=("held-out probe accuracy",),
+            predictions=(
+                ExperimentPrediction(
+                    hypothesis_id=H1,
+                    expected_observation="probe accuracy remains high",
+                    falsification_condition="probe accuracy < 0.95",
+                ),
+            ),
+            decision_rule="Support H1 if held-out accuracy is at least 0.95.",
+            budget="one frozen-probe run",
         ),
     )
 
@@ -71,6 +90,37 @@ def test_policy_investigates_open_technical_unknown() -> None:
     assert directive.unknown_id == UNKNOWN_ID
 
 
+def test_policy_runs_existing_preregistered_experiment_before_designing_another() -> None:
+    requirements = _requirements()
+    contract = ProjectContract(project_id="research", requirements=requirements)
+    unknown = Unknown(
+        id=UNKNOWN_ID,
+        question="Why does the policy collapse?",
+        impact=UnknownImpact.HIGH,
+        resolution_mode=ResolutionMode.EXPERIMENT,
+    )
+    hypothesis = Hypothesis(
+        id=H1,
+        statement="The request-head boundary is misplaced.",
+        status=HypothesisStatus.ACTIVE,
+        predictions=("probe accuracy remains high",),
+        falsification_conditions=("probe accuracy < 0.95",),
+    )
+    state = ProjectState(
+        project_id="research",
+        requirements=requirements,
+        unknowns=(unknown,),
+        hypotheses=(hypothesis,),
+        experiments=(_experiment(),),
+    )
+
+    directive = choose_research_directive(contract, state)
+
+    assert directive.kind is ResearchDirectiveKind.RUN_EXPERIMENT
+    assert directive.experiment_id == EXPERIMENT_ID
+    assert directive.unknown_id == UNKNOWN_ID
+
+
 def test_policy_asks_for_high_impact_user_decision() -> None:
     requirements = _requirements()
     contract = ProjectContract(project_id="research", requirements=requirements)
@@ -81,11 +131,7 @@ def test_policy_asks_for_high_impact_user_decision() -> None:
         impact=DecisionImpact.HIGH,
     )
 
-    directive = choose_research_directive(
-        contract,
-        state,
-        pending_decisions=(question,),
-    )
+    directive = choose_research_directive(contract, state, pending_decisions=(question,))
 
     assert directive.kind is ResearchDirectiveKind.ASK_USER
     assert directive.questions == ("May the evaluator be changed?",)

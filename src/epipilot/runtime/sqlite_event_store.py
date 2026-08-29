@@ -1,4 +1,4 @@
-"""SQLite-backed append-only event store for local V0 persistence."""
+"""SQLite-backed append-only event store for local persistence."""
 
 from __future__ import annotations
 
@@ -45,7 +45,6 @@ class SqliteEventStore:
             ).fetchone()
             if duplicate is not None:
                 raise DuplicateEvent(f"event {event.id} has already been committed")
-
             row = connection.execute(
                 "SELECT COALESCE(MAX(version), 0) FROM project_events WHERE aggregate_id = ?",
                 (event.aggregate_id,),
@@ -53,23 +52,15 @@ class SqliteEventStore:
             if row is None:
                 raise RuntimeError("SQLite failed to return aggregate version")
             current_version = int(row[0])
-
             if expected_version is not None and expected_version != current_version:
                 raise EventVersionConflict(
                     f"expected aggregate version {expected_version}, found {current_version}"
                 )
-
             next_version = current_version + 1
             connection.execute(
                 """
                 INSERT INTO project_events (
-                    aggregate_id,
-                    version,
-                    event_id,
-                    event_type,
-                    payload,
-                    occurred_at,
-                    schema_version
+                    aggregate_id, version, event_id, event_type, payload, occurred_at, schema_version
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -95,7 +86,6 @@ class SqliteEventStore:
                 """,
                 (aggregate_id,),
             ).fetchall()
-
         return tuple(
             ProjectEvent(
                 id=EventId(UUID(str(row[0]))),
@@ -117,6 +107,16 @@ class SqliteEventStore:
         if row is None:
             raise RuntimeError("SQLite failed to return aggregate version")
         return int(row[0])
+
+    def aggregate_ids(self) -> tuple[str, ...]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT DISTINCT aggregate_id FROM project_events ORDER BY aggregate_id ASC"
+            ).fetchall()
+        return tuple(str(row[0]) for row in rows)
+
+    def storage_uri(self) -> str:
+        return str(self.path.resolve())
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)

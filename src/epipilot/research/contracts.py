@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import NewType
+from uuid import UUID, uuid4
 
-from epipilot.core.models import HypothesisId, TaskId
+from epipilot.core.models import EvidenceId, HypothesisId, TaskId
 from epipilot.epistemics.models import UnknownId
+
+ExperimentId = NewType("ExperimentId", UUID)
+
+
+def new_experiment_id() -> ExperimentId:
+    """Create a new opaque experiment identifier."""
+    return ExperimentId(uuid4())
 
 
 class ResearchDirectiveKind(StrEnum):
@@ -14,9 +23,18 @@ class ResearchDirectiveKind(StrEnum):
 
     ASK_USER = "ask_user"
     INVESTIGATE = "investigate"
+    RUN_EXPERIMENT = "run_experiment"
     USE_SAFE_DEFAULT = "use_safe_default"
     EXECUTE = "execute"
     SYNTHESIZE = "synthesize"
+
+
+class ExperimentStatus(StrEnum):
+    """Lifecycle states for one preregistered research experiment."""
+
+    PREREGISTERED = "preregistered"
+    CONCLUDED = "concluded"
+    INCONCLUSIVE = "inconclusive"
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +95,28 @@ class ExperimentContract:
 
 
 @dataclass(frozen=True, slots=True)
+class ExperimentRecord:
+    """Canonical projection of a preregistered experiment and its verified outcome."""
+
+    id: ExperimentId
+    contract: ExperimentContract
+    status: ExperimentStatus = ExperimentStatus.PREREGISTERED
+    evidence_ids: tuple[EvidenceId, ...] = ()
+    conclusion: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status is ExperimentStatus.PREREGISTERED:
+            if self.evidence_ids or self.conclusion is not None:
+                raise ValueError("preregistered experiment cannot already carry an outcome")
+            return
+
+        if not self.evidence_ids:
+            raise ValueError("concluded experiment requires independently verified evidence")
+        if self.conclusion is None or not self.conclusion.strip():
+            raise ValueError("concluded experiment requires a non-empty conclusion")
+
+
+@dataclass(frozen=True, slots=True)
 class ResearchDirective:
     """Deterministic next-step recommendation derived from canonical state."""
 
@@ -85,6 +125,7 @@ class ResearchDirective:
     canonical_event_version: int
     questions: tuple[str, ...] = ()
     unknown_id: UnknownId | None = None
+    experiment_id: ExperimentId | None = None
     task_id: TaskId | None = None
 
     def __post_init__(self) -> None:
@@ -105,5 +146,7 @@ class ResearchDirective:
             and self.unknown_id is None
         ):
             raise ValueError(f"{self.kind.value} directive requires an unknown id")
+        if self.kind is ResearchDirectiveKind.RUN_EXPERIMENT and self.experiment_id is None:
+            raise ValueError("RUN_EXPERIMENT directive requires an experiment id")
         if self.kind is ResearchDirectiveKind.EXECUTE and self.task_id is None:
             raise ValueError("EXECUTE directive requires a task id")
