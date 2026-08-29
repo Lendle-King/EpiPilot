@@ -294,8 +294,7 @@ def _parser() -> argparse.ArgumentParser:
         "--skip-runtime-install",
         action="store_true",
         help=(
-            "Skip `uv tool install`; use only when epipilot-mcp is already persistently "
-            "installed."
+            "Skip `uv tool install`; use only when epipilot-mcp is already persistently installed."
         ),
     )
     parser.add_argument("--timeout", type=float, default=600.0)
