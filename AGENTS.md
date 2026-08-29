@@ -6,6 +6,21 @@ This file defines repository-wide instructions for coding agents working on EpiP
 
 EpiPilot is an evidence-driven epistemic orchestration framework for long-horizon coding agents. It sits above executors such as Pi, Codex, Claude Code, or other coding agents. The framework owns requirements, epistemic state, planning, scheduling, context compilation, verification, and recovery. Executors do not own canonical project truth.
 
+## Codex installation intent
+
+If the user asks you to install this repository as a Codex plugin, including when they provide only the GitHub repository or branch URL, treat that as an execution request rather than a request for installation instructions.
+
+1. Read [`CODEX_INSTALL.md`](CODEX_INSTALL.md).
+2. Resolve the repository and exact Git ref from the supplied URL or explicit user instruction.
+3. If normal Codex shell/tool permissions allow it, run the documented bootstrap yourself with `--json`.
+4. Validate the returned JSON and require `ok=true`, `installed=true`, and `enabled=true`.
+5. Report success only after that validation.
+6. Tell the user to start a new Codex thread because the current thread cannot be assumed to reload a newly installed plugin.
+7. If a prerequisite such as `uv` or Codex Plugins support is missing, report the blocker. Do not silently install a system package manager, rewrite the user's shell profile, or disable sandbox/approval controls.
+8. Do not merely paste shell commands back to the user when you are authorized and able to execute them.
+
+This bootstrap rule applies before EpiPilot itself is installed; it must not depend on EpiPilot MCP tools already being present.
+
 ## Non-negotiable invariants
 
 1. Never mark a task `PASSED` from executor self-report alone.
