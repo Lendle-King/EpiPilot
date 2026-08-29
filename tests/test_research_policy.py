@@ -163,8 +163,7 @@ def test_resolved_unknown_reaches_goal_conditioned_synthesis_not_automatic_accep
     )
     assert SynthesisDimension.SUBJECT_NATURE in directive.synthesis_contract.required_dimensions
     assert (
-        SynthesisDimension.HYPOTHESIS_LANDSCAPE
-        in directive.synthesis_contract.required_dimensions
+        SynthesisDimension.HYPOTHESIS_LANDSCAPE in directive.synthesis_contract.required_dimensions
     )
     assert "acceptance" in directive.reason
 
