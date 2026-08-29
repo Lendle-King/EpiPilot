@@ -261,10 +261,7 @@ def _find_installed_plugin(
         if not isinstance(raw_entry, dict):
             continue
         entry = {str(key): value for key, value in raw_entry.items() if isinstance(key, str)}
-        if (
-            entry.get("name") == plugin_name
-            and entry.get("marketplaceName") == marketplace_name
-        ):
+        if entry.get("name") == plugin_name and entry.get("marketplaceName") == marketplace_name:
             if entry.get("installed") is not True or entry.get("enabled") is not True:
                 raise BootstrapError(
                     f"{plugin_name}@{marketplace_name} exists but is not installed and enabled"
