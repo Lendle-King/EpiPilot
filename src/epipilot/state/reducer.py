@@ -101,76 +101,85 @@ def _reduce_payload(
     state: ProjectState, event_type: EventType, payload: EventPayload
 ) -> ProjectState:
     if event_type is EventType.REQUIREMENT_ADDED:
-        item = _expect(payload, RequirementAddedPayload)
-        identifier = RequirementId(item.requirement_id)
-        _ensure_new(identifier, (entry.id for entry in state.requirements), "requirement")
+        requirement_payload = _expect(payload, RequirementAddedPayload)
+        requirement_id = RequirementId(requirement_payload.requirement_id)
+        _ensure_new(requirement_id, (entry.id for entry in state.requirements), "requirement")
         requirement = Requirement(
-            id=identifier,
-            kind=item.kind,
-            statement=item.statement,
+            id=requirement_id,
+            kind=requirement_payload.kind,
+            statement=requirement_payload.statement,
             provenance=Provenance(
-                source=item.provenance_source,
-                scope=item.provenance_scope,
-                created_at=item.provenance_created_at,
+                source=requirement_payload.provenance_source,
+                scope=requirement_payload.provenance_scope,
+                created_at=requirement_payload.provenance_created_at,
             ),
         )
         return replace(state, requirements=(*state.requirements, requirement))
 
     if event_type is EventType.DECISION_MADE:
-        item = _expect(payload, DecisionMadePayload)
-        identifier = DecisionId(item.decision_id)
-        _ensure_new(identifier, (entry.id for entry in state.decisions), "decision")
+        decision_payload = _expect(payload, DecisionMadePayload)
+        decision_id = DecisionId(decision_payload.decision_id)
+        _ensure_new(decision_id, (entry.id for entry in state.decisions), "decision")
         decision = Decision(
-            id=identifier,
-            question=item.question,
-            choice=item.choice,
-            authority=item.authority,
-            rationale=item.rationale,
-            basis_refs=item.basis_refs,
-            reversible=item.reversible,
+            id=decision_id,
+            question=decision_payload.question,
+            choice=decision_payload.choice,
+            authority=decision_payload.authority,
+            rationale=decision_payload.rationale,
+            basis_refs=decision_payload.basis_refs,
+            reversible=decision_payload.reversible,
         )
         return replace(state, decisions=(*state.decisions, decision))
 
     if event_type is EventType.UNKNOWN_REGISTERED:
-        item = _expect(payload, UnknownRegisteredPayload)
-        identifier = UnknownId(item.unknown_id)
-        _ensure_new(identifier, (entry.id for entry in state.unknowns), "unknown")
-        for task_uuid in item.blocking_tasks:
+        unknown_payload = _expect(payload, UnknownRegisteredPayload)
+        unknown_id = UnknownId(unknown_payload.unknown_id)
+        _ensure_new(unknown_id, (entry.id for entry in state.unknowns), "unknown")
+        for task_uuid in unknown_payload.blocking_tasks:
             _require_task(state, TaskId(task_uuid))
         unknown = Unknown(
-            id=identifier,
-            question=item.question,
-            impact=item.impact,
-            resolution_mode=item.resolution_mode,
-            blocking_tasks=tuple(TaskId(value) for value in item.blocking_tasks),
-            value_of_information=item.value_of_information,
-            decision_sensitivity=item.decision_sensitivity,
+            id=unknown_id,
+            question=unknown_payload.question,
+            impact=unknown_payload.impact,
+            resolution_mode=unknown_payload.resolution_mode,
+            blocking_tasks=tuple(TaskId(value) for value in unknown_payload.blocking_tasks),
+            value_of_information=unknown_payload.value_of_information,
+            decision_sensitivity=unknown_payload.decision_sensitivity,
         )
         return replace(state, unknowns=(*state.unknowns, unknown))
 
     if event_type is EventType.UNKNOWN_RESOLVED:
-        item = _expect(payload, UnknownResolvedPayload)
-        unknown = _require_unknown(state, UnknownId(item.unknown_id))
-        if unknown.status is not UnknownStatus.OPEN:
+        resolved_payload = _expect(payload, UnknownResolvedPayload)
+        unresolved_unknown = _require_unknown(state, UnknownId(resolved_payload.unknown_id))
+        if unresolved_unknown.status is not UnknownStatus.OPEN:
             raise InvalidEventOrder("only an open unknown may be resolved")
-        evidence_ids = tuple(EvidenceId(value) for value in item.evidence_ids)
-        decision_ids = tuple(DecisionId(value) for value in item.decision_ids)
-        decisions = tuple(_require_decision(state, value) for value in decision_ids)
-        if unknown.resolution_mode in {ResolutionMode.EXPERIMENT, ResolutionMode.INVESTIGATION}:
-            if not evidence_ids:
+        resolution_evidence_ids = tuple(
+            EvidenceId(value) for value in resolved_payload.evidence_ids
+        )
+        resolution_decision_ids = tuple(
+            DecisionId(value) for value in resolved_payload.decision_ids
+        )
+        resolution_decisions = tuple(
+            _require_decision(state, value) for value in resolution_decision_ids
+        )
+        if unresolved_unknown.resolution_mode in {
+            ResolutionMode.EXPERIMENT,
+            ResolutionMode.INVESTIGATION,
+        }:
+            if not resolution_evidence_ids:
                 raise InvalidEventOrder(
                     "technical unknown resolution requires independently verified evidence"
                 )
-            for evidence_id in evidence_ids:
+            for evidence_id in resolution_evidence_ids:
                 _require_independent_evidence(state, evidence_id)
-        if unknown.resolution_mode is ResolutionMode.ASK_USER and not any(
-            decision.authority is DecisionAuthority.USER for decision in decisions
+        if unresolved_unknown.resolution_mode is ResolutionMode.ASK_USER and not any(
+            decision.authority is DecisionAuthority.USER for decision in resolution_decisions
         ):
             raise InvalidEventOrder("user-owned unknown requires an explicit user decision")
-        if unknown.resolution_mode is ResolutionMode.SAFE_DEFAULT:
+        if unresolved_unknown.resolution_mode is ResolutionMode.SAFE_DEFAULT:
             safe_decisions = tuple(
                 decision
-                for decision in decisions
+                for decision in resolution_decisions
                 if decision.authority is DecisionAuthority.USER
                 or (decision.authority is DecisionAuthority.SYSTEM and decision.reversible)
             )
@@ -178,283 +187,354 @@ def _reduce_payload(
                 raise InvalidEventOrder(
                     "safe-default unknown requires a reversible system decision or user decision"
                 )
-        for evidence_id in evidence_ids:
+        for evidence_id in resolution_evidence_ids:
             _require_evidence(state, evidence_id)
-        updated = replace(
-            unknown,
+        resolved_unknown = replace(
+            unresolved_unknown,
             status=UnknownStatus.RESOLVED,
-            resolution_evidence=evidence_ids,
-            resolution_decisions=tuple(str(value) for value in decision_ids),
+            resolution_evidence=resolution_evidence_ids,
+            resolution_decisions=tuple(str(value) for value in resolution_decision_ids),
         )
-        return _replace_unknown(state, updated)
+        return _replace_unknown(state, resolved_unknown)
 
     if event_type is EventType.HYPOTHESIS_CREATED:
-        item = _expect(payload, HypothesisCreatedPayload)
-        identifier = HypothesisId(item.hypothesis_id)
-        _ensure_new(identifier, (entry.id for entry in state.hypotheses), "hypothesis")
-        supporting = tuple(EvidenceId(value) for value in item.supporting_evidence)
-        contradicting = tuple(EvidenceId(value) for value in item.contradicting_evidence)
-        for evidence_id in (*supporting, *contradicting):
+        hypothesis_payload = _expect(payload, HypothesisCreatedPayload)
+        hypothesis_id = HypothesisId(hypothesis_payload.hypothesis_id)
+        _ensure_new(hypothesis_id, (entry.id for entry in state.hypotheses), "hypothesis")
+        hypothesis_support = tuple(
+            EvidenceId(value) for value in hypothesis_payload.supporting_evidence
+        )
+        hypothesis_contradictions = tuple(
+            EvidenceId(value) for value in hypothesis_payload.contradicting_evidence
+        )
+        for evidence_id in (*hypothesis_support, *hypothesis_contradictions):
             _require_evidence(state, evidence_id)
-        if item.status is HypothesisStatus.SUPPORTED:
-            for evidence_id in supporting:
+        if hypothesis_payload.status is HypothesisStatus.SUPPORTED:
+            for evidence_id in hypothesis_support:
                 _require_independent_evidence(state, evidence_id)
-        if item.status is HypothesisStatus.REFUTED:
-            for evidence_id in contradicting:
+        if hypothesis_payload.status is HypothesisStatus.REFUTED:
+            for evidence_id in hypothesis_contradictions:
                 _require_independent_evidence(state, evidence_id)
         hypothesis = Hypothesis(
-            id=identifier,
-            statement=item.statement,
-            status=item.status,
-            confidence=item.confidence,
-            predictions=item.predictions,
-            falsification_conditions=item.falsification_conditions,
-            supporting_evidence=supporting,
-            contradicting_evidence=contradicting,
-            superseded_by=HypothesisId(item.superseded_by) if item.superseded_by else None,
+            id=hypothesis_id,
+            statement=hypothesis_payload.statement,
+            status=hypothesis_payload.status,
+            confidence=hypothesis_payload.confidence,
+            predictions=hypothesis_payload.predictions,
+            falsification_conditions=hypothesis_payload.falsification_conditions,
+            supporting_evidence=hypothesis_support,
+            contradicting_evidence=hypothesis_contradictions,
+            superseded_by=(
+                HypothesisId(hypothesis_payload.superseded_by)
+                if hypothesis_payload.superseded_by
+                else None
+            ),
         )
         return replace(state, hypotheses=(*state.hypotheses, hypothesis))
 
     if event_type is EventType.HYPOTHESIS_UPDATED:
-        item = _expect(payload, HypothesisUpdatedPayload)
-        identifier = HypothesisId(item.hypothesis_id)
-        hypothesis = _require_hypothesis(state, identifier)
-        supporting = tuple(EvidenceId(value) for value in item.supporting_evidence)
-        contradicting = tuple(EvidenceId(value) for value in item.contradicting_evidence)
-        for evidence_id in (*supporting, *contradicting):
-            _require_evidence(state, evidence_id)
-        if item.status is HypothesisStatus.SUPPORTED:
-            for evidence_id in supporting:
-                _require_independent_evidence(state, evidence_id)
-        if item.status is HypothesisStatus.REFUTED:
-            for evidence_id in contradicting:
-                _require_independent_evidence(state, evidence_id)
-        replacement = HypothesisId(item.superseded_by) if item.superseded_by else None
-        if replacement is not None:
-            if replacement == identifier:
-                raise InvalidEventOrder("a hypothesis cannot supersede itself")
-            _require_hypothesis(state, replacement)
-        updated = replace(
-            hypothesis,
-            status=item.status,
-            confidence=item.confidence,
-            supporting_evidence=supporting,
-            contradicting_evidence=contradicting,
-            superseded_by=replacement,
+        update_payload = _expect(payload, HypothesisUpdatedPayload)
+        updated_hypothesis_id = HypothesisId(update_payload.hypothesis_id)
+        current_hypothesis = _require_hypothesis(state, updated_hypothesis_id)
+        updated_support = tuple(
+            EvidenceId(value) for value in update_payload.supporting_evidence
         )
-        return _replace_hypothesis(state, updated)
+        updated_contradictions = tuple(
+            EvidenceId(value) for value in update_payload.contradicting_evidence
+        )
+        for evidence_id in (*updated_support, *updated_contradictions):
+            _require_evidence(state, evidence_id)
+        if update_payload.status is HypothesisStatus.SUPPORTED:
+            for evidence_id in updated_support:
+                _require_independent_evidence(state, evidence_id)
+        if update_payload.status is HypothesisStatus.REFUTED:
+            for evidence_id in updated_contradictions:
+                _require_independent_evidence(state, evidence_id)
+        replacement_hypothesis_id = (
+            HypothesisId(update_payload.superseded_by) if update_payload.superseded_by else None
+        )
+        if replacement_hypothesis_id is not None:
+            if replacement_hypothesis_id == updated_hypothesis_id:
+                raise InvalidEventOrder("a hypothesis cannot supersede itself")
+            _require_hypothesis(state, replacement_hypothesis_id)
+        updated_hypothesis = replace(
+            current_hypothesis,
+            status=update_payload.status,
+            confidence=update_payload.confidence,
+            supporting_evidence=updated_support,
+            contradicting_evidence=updated_contradictions,
+            superseded_by=replacement_hypothesis_id,
+        )
+        return _replace_hypothesis(state, updated_hypothesis)
 
     if event_type is EventType.EXPERIMENT_PREREGISTERED:
-        item = _expect(payload, ExperimentPreregisteredPayload)
-        identifier = ExperimentId(item.experiment_id)
-        _ensure_new(identifier, (entry.id for entry in state.experiments), "experiment")
-        unknown = _require_unknown(state, UnknownId(item.unknown_id))
-        if unknown.status is not UnknownStatus.OPEN:
+        experiment_payload = _expect(payload, ExperimentPreregisteredPayload)
+        experiment_id = ExperimentId(experiment_payload.experiment_id)
+        _ensure_new(experiment_id, (entry.id for entry in state.experiments), "experiment")
+        experiment_unknown = _require_unknown(state, UnknownId(experiment_payload.unknown_id))
+        if experiment_unknown.status is not UnknownStatus.OPEN:
             raise InvalidEventOrder("experiment must target an open unknown")
-        if unknown.resolution_mode not in {ResolutionMode.EXPERIMENT, ResolutionMode.INVESTIGATION}:
+        if experiment_unknown.resolution_mode not in {
+            ResolutionMode.EXPERIMENT,
+            ResolutionMode.INVESTIGATION,
+        }:
             raise InvalidEventOrder("experiment must target a technical unknown")
-        hypothesis_ids = tuple(HypothesisId(value) for value in item.hypothesis_ids)
-        hypotheses = tuple(_require_hypothesis(state, value) for value in hypothesis_ids)
+        experiment_hypothesis_ids = tuple(
+            HypothesisId(value) for value in experiment_payload.hypothesis_ids
+        )
+        experiment_hypotheses = tuple(
+            _require_hypothesis(state, value) for value in experiment_hypothesis_ids
+        )
         if any(
             hypothesis.status in {HypothesisStatus.REFUTED, HypothesisStatus.SUPERSEDED}
-            for hypothesis in hypotheses
+            for hypothesis in experiment_hypotheses
         ):
             raise InvalidEventOrder("experiment cannot target refuted or superseded hypotheses")
-        predictions = tuple(
+        experiment_predictions = tuple(
             ExperimentPrediction(
                 hypothesis_id=HypothesisId(prediction.hypothesis_id),
                 expected_observation=prediction.expected_observation,
                 falsification_condition=prediction.falsification_condition,
             )
-            for prediction in item.predictions
+            for prediction in experiment_payload.predictions
         )
-        contract = ExperimentContract(
-            unknown_id=unknown.id,
-            objective=item.objective,
-            hypothesis_ids=hypothesis_ids,
-            controlled_variables=item.controlled_variables,
-            measurements=item.measurements,
-            predictions=predictions,
-            decision_rule=item.decision_rule,
-            budget=item.budget,
-            resource_claims=item.resource_claims,
+        experiment_contract = ExperimentContract(
+            unknown_id=experiment_unknown.id,
+            objective=experiment_payload.objective,
+            hypothesis_ids=experiment_hypothesis_ids,
+            controlled_variables=experiment_payload.controlled_variables,
+            measurements=experiment_payload.measurements,
+            predictions=experiment_predictions,
+            decision_rule=experiment_payload.decision_rule,
+            budget=experiment_payload.budget,
+            resource_claims=experiment_payload.resource_claims,
         )
-        experiment = ExperimentRecord(id=identifier, contract=contract)
+        experiment = ExperimentRecord(id=experiment_id, contract=experiment_contract)
         return replace(state, experiments=(*state.experiments, experiment))
 
     if event_type is EventType.EXPERIMENT_CONCLUDED:
-        item = _expect(payload, ExperimentConcludedPayload)
-        experiment = _require_experiment(state, ExperimentId(item.experiment_id))
-        if experiment.status is not ExperimentStatus.PREREGISTERED:
-            raise InvalidEventOrder("only a preregistered experiment may be concluded")
-        evidence_ids = tuple(EvidenceId(value) for value in item.evidence_ids)
-        for evidence_id in evidence_ids:
-            _require_independent_evidence(state, evidence_id)
-        updated = replace(
-            experiment,
-            status=item.status,
-            evidence_ids=evidence_ids,
-            conclusion=item.conclusion,
+        conclusion_payload = _expect(payload, ExperimentConcludedPayload)
+        current_experiment = _require_experiment(
+            state, ExperimentId(conclusion_payload.experiment_id)
         )
-        return _replace_experiment(state, updated)
+        if current_experiment.status is not ExperimentStatus.PREREGISTERED:
+            raise InvalidEventOrder("only a preregistered experiment may be concluded")
+        experiment_evidence_ids = tuple(
+            EvidenceId(value) for value in conclusion_payload.evidence_ids
+        )
+        for evidence_id in experiment_evidence_ids:
+            _require_independent_evidence(state, evidence_id)
+        concluded_experiment = replace(
+            current_experiment,
+            status=conclusion_payload.status,
+            evidence_ids=experiment_evidence_ids,
+            conclusion=conclusion_payload.conclusion,
+        )
+        return _replace_experiment(state, concluded_experiment)
 
     if event_type is EventType.EVIDENCE_RECORDED:
-        item = _expect(payload, EvidenceRecordedPayload)
-        identifier = EvidenceId(item.evidence_id)
-        _ensure_new(identifier, (entry.id for entry in state.evidence), "evidence")
+        evidence_payload = _expect(payload, EvidenceRecordedPayload)
+        evidence_id = EvidenceId(evidence_payload.evidence_id)
+        _ensure_new(evidence_id, (entry.id for entry in state.evidence), "evidence")
         evidence = Evidence(
-            id=identifier,
-            kind=item.kind,
-            summary=item.summary,
+            id=evidence_id,
+            kind=evidence_payload.kind,
+            summary=evidence_payload.summary,
             provenance=Provenance(
-                source=item.provenance_source,
-                scope=item.provenance_scope,
-                created_at=item.provenance_created_at,
+                source=evidence_payload.provenance_source,
+                scope=evidence_payload.provenance_scope,
+                created_at=evidence_payload.provenance_created_at,
             ),
-            independently_verified=item.independently_verified,
+            independently_verified=evidence_payload.independently_verified,
         )
-        links = state.evidence_links
-        if item.task_id is not None:
-            task_id = TaskId(item.task_id)
-            _require_task(state, task_id)
-            links = (*links, EvidenceLink(evidence_id=identifier, task_id=task_id))
-        return replace(state, evidence=(*state.evidence, evidence), evidence_links=links)
-
-    if event_type is EventType.TASK_CREATED:
-        item = _expect(payload, TaskCreatedPayload)
-        identifier = TaskId(item.task_id)
-        _ensure_new(identifier, (entry.id for entry in state.tasks), "task")
-        return replace(state, tasks=(*state.tasks, Task(id=identifier, objective=item.objective)))
-
-    if event_type is EventType.TASK_STARTED:
-        item = _expect(payload, TaskStartedPayload)
-        task_id = TaskId(item.task_id)
-        task = _require_task(state, task_id)
-        if task.status is not TaskStatus.READY:
-            raise InvalidEventOrder("a task session can start only from READY")
-        if any(session.session_id == item.session_id for session in state.sessions):
-            raise DuplicateEntity(f"session {item.session_id!r} already exists")
+        evidence_links = state.evidence_links
+        if evidence_payload.task_id is not None:
+            linked_task_id = TaskId(evidence_payload.task_id)
+            _require_task(state, linked_task_id)
+            evidence_links = (
+                *evidence_links,
+                EvidenceLink(evidence_id=evidence_id, task_id=linked_task_id),
+            )
         return replace(
             state,
-            sessions=(*state.sessions, SessionState(task_id=task_id, session_id=item.session_id)),
+            evidence=(*state.evidence, evidence),
+            evidence_links=evidence_links,
         )
 
+    if event_type is EventType.TASK_CREATED:
+        task_payload = _expect(payload, TaskCreatedPayload)
+        created_task_id = TaskId(task_payload.task_id)
+        _ensure_new(created_task_id, (entry.id for entry in state.tasks), "task")
+        created_task = Task(id=created_task_id, objective=task_payload.objective)
+        return replace(state, tasks=(*state.tasks, created_task))
+
+    if event_type is EventType.TASK_STARTED:
+        start_payload = _expect(payload, TaskStartedPayload)
+        started_task_id = TaskId(start_payload.task_id)
+        started_task = _require_task(state, started_task_id)
+        if started_task.status is not TaskStatus.READY:
+            raise InvalidEventOrder("a task session can start only from READY")
+        if any(session.session_id == start_payload.session_id for session in state.sessions):
+            raise DuplicateEntity(f"session {start_payload.session_id!r} already exists")
+        started_session = SessionState(
+            task_id=started_task_id,
+            session_id=start_payload.session_id,
+        )
+        return replace(state, sessions=(*state.sessions, started_session))
+
     if event_type is EventType.TASK_STATUS_CHANGED:
-        item = _expect(payload, TaskStatusChangedPayload)
-        task_id = TaskId(item.task_id)
-        task = _require_task(state, task_id)
-        if item.status is TaskStatus.RUNNING and not any(
-            session.task_id == task_id for session in state.sessions
+        status_payload = _expect(payload, TaskStatusChangedPayload)
+        status_task_id = TaskId(status_payload.task_id)
+        status_task = _require_task(state, status_task_id)
+        if status_payload.status is TaskStatus.RUNNING and not any(
+            session.task_id == status_task_id for session in state.sessions
         ):
             raise InvalidEventOrder("RUNNING requires a previously started executor session")
         completion_evidence: Evidence | None = None
-        if item.status is TaskStatus.PASSED:
-            if item.completion_evidence_id is None:
+        if status_payload.status is TaskStatus.PASSED:
+            if status_payload.completion_evidence_id is None:
                 raise InvalidEventOrder("PASSED requires completion evidence")
-            evidence_id = EvidenceId(item.completion_evidence_id)
-            completion_evidence = _require_evidence(state, evidence_id)
+            completion_evidence_id = EvidenceId(status_payload.completion_evidence_id)
+            completion_evidence = _require_evidence(state, completion_evidence_id)
             if not any(
-                record.task_id == task_id and record.passed and record.evidence_id == evidence_id
+                record.task_id == status_task_id
+                and record.passed
+                and record.evidence_id == completion_evidence_id
                 for record in state.verifications
             ):
                 raise InvalidEventOrder(
                     "PASSED requires a prior matching verification-passed event"
                 )
-        return _replace_task(
-            state,
-            transition_task(task, item.status, evidence=completion_evidence),
+        transitioned_task = transition_task(
+            status_task,
+            status_payload.status,
+            evidence=completion_evidence,
         )
+        return _replace_task(state, transitioned_task)
 
     if event_type is EventType.CONTEXT_COMPILED:
-        item = _expect(payload, ContextCompiledPayload)
-        task_id = TaskId(item.task_id)
-        _require_task(state, task_id)
-        if any(record.context_id == item.context_id for record in state.contexts):
-            raise DuplicateEntity(f"context {item.context_id!r} already exists")
-        record = ContextRecord(
-            task_id=task_id,
-            context_id=item.context_id,
-            included_item_ids=item.included_item_ids,
-            excluded_item_ids=item.excluded_item_ids,
-            token_cost=item.token_cost,
-            token_budget=item.token_budget,
-            compiler_version=item.compiler_version,
+        context_payload = _expect(payload, ContextCompiledPayload)
+        context_task_id = TaskId(context_payload.task_id)
+        _require_task(state, context_task_id)
+        if any(record.context_id == context_payload.context_id for record in state.contexts):
+            raise DuplicateEntity(f"context {context_payload.context_id!r} already exists")
+        context_record = ContextRecord(
+            task_id=context_task_id,
+            context_id=context_payload.context_id,
+            included_item_ids=context_payload.included_item_ids,
+            excluded_item_ids=context_payload.excluded_item_ids,
+            token_cost=context_payload.token_cost,
+            token_budget=context_payload.token_budget,
+            compiler_version=context_payload.compiler_version,
         )
-        return replace(state, contexts=(*state.contexts, record))
+        return replace(state, contexts=(*state.contexts, context_record))
 
     if event_type is EventType.EXECUTOR_OBSERVATION_RECORDED:
-        item = _expect(payload, ExecutorObservationRecordedPayload)
-        task_id = TaskId(item.task_id)
-        _require_task(state, task_id)
-        session = _require_session(state, task_id, item.session_id)
-        updated = replace(
-            session,
-            last_executor_state=item.state,
-            changed_file_count=item.changed_file_count,
-            artifact_refs=item.artifact_refs,
+        observation_payload = _expect(payload, ExecutorObservationRecordedPayload)
+        observed_task_id = TaskId(observation_payload.task_id)
+        _require_task(state, observed_task_id)
+        observed_session = _require_session(
+            state,
+            observed_task_id,
+            observation_payload.session_id,
         )
-        sessions = tuple(
-            updated if current.session_id == item.session_id else current
+        updated_session = replace(
+            observed_session,
+            last_executor_state=observation_payload.state,
+            changed_file_count=observation_payload.changed_file_count,
+            artifact_refs=observation_payload.artifact_refs,
+        )
+        updated_sessions = tuple(
+            updated_session if current.session_id == observation_payload.session_id else current
             for current in state.sessions
         )
-        artifact_refs = tuple(dict.fromkeys((*state.artifact_refs, *item.artifact_refs)))
-        return replace(state, sessions=sessions, artifact_refs=artifact_refs)
+        updated_artifact_refs = tuple(
+            dict.fromkeys((*state.artifact_refs, *observation_payload.artifact_refs))
+        )
+        return replace(
+            state,
+            sessions=updated_sessions,
+            artifact_refs=updated_artifact_refs,
+        )
 
     if event_type is EventType.VERIFICATION_PASSED:
-        item = _expect(payload, VerificationPassedPayload)
-        task_id = TaskId(item.task_id)
-        task = _require_task(state, task_id)
-        if task.status is not TaskStatus.VERIFYING:
+        verification_payload = _expect(payload, VerificationPassedPayload)
+        verified_task_id = TaskId(verification_payload.task_id)
+        verified_task = _require_task(state, verified_task_id)
+        if verified_task.status is not TaskStatus.VERIFYING:
             raise InvalidEventOrder("verification result requires task status VERIFYING")
-        evidence = _require_independent_evidence(state, EvidenceId(item.evidence_id))
-        record = VerificationRecord(task_id=task_id, passed=True, evidence_id=evidence.id)
-        return replace(state, verifications=(*state.verifications, record))
+        verified_evidence = _require_independent_evidence(
+            state,
+            EvidenceId(verification_payload.evidence_id),
+        )
+        verification_record = VerificationRecord(
+            task_id=verified_task_id,
+            passed=True,
+            evidence_id=verified_evidence.id,
+        )
+        return replace(
+            state,
+            verifications=(*state.verifications, verification_record),
+        )
 
     if event_type is EventType.VERIFICATION_FAILED:
-        item = _expect(payload, VerificationFailedPayload)
-        task_id = TaskId(item.task_id)
-        task = _require_task(state, task_id)
-        if task.status is not TaskStatus.VERIFYING:
+        failure_payload = _expect(payload, VerificationFailedPayload)
+        failed_task_id = TaskId(failure_payload.task_id)
+        failed_task = _require_task(state, failed_task_id)
+        if failed_task.status is not TaskStatus.VERIFYING:
             raise InvalidEventOrder("verification result requires task status VERIFYING")
-        record = VerificationRecord(task_id=task_id, passed=False, reason=item.reason)
-        return replace(state, verifications=(*state.verifications, record))
+        failure_record = VerificationRecord(
+            task_id=failed_task_id,
+            passed=False,
+            reason=failure_payload.reason,
+        )
+        return replace(
+            state,
+            verifications=(*state.verifications, failure_record),
+        )
 
     if event_type is EventType.TASK_SUPERSEDED:
-        item = _expect(payload, TaskSupersededPayload)
-        task_id = TaskId(item.task_id)
-        task = _require_task(state, task_id)
-        for replacement_uuid in item.replacement_task_ids:
-            replacement_id = TaskId(replacement_uuid)
-            if replacement_id == task_id:
+        supersede_payload = _expect(payload, TaskSupersededPayload)
+        superseded_task_id = TaskId(supersede_payload.task_id)
+        superseded_task = _require_task(state, superseded_task_id)
+        for replacement_uuid in supersede_payload.replacement_task_ids:
+            replacement_task_id = TaskId(replacement_uuid)
+            if replacement_task_id == superseded_task_id:
                 raise InvalidEventOrder("a task cannot supersede itself")
-            _require_task(state, replacement_id)
-        _validate_untyped_basis_refs(state, item.basis_refs)
-        return _replace_task(state, transition_task(task, TaskStatus.SUPERSEDED))
+            _require_task(state, replacement_task_id)
+        _validate_untyped_basis_refs(state, supersede_payload.basis_refs)
+        return _replace_task(
+            state,
+            transition_task(superseded_task, TaskStatus.SUPERSEDED),
+        )
 
     if event_type is EventType.PLAN_VERSION_CREATED:
-        item = _expect(payload, PlanVersionCreatedPayload)
-        expected_version = 1 if not state.plans else state.plans[-1].version + 1
-        if item.version != expected_version:
+        plan_payload = _expect(payload, PlanVersionCreatedPayload)
+        expected_plan_version = 1 if not state.plans else state.plans[-1].version + 1
+        if plan_payload.version != expected_plan_version:
             raise InvalidEventOrder(
-                f"plan version must advance monotonically to {expected_version}"
+                f"plan version must advance monotonically to {expected_plan_version}"
             )
-        tasks = tuple(_require_task(state, TaskId(task_id)) for task_id in item.task_ids)
-        dependencies = tuple(
+        plan_tasks = tuple(
+            _require_task(state, TaskId(task_id)) for task_id in plan_payload.task_ids
+        )
+        plan_dependencies = tuple(
             TaskDependency(
                 predecessor=TaskId(dependency.predecessor),
                 successor=TaskId(dependency.successor),
             )
-            for dependency in item.dependencies
+            for dependency in plan_payload.dependencies
         )
-        basis = tuple(
-            PlanBasis(kind=entry.kind, reference_id=entry.reference_id) for entry in item.basis
+        plan_basis = tuple(
+            PlanBasis(kind=entry.kind, reference_id=entry.reference_id)
+            for entry in plan_payload.basis
         )
-        _validate_plan_basis(state, basis)
+        _validate_plan_basis(state, plan_basis)
         plan = PlanGraph(
-            version=item.version,
-            tasks=tasks,
-            dependencies=dependencies,
-            basis=basis,
+            version=plan_payload.version,
+            tasks=plan_tasks,
+            dependencies=plan_dependencies,
+            basis=plan_basis,
         )
         return replace(state, plans=(*state.plans, plan))
 
