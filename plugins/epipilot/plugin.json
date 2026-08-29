@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "epipilot",
+  "version": "0.2.2",
+  "description": "Evidence-driven epistemic research control for Codex.",
+  "author": {
+    "name": "EpiPilot contributors"
+  },
+  "homepage": "https://github.com/Lendle-King/EpiPilot",
+  "repository": "https://github.com/Lendle-King/EpiPilot",
+  "license": "Apache-2.0",
+  "keywords": [
+    "research",
+    "hypothesis",
+    "evidence",
+    "codex",
+    "epistemic"
+  ]
+}

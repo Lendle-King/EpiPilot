@@ -1,0 +1,24 @@
+{
+  "name": "epipilot",
+  "version": "0.2.2",
+  "description": "Evidence-driven epistemic research control for Codex.",
+  "author": {
+    "name": "EpiPilot contributors"
+  },
+  "interface": {
+    "displayName": "EpiPilot",
+    "shortDescription": "Run Codex as an evidence-driven research agent.",
+    "longDescription": "Persist goals, unknowns, falsifiable hypotheses, preregistered experiments and verified evidence outside chat context, then derive the next bounded research action from canonical state.",
+    "developerName": "EpiPilot contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use EpiPilot to investigate this research problem.",
+      "Build competing hypotheses and a discriminative experiment.",
+      "Show my current epistemic map and next action."
+    ]
+  }
+}

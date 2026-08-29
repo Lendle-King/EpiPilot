@@ -12,6 +12,7 @@ from epipilot.core.models import EvidenceKind, TaskStatus
 from epipilot.epistemics.models import HypothesisStatus, ResolutionMode, UnknownImpact
 from epipilot.planning.graph import PlanBasisKind
 from epipilot.requirements.models import DecisionAuthority, RequirementKind
+from epipilot.research.contracts import ExperimentStatus
 
 
 class EventPayload(BaseModel):
@@ -49,6 +50,18 @@ class UnknownRegisteredPayload(EventPayload):
     decision_sensitivity: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
+class UnknownResolvedPayload(EventPayload):
+    unknown_id: UUID
+    evidence_ids: tuple[UUID, ...] = ()
+    decision_ids: tuple[UUID, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_resolution_basis(self) -> Self:
+        if not self.evidence_ids and not self.decision_ids:
+            raise ValueError("unknown resolution requires evidence or a canonical decision")
+        return self
+
+
 class HypothesisCreatedPayload(EventPayload):
     hypothesis_id: UUID
     statement: str = Field(min_length=1)
@@ -59,6 +72,49 @@ class HypothesisCreatedPayload(EventPayload):
     supporting_evidence: tuple[UUID, ...] = ()
     contradicting_evidence: tuple[UUID, ...] = ()
     superseded_by: UUID | None = None
+
+
+class HypothesisUpdatedPayload(EventPayload):
+    """Full cumulative evidence projection for one hypothesis transition."""
+
+    hypothesis_id: UUID
+    status: HypothesisStatus
+    confidence: float = Field(ge=0.0, le=1.0)
+    supporting_evidence: tuple[UUID, ...] = ()
+    contradicting_evidence: tuple[UUID, ...] = ()
+    superseded_by: UUID | None = None
+
+
+class ExperimentPredictionPayload(EventPayload):
+    hypothesis_id: UUID
+    expected_observation: str = Field(min_length=1)
+    falsification_condition: str = Field(min_length=1)
+
+
+class ExperimentPreregisteredPayload(EventPayload):
+    experiment_id: UUID
+    unknown_id: UUID
+    objective: str = Field(min_length=1)
+    hypothesis_ids: tuple[UUID, ...] = Field(min_length=1)
+    controlled_variables: tuple[str, ...] = ()
+    measurements: tuple[str, ...] = Field(min_length=1)
+    predictions: tuple[ExperimentPredictionPayload, ...] = Field(min_length=1)
+    decision_rule: str = Field(min_length=1)
+    budget: str = Field(min_length=1)
+    resource_claims: tuple[str, ...] = ()
+
+
+class ExperimentConcludedPayload(EventPayload):
+    experiment_id: UUID
+    status: ExperimentStatus
+    evidence_ids: tuple[UUID, ...] = Field(min_length=1)
+    conclusion: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_terminal_status(self) -> Self:
+        if self.status is ExperimentStatus.PREREGISTERED:
+            raise ValueError("experiment conclusion requires a terminal experiment status")
+        return self
 
 
 class EvidenceRecordedPayload(EventPayload):

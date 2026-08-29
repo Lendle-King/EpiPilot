@@ -4,6 +4,25 @@
 
 EpiPilot sits above coding agents such as Pi, Codex, Claude Code, and other executors. It manages project requirements, unknowns, hypotheses, evidence, dynamic task graphs, context compilation, verification, and replanning so that long-running work remains auditable and evidence-driven.
 
+## Install from inside Codex
+
+If you are already using Codex, you should not need to know the bootstrap command. Give Codex this repository URL and ask it to install EpiPilot as a Codex plugin:
+
+```text
+Install this Codex plugin: https://github.com/Lendle-King/EpiPilot
+```
+
+For the current development branch, use the branch URL:
+
+```text
+Install this Codex plugin:
+https://github.com/Lendle-King/EpiPilot/tree/feat/codex-epistemic-research-plugin
+```
+
+**Codex agents:** follow [`CODEX_INSTALL.md`](CODEX_INSTALL.md). Resolve the repository/ref from the URL, run the bootstrap yourself, validate the JSON result, and report completion. Do not merely return shell commands to the user when you have permission to execute them.
+
+The natural-language flow still respects normal Codex sandbox and approval boundaries. If a required prerequisite such as `uv` or Codex Plugins support is missing, report that blocker rather than silently modifying the system package manager or shell profile.
+
 ## Core loop
 
 ```text
@@ -30,10 +49,42 @@ EpiPilot is organized around four planes:
 
 Architecture and planning documents:
 
-- [`docs/FRAMEWORK.md`](docs/FRAMEWORK.md) — overall EpiPilot methodology, system responsibilities, epistemic loop, task planning, execution, verification, memory, recovery, replanning, and non-negotiable invariants.
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — detailed staged plan from the current V0 foundation to V1.0, including milestone scope, gates, tests, and acceptance criteria.
+- [`docs/FRAMEWORK.md`](docs/FRAMEWORK.md) — overall EpiPilot methodology and system responsibilities.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — staged plan from the current V0 foundation to V1.0.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module boundaries, state ownership, runtime flow, and invariants.
-- [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context, memory classes, scope, consolidation, and retrieval rules.
+- [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context.
+- [`docs/CODEX_PLUGIN.md`](docs/CODEX_PLUGIN.md) — Codex plugin installation, MCP tools, research loop, and limitations.
+
+## Codex plugin
+
+The `feat/codex-epistemic-research-plugin` branch contains an initial usable Codex Agent Plugin. Codex becomes the interactive research frontend while EpiPilot owns durable canonical state.
+
+The plugin supports:
+
+```text
+ProjectContract
+  -> Unknown
+  -> falsifiable Hypotheses
+  -> preregistered Experiment
+  -> RUN_EXPERIMENT
+  -> independently verified Evidence
+  -> Experiment conclusion / Belief update
+  -> Unknown resolution
+  -> next research directive
+```
+
+One-command development-branch install:
+
+```bash
+uvx --from "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic-research-plugin" \
+  epipilot-install-codex --ref feat/codex-epistemic-research-plugin
+```
+
+The bootstrap persistently installs the Python runtime, adds/upgrades the EpiPilot Git marketplace, installs the Codex plugin, and verifies through Codex JSON output that the plugin is installed and enabled. Then start a new Codex thread.
+
+See [`CODEX_INSTALL.md`](CODEX_INSTALL.md) for the agent-facing natural-language bootstrap contract and [`docs/CODEX_PLUGIN.md`](docs/CODEX_PLUGIN.md) for the manual fallback, update instructions, verification workflow, and troubleshooting.
+
+The plugin deliberately does not let Codex self-report become verified evidence, does not expose arbitrary command execution through MCP, and does not turn research-frontier exhaustion into automatic project acceptance.
 
 ## Repository standards
 
@@ -89,22 +140,22 @@ The current V0 foundation intentionally starts with contracts that are difficult
 
 ## Next V0 milestones
 
-The next implementation slice focuses on state reconstruction and enforcement rather than UI:
+The broader framework still needs:
 
-1. event payload codecs and deterministic project-state reducers/replay;
-2. checkpoint/resume on top of the append-only stream;
-3. artifact metadata/store contracts and revision-aware repository indexing;
-4. runtime enforcement of `TaskContract` path/resource boundaries;
-5. wiring `ProjectContract.execution_ready`, Decision Frontier interrupts, and retry policy into the project runtime;
-6. Git worktree isolation and resource locks as prerequisites for parallel execution;
-7. PostgreSQL Event Store adapter for multi-process/server deployment;
-8. CLI/API surfaces after the control/state contracts stabilize.
+1. checkpoint/resume and external-state reconciliation;
+2. artifact metadata/store contracts and revision-aware repository indexing;
+3. runtime enforcement of `TaskContract` path/resource boundaries;
+4. evidence-driven `LOCAL_PATCH / SUBGRAPH_REPLAN / GLOBAL_REPLAN` integration;
+5. project-level acceptance wiring;
+6. Git worktree isolation and resource locks for safe parallel execution;
+7. PostgreSQL Event Store for multi-process/server deployment;
+8. stable CLI/API/UI surfaces after the control/state contracts mature.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full milestone plan through V1.0.
 
 ## Project status
 
-EpiPilot is in early V0 development. Architecture contracts and quality gates are intentionally being stabilized before UI or multi-agent parallelism is added.
+EpiPilot remains early V0 research software. The Codex plugin is intentionally described as initially usable rather than production-ready: its durable research loop is functional, while broader acceptance, artifact, worktree, and distributed-runtime guarantees remain under development.
 
 ## License
 
