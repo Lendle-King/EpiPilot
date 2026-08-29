@@ -4,6 +4,25 @@
 
 EpiPilot sits above coding agents such as Pi, Codex, Claude Code, and other executors. It manages project requirements, unknowns, hypotheses, evidence, dynamic task graphs, context compilation, verification, and replanning so that long-running work remains auditable and evidence-driven.
 
+## Install from inside Codex
+
+If you are already using Codex, you should not need to know the bootstrap command. Give Codex this repository URL and ask it to install EpiPilot as a Codex plugin:
+
+```text
+Install this Codex plugin: https://github.com/Lendle-King/EpiPilot
+```
+
+For the current development branch, use the branch URL:
+
+```text
+Install this Codex plugin:
+https://github.com/Lendle-King/EpiPilot/tree/feat/codex-epistemic-research-plugin
+```
+
+**Codex agents:** follow [`CODEX_INSTALL.md`](CODEX_INSTALL.md). Resolve the repository/ref from the URL, run the bootstrap yourself, validate the JSON result, and report completion. Do not merely return shell commands to the user when you have permission to execute them.
+
+The natural-language flow still respects normal Codex sandbox and approval boundaries. If a required prerequisite such as `uv` or Codex Plugins support is missing, report that blocker rather than silently modifying the system package manager or shell profile.
+
 ## Core loop
 
 ```text
@@ -63,7 +82,7 @@ uvx --from "git+https://github.com/Lendle-King/EpiPilot.git@feat/codex-epistemic
 
 The bootstrap persistently installs the Python runtime, adds/upgrades the EpiPilot Git marketplace, installs the Codex plugin, and verifies through Codex JSON output that the plugin is installed and enabled. Then start a new Codex thread.
 
-See [`docs/CODEX_PLUGIN.md`](docs/CODEX_PLUGIN.md) for the manual fallback, update instructions, verification workflow, and troubleshooting.
+See [`CODEX_INSTALL.md`](CODEX_INSTALL.md) for the agent-facing natural-language bootstrap contract and [`docs/CODEX_PLUGIN.md`](docs/CODEX_PLUGIN.md) for the manual fallback, update instructions, verification workflow, and troubleshooting.
 
 The plugin deliberately does not let Codex self-report become verified evidence, does not expose arbitrary command execution through MCP, and does not turn research-frontier exhaustion into automatic project acceptance.
 
