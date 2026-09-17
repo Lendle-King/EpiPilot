@@ -1,8 +1,36 @@
 # EpiPilot
 
-**EpiPilot** is an evidence-driven epistemic orchestration framework for long-horizon coding agents.
+**Understand the project. Identify what matters. Advance toward verified results.**
+
+EpiPilot is an evidence-driven epistemic orchestration framework for long-horizon coding agents. Its product goal is to help you understand a project clearly, complete the current goal efficiently, and distinguish worthwhile improvements from speculative work.
 
 EpiPilot sits above coding agents such as Pi, Codex, DeepSeek Harness (DSH), and other executors. It manages project requirements, unknowns, hypotheses, evidence, dynamic task graphs, context compilation, verification, and replanning so that long-running work remains auditable and evidence-driven.
+
+## Project workbench UI
+
+A local, project-first Web UI is available with five views: **总览 / 项目认知 / 目标推进 / 优化机会 / 成果与证据**.
+
+```bash
+python -m pip install -e '.[web]'
+python -m epipilot.web --repo /path/to/project
+```
+
+Open `http://127.0.0.1:8765`. The repository must have a Git commit. No Node build, CDN, API key, or LLM call is needed to inspect committed documents and source structure.
+
+To also display canonical project goals, tasks, unknowns, hypotheses, and evidence, connect an existing EpiPilot SQLite event stream:
+
+```bash
+python -m epipilot.web \
+  --repo /path/to/project \
+  --events-db /path/to/project-events.sqlite \
+  --project-id your-exact-aggregate-id
+```
+
+The UI reads real data. Missing events remain missing; task verification never substitutes for project acceptance. Sources carry revision/scope information, and stale or unlinked evidence is explicitly qualified.
+
+This first UI slice is **read-only**. It supports source inspection, keyword search, evidence details, Markdown reports, and proposal-only task handoffs with a selectable Codex/Pi/DSH preference. It does not start agents, approve execution, modify repositories, or migrate sessions. It is a local single-user tool, not a publicly deployable authenticated service.
+
+See [`docs/UI.md`](docs/UI.md) for the Chinese user guide, security boundaries, testing, and design references.
 
 ## Core loop
 
@@ -23,7 +51,7 @@ Goal -> Requirements -> Unknowns/Hypotheses -> Plan -> Execute
 
 EpiPilot is organized around four planes:
 
-- **Interface plane** — CLI/API/UI surfaces for goals, decisions, progress, graphs, and agent sessions.
+- **Interface plane** — project-centered Web UI and future execution-control CLI/API surfaces.
 - **Control plane** — requirements, epistemics, planning, scheduling, context compilation, supervision, verification, and recovery.
 - **Execution plane** — replaceable coding-agent adapters running in isolated workspaces.
 - **State plane** — requirements, decisions, unknowns, hypotheses, evidence, task graph, memory, events, and artifacts.
@@ -34,6 +62,7 @@ Architecture and planning documents:
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — detailed staged plan from the current V0 foundation to V1.0, including milestone scope, gates, tests, and acceptance criteria.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module boundaries, state ownership, runtime flow, and invariants.
 - [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context, memory classes, scope, consolidation, and retrieval rules.
+- [`docs/UI.md`](docs/UI.md) — runnable workbench, read-model semantics, capability limits, and browser testing.
 
 ## Coding-agent selection
 
@@ -96,6 +125,14 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+Browser integration tests are separate from the default test run:
+
+```bash
+python -m pip install -e '.[dev,web,browser]'
+python -m playwright install chromium
+EPIPILOT_BROWSER_TESTS=1 pytest tests/test_web_browser.py -q
+```
+
 ## V0 foundation
 
 The current V0 foundation intentionally starts with contracts that are difficult to retrofit safely later:
@@ -117,26 +154,27 @@ The current V0 foundation intentionally starts with contracts that are difficult
 - a single-task runtime from `READY` through independent verification with guaranteed executor cleanup;
 - a sequential project-level DAG runner that unlocks successors only after verified predecessor completion and can continue independent branches;
 - failure-signature-aware supervision that forbids unchanged blind retries and escalates repeated failures;
+- a read-only project cognition workbench backed by committed Git metadata and optional canonical event replay;
 - regression tests for executor self-certification, graph cycles, stale event writers, memory scope leakage, context truncation, verification bypasses, executor control flow, retry loops, task-scope violations, and DAG execution semantics.
 
 ## Next V0 milestones
 
-The next implementation slice focuses on state reconstruction and enforcement rather than UI:
+The read-only UI provides early visibility without bypassing the remaining control-plane work:
 
-1. event payload codecs and deterministic project-state reducers/replay;
-2. checkpoint/resume on top of the append-only stream;
-3. artifact metadata/store contracts and revision-aware repository indexing;
-4. runtime enforcement of `TaskContract` path/resource boundaries;
-5. wiring `ProjectContract.execution_ready`, Decision Frontier interrupts, and retry policy into the project runtime;
-6. Git worktree isolation and resource locks as prerequisites for parallel execution;
-7. PostgreSQL Event Store adapter for multi-process/server deployment;
-8. CLI/API surfaces after the control/state contracts stabilize.
+1. checkpoint/resume on top of typed event replay;
+2. artifact metadata/store contracts and stronger revision-aware repository understanding;
+3. runtime enforcement of `TaskContract` path/resource boundaries;
+4. wiring `ProjectContract.execution_ready`, Decision Frontier interrupts, and retry policy into the project runtime;
+5. Git worktree isolation and resource locks as prerequisites for parallel execution;
+6. PostgreSQL Event Store adapter for multi-process/server deployment;
+7. version-checked, authorized command services before browser execution/approval controls;
+8. evidence-grounded natural-language project explanations and optimization analysis.
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full milestone plan through V1.0.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the longer-term milestone plan; this read-only UI slice does not claim completion of its execution-control or autonomous research milestones.
 
 ## Project status
 
-EpiPilot is in early V0 development. Architecture contracts and quality gates are intentionally being stabilized before UI or multi-agent parallelism is added.
+EpiPilot is in early V0 development. The project workbench is a usable local read-only surface; fully autonomous goal completion and browser-based execution control remain under development.
 
 ## License
 
