@@ -2,7 +2,7 @@
 
 **EpiPilot** is an evidence-driven epistemic orchestration framework for long-horizon coding agents.
 
-EpiPilot sits above coding agents such as Pi, Codex, Claude Code, and other executors. It manages project requirements, unknowns, hypotheses, evidence, dynamic task graphs, context compilation, verification, and replanning so that long-running work remains auditable and evidence-driven.
+EpiPilot sits above coding agents such as Pi, Codex, DeepSeek Harness (DSH), and other executors. It manages project requirements, unknowns, hypotheses, evidence, dynamic task graphs, context compilation, verification, and replanning so that long-running work remains auditable and evidence-driven.
 
 ## Core loop
 
@@ -34,6 +34,38 @@ Architecture and planning documents:
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — detailed staged plan from the current V0 foundation to V1.0, including milestone scope, gates, tests, and acceptance criteria.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module boundaries, state ownership, runtime flow, and invariants.
 - [`docs/MEMORY.md`](docs/MEMORY.md) — canonical state vs. memory vs. working context, memory classes, scope, consolidation, and retrieval rules.
+
+## Coding-agent selection
+
+Project logic depends only on the stable `CodingAgentExecutor` protocol. Built-in executor names are currently `pi`, `codex`, and `dsh`, and deployments select one through runtime configuration rather than changing project-domain code.
+
+```python
+from pathlib import Path
+
+from epipilot.executors.registry import ExecutorConfig, create_executor
+
+workspace = Path("/path/to/project-worktree")
+executor = create_executor(ExecutorConfig(backend="codex", cwd=workspace))
+```
+
+Changing the backend is intentionally small:
+
+```python
+pi_executor = create_executor(ExecutorConfig(backend="pi", cwd=workspace))
+dsh_executor = create_executor(ExecutorConfig(backend="dsh", cwd=workspace))
+```
+
+The selected executable must already be installed and configured in the runtime environment. The built-in defaults are:
+
+```text
+pi    -> pi --mode rpc --no-session
+codex -> codex exec --json --ephemeral
+dsh   -> dsh --profile headless --json
+```
+
+`ExecutorConfig.command` can override these commands for custom installations or wrappers. Executor completion remains non-authoritative: Pi `agent_end`, Codex `turn.completed`, and a successful DSH `final` only become `REPORTED_DONE`; the independent EpiPilot verifier decides whether a task is actually `PASSED`.
+
+The registry is extensible, so future coding agents can be added without modifying project state, epistemics, planning, or verification logic.
 
 ## Repository standards
 
@@ -78,14 +110,14 @@ The current V0 foundation intentionally starts with contracts that are difficult
 - scoped typed long-term memory with canonical references, episodic lessons, trigger-based procedures, and revision-pinned structural memory;
 - a Context Compiler that never silently drops mandatory authoritative state;
 - an evidence-gated verification pipeline and independent argv-based command verifier;
-- a replaceable coding-agent executor protocol;
-- a concrete headless Pi JSONL RPC executor using `pi --mode rpc`;
-- Pi `agent_end` mapped only to `AGENT_REPORTED_DONE`, never directly to `PASSED`;
+- a replaceable coding-agent executor protocol plus configuration-driven registry;
+- built-in Pi, Codex, and DSH executor adapters with command overrides;
+- Pi `agent_end`, Codex `turn.completed`, and successful DSH headless completion mapped only to `AGENT_REPORTED_DONE`, never directly to `PASSED`;
 - interactive Pi confirmation/input requests surfaced as `BLOCKED` rather than auto-approved;
 - a single-task runtime from `READY` through independent verification with guaranteed executor cleanup;
 - a sequential project-level DAG runner that unlocks successors only after verified predecessor completion and can continue independent branches;
 - failure-signature-aware supervision that forbids unchanged blind retries and escalates repeated failures;
-- regression tests for executor self-certification, graph cycles, stale event writers, memory scope leakage, context truncation, verification bypasses, Pi RPC control flow, retry loops, task-scope violations, and DAG execution semantics.
+- regression tests for executor self-certification, graph cycles, stale event writers, memory scope leakage, context truncation, verification bypasses, executor control flow, retry loops, task-scope violations, and DAG execution semantics.
 
 ## Next V0 milestones
 
