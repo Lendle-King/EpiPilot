@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>EpiPilot · 项目认知工作台</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script type="module" src="/assets/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">跳到项目内容</a>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">E</span><div>EpiPilot<small>PROJECT WORKBENCH</small></div></div>
+    <div class="sidebar-caption">项目工作区</div>
+    <div class="project-label"><span class="project-dot" aria-hidden="true"></span><span id="project-name">正在连接项目</span></div>
+    <nav id="tabs" role="tablist" aria-label="项目视图" aria-orientation="vertical">
+      <button id="tab-overview" role="tab" aria-controls="panel-overview" aria-selected="true" data-tab="overview"><span aria-hidden="true">01</span>总览</button>
+      <button id="tab-understanding" role="tab" aria-controls="panel-understanding" aria-selected="false" tabindex="-1" data-tab="understanding"><span aria-hidden="true">02</span>项目认知</button>
+      <button id="tab-delivery" role="tab" aria-controls="panel-delivery" aria-selected="false" tabindex="-1" data-tab="delivery"><span aria-hidden="true">03</span>目标推进</button>
+      <button id="tab-opportunities" role="tab" aria-controls="panel-opportunities" aria-selected="false" tabindex="-1" data-tab="opportunities"><span aria-hidden="true">04</span>优化机会</button>
+      <button id="tab-evidence" role="tab" aria-controls="panel-evidence" aria-selected="false" tabindex="-1" data-tab="evidence"><span aria-hidden="true">05</span>成果与证据</button>
+    </nav>
+    <div class="sidebar-footer"><span class="readonly-dot" aria-hidden="true"></span>本地 · 只读工作台<p>先理解，再行动。<br>每个结论，都有来处。</p></div>
+  </aside>
+  <main id="workspace" tabindex="-1">
+    <header class="topbar"><div><span class="eyebrow">项目 / 认知与推进</span><div id="source-label" class="source-label">读取真实项目数据</div></div><div class="top-actions"><button id="open-search" aria-haspopup="dialog">检索项目 <kbd>/</kbd></button><button id="refresh">刷新</button><button id="export-report" class="primary">导出简报</button></div></header>
+    <div id="error" class="error-banner" role="alert" hidden></div>
+    <div id="loading" class="loading" role="status">正在读取仓库与项目状态…</div>
+    <div id="content" hidden>
+      <div class="context-strip"><div><span id="revision" class="mono"></span><span id="dirty" class="tag"></span><span id="event-version" class="muted"></span></div><span id="sync-time" class="muted" aria-live="polite"></span></div>
+      <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0"></section>
+      <section id="panel-understanding" role="tabpanel" aria-labelledby="tab-understanding" tabindex="0" hidden></section>
+      <section id="panel-delivery" role="tabpanel" aria-labelledby="tab-delivery" tabindex="0" hidden></section>
+      <section id="panel-opportunities" role="tabpanel" aria-labelledby="tab-opportunities" tabindex="0" hidden></section>
+      <section id="panel-evidence" role="tabpanel" aria-labelledby="tab-evidence" tabindex="0" hidden></section>
+      <footer class="workspace-footer">EpiPilot 是项目认知与推进层，不是执行器自评的展示墙。此版本不会从浏览器启动 Agent 或修改仓库。</footer>
+    </div>
+  </main>
+  <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-top"><span class="eyebrow">依据与上下文</span><button id="close-detail" aria-label="关闭详情">关闭 ×</button></div><h2 id="detail-title"></h2><div id="detail-body"></div></dialog>
+  <dialog id="search-dialog" aria-labelledby="search-title"><div class="dialog-top"><h2 id="search-title">检索项目</h2><button id="close-search" aria-label="关闭检索">关闭 ×</button></div><p class="muted">检索当前项目认知与证据。这里是来源检索，不是 LLM 问答；不会发起执行。</p><form id="search-form"><label class="sr-only" for="search-query">检索关键词</label><input id="search-query" type="search" placeholder="模块、问题、证据或目标关键词" maxlength="200" required><button class="primary">检索</button></form><div id="search-results" aria-live="polite"></div></dialog>
+</body>
+</html>

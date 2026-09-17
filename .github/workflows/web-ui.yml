@@ -1,0 +1,61 @@
+name: Web UI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install web and browser test dependencies
+        run: python -m pip install -e '.[dev,web,browser]'
+      - name: JavaScript syntax
+        run: node --check src/epipilot/web/static/app.js
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Browser behavior
+        env:
+          EPIPILOT_BROWSER_TESTS: '1'
+        run: pytest tests/test_web_browser.py -q
+      - name: Wheel contains the web assets
+        run: |
+          python -m pip wheel . --no-deps --wheel-dir /tmp/epipilot-wheel
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          wheel = next(Path('/tmp/epipilot-wheel').glob('epipilot-*.whl'))
+          with ZipFile(wheel) as archive:
+              for name in ('index.html', 'app.js', 'styles.css'):
+                  assert f'epipilot/web/static/{name}' in archive.namelist()
+          PY
+  formatting-advice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install ruff
+      - name: Produce formatting advice without writing back to GitHub
+        run: |
+          ruff format src/epipilot/web tests/test_web*.py
+          ruff check --fix src/epipilot/web tests/test_web*.py
+      - name: Export suggested diff
+        if: always()
+        run: git diff > /tmp/workbench-format.patch
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workbench-format-advice
+          path: /tmp/workbench-format.patch

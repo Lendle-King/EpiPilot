@@ -29,12 +29,17 @@ Repository = "https://github.com/Lendle-King/EpiPilot"
 Issues = "https://github.com/Lendle-King/EpiPilot/issues"
 
 [project.optional-dependencies]
+web = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+browser = ["playwright>=1.48,<2"]
 dev = [
   "mypy>=1.11",
   "pre-commit>=3.7",
   "pytest>=8.3",
   "pytest-asyncio>=0.23",
   "ruff>=0.6",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "httpx>=0.27,<1",
 ]
 
 [tool.hatch.build.targets.wheel]
