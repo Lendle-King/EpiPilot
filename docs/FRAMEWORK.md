@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-EpiPilot is an evidence-driven epistemic orchestration framework for long-horizon coding agents. It sits above coding-agent executors such as Pi, Codex, Claude Code, or other backends and owns the durable project-level reasoning and control loop.
+EpiPilot is an evidence-driven epistemic orchestration framework for long-horizon coding agents. It sits above replaceable coding-agent executors such as Pi, Codex, DeepSeek Harness (DSH), or other backends and owns the durable project-level reasoning and control loop.
 
 The framework is not intended to be a thin prompt wrapper. Its role is to preserve user intent, model uncertainty explicitly, turn uncertainty into testable hypotheses and experiments, supervise coding-agent execution, verify outcomes independently, update project beliefs from evidence, and revise the task graph without losing provenance.
 
@@ -226,14 +226,24 @@ The factors should be explicit scheduling inputs rather than hidden LLM intuitio
 
 ## 10. Executor boundary
 
-Coding agents are replaceable executors behind a stable adapter interface. EpiPilot should support backends such as Pi without coupling domain logic to one provider.
+Coding agents are replaceable execution backends behind the stable `CodingAgentExecutor` port. Project-domain logic must not import or depend directly on Pi, Codex, DSH, or another provider. Backend selection is runtime configuration.
+
+The built-in registry currently exposes:
+
+```text
+pi    -> pi --mode rpc --no-session
+codex -> codex exec --json --ephemeral
+dsh   -> dsh --profile headless --json
+```
+
+`ExecutorConfig` selects the backend and supplies the task workspace, optional command override, and shutdown timeout. `ExecutorRegistry` maps backend names to factories and permits additional adapters to be registered without changing epistemic, planning, state, or verification modules.
 
 A coding-agent executor may:
 
-- start a task-scoped session;
+- start a task-scoped session or one-shot task process;
 - report progress and observations;
 - produce changes and artifacts;
-- accept steering or interruption;
+- accept steering or interruption where the backend supports it;
 - terminate and clean up.
 
 It may not:
@@ -243,7 +253,11 @@ It may not:
 - silently approve user-owned interactive decisions;
 - mutate the project graph without an authorized basis.
 
-For Pi RPC, `agent_end` maps only to `AGENT_REPORTED_DONE`; interactive confirmation/input requests should surface as blocked or user-decision-required unless an explicit policy authorizes them.
+Backend terminal signals are observations, not proof. Pi `agent_end` maps only to `REPORTED_DONE`. Codex `turn.completed` maps only to `REPORTED_DONE`. DSH requires both a `final` event and successful process exit before it maps to `REPORTED_DONE`. In every case the independent verifier still controls the later transition to `PASSED`.
+
+Unknown or unavailable backends fail closed. EpiPilot must never silently fall back from the requested coding agent to another one. The selected executable is an external runtime prerequisite and is not bundled by EpiPilot.
+
+Executor-local permissions or sandbox features are not the project security boundary. Task execution should run inside caller-supplied isolated workspaces, and EpiPilot should independently enforce task scope and verification.
 
 ## 11. Verification
 
@@ -400,7 +414,7 @@ Control Plane
   Context / Supervisor / Verification / Recovery
 
 Execution Plane
-  Pi / Codex / Claude Code / other adapters
+  Pi / Codex / DSH / future coding-agent adapters
   isolated workspaces / subprocesses / resources
 
 State Plane
@@ -427,4 +441,4 @@ The project should preserve these invariants across all future versions:
 
 ## 22. V1.0 success definition
 
-EpiPilot V1.0 should be able to accept a real project goal containing genuine technical uncertainty, clarify only the user-owned decisions, investigate unknowns, supervise a coding agent, verify outcomes independently, revise its plan from evidence, survive interruption/restart, and finish with an auditable verified result.
+EpiPilot V1.0 should be able to accept a real project goal containing genuine technical uncertainty, clarify only the user-owned decisions, investigate unknowns, supervise a selected coding-agent backend, verify outcomes independently, revise its plan from evidence, survive interruption/restart, and finish with an auditable verified result.
