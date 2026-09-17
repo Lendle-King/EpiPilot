@@ -49,7 +49,7 @@ Output: `ProjectView`; evidence-linked search, Markdown report, proposal-only ha
 - [x] Add real SQLite/replay tests, including wrong aggregate, version gaps and schema.
 - [x] Implement `load_stream(path, project_id)` using SQLite URI mode=ro and replay.
 - [x] Verify selecting codex/pi/dsh changes only an exported proposal, not canonical tasks.
-- [ ] Verify state integration against the complete upstream repository in GitHub CI.
+- [x] Verify state integration against the complete upstream repository in GitHub CI.
 
 ## Task 3 — read-only application and accessible UI
 
@@ -62,9 +62,31 @@ Files: `src/epipilot/web/app.py`, `src/epipilot/web/__main__.py`,
 - [x] Build five tabs, empty/error states, detail dialog, search, proposal selection/export.
 - [x] Run 18 focused repository/API/CLI tests locally, plus JS syntax and offline
   Chromium DOM/rendering checks using synthetic repository fixtures.
-- [ ] Run live HTTP browser tests and complete formatting/lint/type/test CI.
-- [ ] Publish a focused PR stacked on executor PR #7 with exact verification results.
+- [x] Run live HTTP browser tests and complete formatting/lint/type/test CI.
+- [x] Publish a focused PR stacked on executor PR #7 with exact verification results.
+
+## Verified delivery
+
+Implementation revision: `b1bd8e47c9a67cad2ab8f1e322ace294b2ce3f01`.
+
+- [Full CI](https://github.com/Lendle-King/EpiPilot/actions/runs/35218575109):
+  Python 3.11 and 3.12 formatting, lint, mypy and pytest all succeeded.
+  The inspected Python 3.12 log reports **114 passed, 2 skipped, 2 warnings**.
+  The two browser tests are intentionally skipped in the ordinary suite and run in
+  the dedicated Web UI job. The warnings are upstream test-client deprecations, not
+  failing assertions; they have not been hidden or filtered.
+- [Web UI CI](https://github.com/Lendle-King/EpiPilot/actions/runs/35218575133):
+  live Chromium navigation, search, backend handoff download, keyboard interaction,
+  narrow-screen layout and stale-state handling passed. JavaScript syntax and wheel
+  static-asset inclusion also passed.
+- [PR #8](https://github.com/Lendle-King/EpiPilot/pull/8) is stacked on executor PR #7;
+  this record does not imply either branch has been merged into main.
 
 Local browser HTTP navigation is blocked by the environment's administrator policy;
-offline DOM checks are not represented as live end-to-end verification. GitHub Actions
-runs the live HTTP browser tests without weakening existing quality gates.
+offline DOM checks are not represented as live end-to-end verification. The independent
+GitHub Actions browser job supplied the live HTTP verification without bypassing that
+local restriction or weakening existing quality gates.
+
+This delivery is the read-only workbench slice. It is not a security audit, live LLM
+integration qualification, browser execution control plane, or proof that autonomous
+project completion has been implemented end to end.
