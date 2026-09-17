@@ -3,18 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
+from epipilot.core.models import Task
+from epipilot.executors.base import ExecutorObservation, ExecutorState
 from epipilot.executors.codex_exec import CodexExecExecutor
 from epipilot.executors.dsh_headless import DshHeadlessExecutor
+from epipilot.executors.pi_rpc import PiRpcExecutor
 from epipilot.executors.registry import (
     ExecutorConfig,
     ExecutorRegistry,
     create_executor,
     default_executor_registry,
 )
-
-from epipilot.core.models import Task
-from epipilot.executors.base import ExecutorObservation, ExecutorState
-from epipilot.executors.pi_rpc import PiRpcExecutor
 
 
 class _DummyExecutor:
