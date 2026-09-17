@@ -5,10 +5,10 @@ import sys
 import textwrap
 
 import pytest
-from epipilot.executors.dsh_headless import DshHeadlessExecutor
 
 from epipilot.core.models import Task, new_task_id
 from epipilot.executors.base import ExecutorState
+from epipilot.executors.dsh_headless import DshHeadlessExecutor
 
 _FINAL_SUCCESS_SCRIPT = textwrap.dedent(
     """
