@@ -16,8 +16,19 @@ def make_repo(path: Path) -> Path:
     (path / "src" / "engine.py").write_text('"""Coordinates project execution."""\nimport json\n')
     subprocess.run(["git", "-C", str(path), "add", "."], check=True)
     subprocess.run(
-        ["git", "-C", str(path), "-c", "user.name=Test", "-c", "user.email=test@example.org",
-         "commit", "-qm", "fixture"], check=True,
+        [
+            "git",
+            "-C",
+            str(path),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.org",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+        check=True,
     )
     return path
 
@@ -40,8 +51,21 @@ def test_excludes_untracked_secrets_and_symlinks(tmp_path: Path) -> None:
     (repo / "docs").mkdir()
     (repo / "docs" / "leak.md").symlink_to(repo / ".env")
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c",
-                    "user.email=test@example.org", "commit", "-qm", "safety"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.org",
+            "commit",
+            "-qm",
+            "safety",
+        ],
+        check=True,
+    )
     result = RepositoryInspector(repo).inspect().model_dump_json()
     assert "must-not-appear" not in result
     assert "leak.md" not in result

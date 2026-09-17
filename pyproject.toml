@@ -51,6 +51,8 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
+# Intentional Chinese UI punctuation; all other confusable-character checks stay enabled.
+allowed-confusables = ["，", "：", "；", "（", "）"]
 select = [
   "E",
   "F",

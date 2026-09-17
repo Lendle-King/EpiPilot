@@ -24,7 +24,9 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def live_url(tmp_path: Path) -> Iterator[str]:
     repo = make_repo(tmp_path / "repo")
-    server = uvicorn.Server(uvicorn.Config(create_app(WorkbenchService(repo)), log_level="error", ws="none"))
+    server = uvicorn.Server(
+        uvicorn.Config(create_app(WorkbenchService(repo)), log_level="error", ws="none")
+    )
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         listener.listen()
@@ -47,7 +49,8 @@ def test_workbench_navigation_search_and_backend_handoff(live_url: str, tmp_path
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
-            executable_path=os.environ.get("EPIPILOT_CHROMIUM"), args=["--no-sandbox"],
+            executable_path=os.environ.get("EPIPILOT_CHROMIUM"),
+            args=["--no-sandbox"],
         )
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         errors: list[str] = []
@@ -87,16 +90,22 @@ def test_mobile_layout_and_explicit_stale_state(live_url: str) -> None:
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
-            executable_path=os.environ.get("EPIPILOT_CHROMIUM"), args=["--no-sandbox"],
+            executable_path=os.environ.get("EPIPILOT_CHROMIUM"),
+            args=["--no-sandbox"],
         )
         page = browser.new_page(viewport={"width": 390, "height": 844})
         page.goto(live_url)
         expect(page.get_by_role("heading", name="先看懂项目，再决定下一步。")).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         expect(page.get_by_role("tablist")).to_have_attribute("aria-orientation", "horizontal")
-        page.route("**/api/project", lambda route: route.fulfill(
-            status=503, content_type="application/json", body='{"detail":"source unavailable"}',
-        ))
+        page.route(
+            "**/api/project",
+            lambda route: route.fulfill(
+                status=503,
+                content_type="application/json",
+                body='{"detail":"source unavailable"}',
+            ),
+        )
         page.get_by_role("button", name="刷新", exact=True).click()
         expect(page.get_by_role("alert")).to_contain_text("上次成功快照")
         page.get_by_role("tab", name="优化机会").click()

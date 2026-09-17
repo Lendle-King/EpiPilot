@@ -12,7 +12,9 @@ from test_web_repository import make_repo
 
 
 def test_cli_reports_invalid_event_database_without_traceback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     repo = make_repo(tmp_path / "repo")
     monkeypatch.setattr(sys, "argv", ["epipilot.web", "--repo", str(repo)])

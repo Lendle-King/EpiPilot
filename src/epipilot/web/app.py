@@ -29,7 +29,8 @@ def create_app(service: WorkbenchService) -> FastAPI:
 
     @app.middleware("http")
     async def boundaries(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]],
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         origin = request.headers.get("origin")
         same_origin = str(request.base_url).rstrip("/")
@@ -43,7 +44,12 @@ def create_app(service: WorkbenchService) -> FastAPI:
             response = await call_next(request)
         except (ValueError, OSError, sqlite3.Error):
             response = JSONResponse(
-                {"detail": "数据源不可用或未通过校验。请检查仓库、项目 ID 与事件库；旧视图不代表最新状态。"},
+                {
+                    "detail": (
+                        "数据源不可用或未通过校验。请检查仓库、项目 ID 与事件库；"
+                        "旧视图不代表最新状态。"
+                    )
+                },
                 status_code=503,
             )
         response.headers["Content-Security-Policy"] = _CSP
@@ -78,8 +84,12 @@ def create_app(service: WorkbenchService) -> FastAPI:
 
     @app.get("/api/report")
     def report() -> Response:
-        return Response(service.report(), media_type="text/markdown", headers={
-            "Content-Disposition": 'attachment; filename="epipilot-project-report.md"',
-        })
+        return Response(
+            service.report(),
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": 'attachment; filename="epipilot-project-report.md"',
+            },
+        )
 
     return app

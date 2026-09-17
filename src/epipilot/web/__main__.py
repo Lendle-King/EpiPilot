@@ -9,8 +9,12 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="EpiPilot local read-only project workbench")
-    parser.add_argument("--repo", type=Path, required=True, help="Local Git repository with a commit")
-    parser.add_argument("--events-db", type=Path, help="Existing EpiPilot SQLite database (read-only)")
+    parser.add_argument(
+        "--repo", type=Path, required=True, help="Local Git repository with a commit"
+    )
+    parser.add_argument(
+        "--events-db", type=Path, help="Existing EpiPilot SQLite database (read-only)"
+    )
     parser.add_argument("--project-id", help="Exact aggregate ID; required with --events-db")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()

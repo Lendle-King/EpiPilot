@@ -53,8 +53,15 @@ class SearchResponse(ReadModel):
 
 def all_cards(view: ProjectView) -> tuple[Card, ...]:
     unique: dict[str, Card] = {}
-    for card in (*view.goals, *view.requirements, *view.tasks, *view.knowledge,
-                 *view.opportunities, *view.decisions, *view.evidence):
+    for card in (
+        *view.goals,
+        *view.requirements,
+        *view.tasks,
+        *view.knowledge,
+        *view.opportunities,
+        *view.decisions,
+        *view.evidence,
+    ):
         unique[card.id] = card
     return tuple(unique.values())
 
@@ -81,23 +88,35 @@ class WorkbenchService:
             if self.events_db is not None:
                 state, changes = load_stream(self.events_db, project_id)
             view = build_project_view(
-                state, repo, project_id=project_id,
+                state,
+                repo,
+                project_id=project_id,
                 captured_at=datetime.now(UTC).isoformat(),
             )
-            return view.model_copy(update={
-                "changes": changes,
-                "backends": tuple(BackendView(
-                    name=name, executable_available=shutil.which(name) is not None,
-                ) for name in BACKEND_NAMES),
-            })
+            return view.model_copy(
+                update={
+                    "changes": changes,
+                    "backends": tuple(
+                        BackendView(
+                            name=name,
+                            executable_available=shutil.which(name) is not None,
+                        )
+                        for name in BACKEND_NAMES
+                    ),
+                }
+            )
 
     def search(self, query: str) -> SearchResponse:
         view = self.snapshot()
         terms = query.casefold().split()
-        results = tuple(card for card in all_cards(view) if all(
-            term in " ".join((card.title, card.summary, *card.details.values())).casefold()
-            for term in terms
-        ))
+        results = tuple(
+            card
+            for card in all_cards(view)
+            if all(
+                term in " ".join((card.title, card.summary, *card.details.values())).casefold()
+                for term in terms
+            )
+        )
         return SearchResponse(query=query, results=results[:30])
 
     def proposal(self, card_id: str, backend: BackendName) -> TaskProposal:
@@ -105,34 +124,55 @@ class WorkbenchService:
         for card in (*view.opportunities, *view.tasks):
             if card.id == card_id:
                 return TaskProposal(
-                    project_id=view.project_id, repository_revision=view.repository.revision,
-                    event_version=view.event_version, executor=ExecutorPreference(backend=backend),
-                    objective=card.title, rationale=card.summary, source_refs=card.refs,
+                    project_id=view.project_id,
+                    repository_revision=view.repository.revision,
+                    event_version=view.event_version,
+                    executor=ExecutorPreference(backend=backend),
+                    objective=card.title,
+                    rationale=card.summary,
+                    source_refs=card.refs,
                 )
         raise KeyError(card_id)
 
     def report(self) -> str:
         view = self.snapshot()
-        lines = [f"# {html.escape(view.name)} — 项目简报", "",
-                 f"Git revision: `{view.repository.revision}`",
-                 f"Event version: {view.event_version}",
-                 f"Captured at: {view.captured_at}",
-                 "Project acceptance: **NOT ASSESSED**", "",
-                 "This is a read-model export, not proof of completion or authorization to execute.",
-                 "Historical verification does not establish applicability to the current Git HEAD.", ""]
-        sections = (("当前目标", view.goals), ("验收与约束", view.requirements),
-                    ("项目认知", view.knowledge), ("目标推进", view.tasks),
-                    ("待调查的优化机会", view.opportunities), ("证据", view.evidence))
+        lines = [
+            f"# {html.escape(view.name)} — 项目简报",
+            "",
+            f"Git revision: `{view.repository.revision}`",
+            f"Event version: {view.event_version}",
+            f"Captured at: {view.captured_at}",
+            "Project acceptance: **NOT ASSESSED**",
+            "",
+            "This is a read-model export, not proof of completion or authorization to execute.",
+            "Historical verification does not establish applicability to the current Git HEAD.",
+            "",
+        ]
+        sections = (
+            ("当前目标", view.goals),
+            ("验收与约束", view.requirements),
+            ("项目认知", view.knowledge),
+            ("目标推进", view.tasks),
+            ("待调查的优化机会", view.opportunities),
+            ("证据", view.evidence),
+        )
         for title, cards in sections:
             lines.extend((f"## {title}", ""))
             if not cards:
                 lines.append("尚未提供数据。")
             for card in cards:
-                lines.extend((f"### {html.escape(card.title)}", f"State: {card.status}",
-                              html.escape(card.summary)))
+                lines.extend(
+                    (
+                        f"### {html.escape(card.title)}",
+                        f"State: {card.status}",
+                        html.escape(card.summary),
+                    )
+                )
                 for ref in card.refs:
-                    lines.append(f"Source: {html.escape(ref.location)}; "
-                                 f"revision: {ref.revision or 'not linked'}; "
-                                 f"scope: {html.escape(ref.scope or 'not specified')}")
+                    lines.append(
+                        f"Source: {html.escape(ref.location)}; "
+                        f"revision: {ref.revision or 'not linked'}; "
+                        f"scope: {html.escape(ref.scope or 'not specified')}"
+                    )
                 lines.append("")
         return "\n".join(lines) + "\n"

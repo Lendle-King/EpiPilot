@@ -86,10 +86,14 @@ class RepositoryInspector:
                 continue
             text = raw.decode("utf-8", errors="replace")
             if PurePosixPath(path).suffix.lower() == ".md":
-                documents.append(DocumentView(
-                    path=path, text=text[:16_000], truncated=len(text) > 16_000,
-                    revision=revision,
-                ))
+                documents.append(
+                    DocumentView(
+                        path=path,
+                        text=text[:16_000],
+                        truncated=len(text) > 16_000,
+                        revision=revision,
+                    )
+                )
                 continue
             summary = "已定位源码文件；尚未建立行为级解释。"
             details = {"分析方式": "静态文件检查，不代表运行验证", "文件": path}
@@ -97,27 +101,47 @@ class RepositoryInspector:
                 try:
                     tree = ast.parse(text)
                     summary = (ast.get_docstring(tree) or summary)[:800]
-                    names = [node.name for node in tree.body
-                             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))]
-                    imports = [node.module for node in ast.walk(tree)
-                               if isinstance(node, ast.ImportFrom) and node.module]
+                    names = [
+                        node.name
+                        for node in tree.body
+                        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                    ]
+                    imports = [
+                        node.module
+                        for node in ast.walk(tree)
+                        if isinstance(node, ast.ImportFrom) and node.module
+                    ]
                     details["公开结构"] = ", ".join(names[:20]) or "未发现顶层类或函数"
-                    details["静态依赖（非调用图）"] = ", ".join(dict.fromkeys(imports))[:800] or "未记录"
+                    details["静态依赖（非调用图）"] = (
+                        ", ".join(dict.fromkeys(imports))[:800] or "未记录"
+                    )
                 except (SyntaxError, ValueError, RecursionError):
                     details["分析限制"] = "Python AST 解析未成功，不能据此推断代码有效。"
-            modules.append(Card(
-                id=f"module-{len(modules)}", title=path, status="static_inspection",
-                summary=summary, details=details,
-                refs=(SourceRef(kind="source_code", location=path, revision=revision),),
-            ))
+            modules.append(
+                Card(
+                    id=f"module-{len(modules)}",
+                    title=path,
+                    status="static_inspection",
+                    summary=summary,
+                    details=details,
+                    refs=(SourceRef(kind="source_code", location=path, revision=revision),),
+                )
+            )
         truncated = len(candidates) > len(selected)
         if truncated:
             warnings.append(f"仅扫描前 {self.max_files} 个候选文件，项目地图不完整。")
         warnings.append("项目地图基于已提交版本；未提交修改不纳入源码解释。")
         view = RepositoryView(
-            name=self.root.name, revision=revision, branch=branch, dirty=dirty,
-            total_files=total, scanned_files=len(selected), truncated=truncated,
-            documents=tuple(documents), modules=tuple(modules), warnings=tuple(warnings),
+            name=self.root.name,
+            revision=revision,
+            branch=branch,
+            dirty=dirty,
+            total_files=total,
+            scanned_files=len(selected),
+            truncated=truncated,
+            documents=tuple(documents),
+            modules=tuple(modules),
+            warnings=tuple(warnings),
         )
         self._cached = view
         return view

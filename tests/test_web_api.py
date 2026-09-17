@@ -81,7 +81,9 @@ def test_static_security_and_no_arbitrary_file_endpoint(client: TestClient) -> N
 
 def test_missing_database_is_explicit_and_never_created(tmp_path: Path) -> None:
     missing = tmp_path / "missing.sqlite"
-    app = create_app(WorkbenchService(make_repo(tmp_path / "repo"), events_db=missing, project_id="p"))
+    app = create_app(
+        WorkbenchService(make_repo(tmp_path / "repo"), events_db=missing, project_id="p")
+    )
     client = TestClient(app, base_url="http://127.0.0.1")
     response = client.get("/api/project")
     assert response.status_code == 503

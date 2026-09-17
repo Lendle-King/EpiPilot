@@ -21,11 +21,18 @@ from test_web_repository import make_repo
 
 
 def seed(path: Path) -> None:
-    event = make_project_event(EventType.REQUIREMENT_ADDED, "p", RequirementAddedPayload(
-        requirement_id=uuid4(), kind=RequirementKind.GOAL, statement="A real replayed goal",
-        provenance_source="synthetic test", provenance_scope="fixture",
-        provenance_created_at=datetime(2026, 9, 17, tzinfo=UTC),
-    ))
+    event = make_project_event(
+        EventType.REQUIREMENT_ADDED,
+        "p",
+        RequirementAddedPayload(
+            requirement_id=uuid4(),
+            kind=RequirementKind.GOAL,
+            statement="A real replayed goal",
+            provenance_source="synthetic test",
+            provenance_scope="fixture",
+            provenance_created_at=datetime(2026, 9, 17, tzinfo=UTC),
+        ),
+    )
     SqliteEventStore(path).append(event, expected_version=0)
 
 

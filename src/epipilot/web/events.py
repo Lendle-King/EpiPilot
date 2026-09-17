@@ -16,7 +16,10 @@ if TYPE_CHECKING:
 
 
 def load_stream(
-    path: Path, project_id: str, *, max_events: int = 20_000,
+    path: Path,
+    project_id: str,
+    *,
+    max_events: int = 20_000,
 ) -> tuple[ProjectState, tuple[EventSummary, ...]]:
     if not path.is_file():
         raise ValueError("event database does not exist")
@@ -42,13 +45,25 @@ def load_stream(
     from epipilot.core.events import EventId, EventType, ProjectEvent
     from epipilot.state.replay import replay_project
 
-    events = tuple(ProjectEvent(
-        id=EventId(UUID(row[1])), type=EventType(row[2]), aggregate_id=project_id,
-        payload=bytes(row[3]), occurred_at=datetime.fromisoformat(row[4]), schema_version=row[5],
-    ) for row in rows)
+    events = tuple(
+        ProjectEvent(
+            id=EventId(UUID(row[1])),
+            type=EventType(row[2]),
+            aggregate_id=project_id,
+            payload=bytes(row[3]),
+            occurred_at=datetime.fromisoformat(row[4]),
+            schema_version=row[5],
+        )
+        for row in rows
+    )
     state = replay_project(project_id, events)
-    summaries = tuple(EventSummary(
-        id=str(event.id), version=index, type=event.type.value,
-        occurred_at=event.occurred_at.isoformat(),
-    ) for index, event in enumerate(events, 1))
+    summaries = tuple(
+        EventSummary(
+            id=str(event.id),
+            version=index,
+            type=event.type.value,
+            occurred_at=event.occurred_at.isoformat(),
+        )
+        for index, event in enumerate(events, 1)
+    )
     return state, summaries[-50:]
