@@ -5,10 +5,10 @@ import sys
 import textwrap
 
 import pytest
+from epipilot.executors.codex_exec import CodexExecExecutor
 
 from epipilot.core.models import Task, new_task_id
 from epipilot.executors.base import ExecutorState
-from epipilot.executors.codex_exec import CodexExecExecutor
 
 _COMPLETED_SCRIPT = textwrap.dedent(
     """
