@@ -60,7 +60,7 @@ class RepositoryInspector:
                 continue
             total += 1
             metadata, encoded_path = entry.split(b"\t", 1)
-            mode, kind, oid, size = metadata.split()
+            mode, kind, encoded_oid, encoded_size = metadata.split()
             path = encoded_path.decode("utf-8", errors="replace")
             parts = PurePosixPath(path).parts
             if mode not in {b"100644", b"100755"} or kind != b"blob":
@@ -69,7 +69,7 @@ class RepositoryInspector:
                 continue
             suffix = PurePosixPath(path).suffix.lower()
             if suffix == ".md" or suffix in _SOURCE_SUFFIXES:
-                candidates.append((path, oid.decode("ascii"), int(size)))
+                candidates.append((path, encoded_oid.decode("ascii"), int(encoded_size)))
 
         candidates.sort(key=lambda entry: (entry[0].lower() != "readme.md", entry[0]))
         documents: list[DocumentView] = []
