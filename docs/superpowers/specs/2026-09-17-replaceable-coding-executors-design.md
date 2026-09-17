@@ -59,6 +59,7 @@ class ExecutorConfig:
 ```python
 ExecutorFactory = Callable[[ExecutorConfig], CodingAgentExecutor]
 
+
 class ExecutorRegistry:
     def register(self, name: str, factory: ExecutorFactory, *, replace: bool = False) -> None: ...
     def create(self, config: ExecutorConfig) -> CodingAgentExecutor: ...
