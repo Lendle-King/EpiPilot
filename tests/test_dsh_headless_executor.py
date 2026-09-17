@@ -63,9 +63,7 @@ async def _wait_for_terminal(executor: DshHeadlessExecutor, session_id: str) -> 
 
 @pytest.mark.asyncio
 async def test_dsh_requires_final_and_zero_exit_for_reported_done() -> None:
-    executor = DshHeadlessExecutor(
-        command=(sys.executable, "-u", "-c", _FINAL_SUCCESS_SCRIPT)
-    )
+    executor = DshHeadlessExecutor(command=(sys.executable, "-u", "-c", _FINAL_SUCCESS_SCRIPT))
     task = Task(id=new_task_id(), objective="Implement feature")
     session_id = await executor.start_task(task, "project context")
 
@@ -80,9 +78,7 @@ async def test_dsh_requires_final_and_zero_exit_for_reported_done() -> None:
 
 @pytest.mark.asyncio
 async def test_dsh_final_with_nonzero_exit_fails() -> None:
-    executor = DshHeadlessExecutor(
-        command=(sys.executable, "-u", "-c", _FINAL_FAILURE_SCRIPT)
-    )
+    executor = DshHeadlessExecutor(command=(sys.executable, "-u", "-c", _FINAL_FAILURE_SCRIPT))
     task = Task(id=new_task_id(), objective="Implement feature")
     session_id = await executor.start_task(task, "project context")
 
@@ -108,9 +104,7 @@ async def test_dsh_error_event_fails() -> None:
 
 @pytest.mark.asyncio
 async def test_dsh_zero_exit_without_final_fails_closed() -> None:
-    executor = DshHeadlessExecutor(
-        command=(sys.executable, "-u", "-c", _MISSING_FINAL_SCRIPT)
-    )
+    executor = DshHeadlessExecutor(command=(sys.executable, "-u", "-c", _MISSING_FINAL_SCRIPT))
     task = Task(id=new_task_id(), objective="Implement feature")
     session_id = await executor.start_task(task, "project context")
 
