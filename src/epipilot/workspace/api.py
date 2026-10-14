@@ -18,9 +18,7 @@ from pydantic import BaseModel, Field
 from epipilot.workspace.onboarding import WorkspaceStore
 
 app = FastAPI(title="EpiPilot Research Workspace", version="0.1.0")
-app.add_middleware(
-    TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"]
-)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
 
 
 class ProjectInput(BaseModel):
@@ -84,7 +82,6 @@ def get_project(project_id: str) -> dict[str, object]:
         _raise(error)
     return {}
 
-
 @app.get("/api/projects/{project_id}/git")
 def get_git(project_id: str) -> dict[str, object]:
     try:
@@ -95,9 +92,7 @@ def get_git(project_id: str) -> dict[str, object]:
 
 
 @app.post("/api/projects/{project_id}/candidates/{candidate_id}/review")
-def review_candidate(
-    project_id: str, candidate_id: str, body: ReviewInput
-) -> dict[str, object]:
+def review_candidate(project_id: str, candidate_id: str, body: ReviewInput) -> dict[str, object]:
     try:
         return _store().review(project_id, candidate_id, body.decision)
     except (KeyError, ValueError) as error:
