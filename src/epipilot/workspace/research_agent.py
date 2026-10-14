@@ -360,7 +360,7 @@ class ResearchOnboardingAgent:
         return self._persist(project_id, str(item["git_commit"]), "chatgpt_manual", report)
 
     def _persist(
-        self, project_id: str, commit: str, provider: str, report: dict[str, object]
+        self, project_id: str, commit: str, provider: str, report: dict[str, Any]
     ) -> dict[str, object]:
         run_id = str(uuid4())
         with self.store._db() as conn:
@@ -381,7 +381,7 @@ class ResearchOnboardingAgent:
             )
         return self.report(project_id)
 
-    def report(self, project_id: str) -> dict[str, object]:
+    def report(self, project_id: str) -> dict[str, Any]:
         self.store.get(project_id)  # fail closed on missing project
         with self.store._db() as conn:
             row = conn.execute(
