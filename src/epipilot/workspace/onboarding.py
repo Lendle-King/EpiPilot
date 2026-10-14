@@ -252,8 +252,7 @@ class WorkspaceStore:
         latest_reviews: dict[str, str] = {}
         for e in reviews:
             payload = json.loads(str(e["payload"]))
-            if e["kind"] == "candidate_review":
-                latest_reviews.setdefault(payload["candidate_id"], payload["decision"])
+            latest_reviews.setdefault(payload["candidate_id"], payload["decision"])
         data["candidates"] = [
             {**dict(c), "review": latest_reviews.get(c["id"], "pending")} for c in candidates
         ]
