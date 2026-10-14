@@ -34,17 +34,11 @@ class FakeOpener:
 
     def open(self, request: Any, timeout: float) -> FakeHTTPResponse:
         self.requests.append(request)
-        return FakeHTTPResponse(
-            json.dumps(self.completion).encode(), request.full_url
-        )
+        return FakeHTTPResponse(json.dumps(self.completion).encode(), request.full_url)
 
 
 def _completion(content: str, reason: str = "stop") -> dict[str, object]:
-    return {
-        "choices": [
-            {"finish_reason": reason, "message": {"content": content}}
-        ]
-    }
+    return {"choices": [{"finish_reason": reason, "message": {"content": content}}]}
 
 
 @pytest.mark.parametrize(
@@ -68,8 +62,9 @@ def test_openai_compatible_chat_payload_and_server_only_auth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = FakeOpener(_completion('{"claims": []}'))
-    monkeypatch.setattr("epipilot.workspace.remote_model.urllib.request.build_opener",
-                        lambda handler: fake)
+    monkeypatch.setattr(
+        "epipilot.workspace.remote_model.urllib.request.build_opener", lambda handler: fake
+    )
     model = ThirdPartyChatModel(
         base_url="https://openrouter.ai/api/v1",
         api_key="test-secret-never-log",
@@ -136,7 +131,9 @@ def test_configuration_only_exposes_nonsecret_settings(monkeypatch: pytest.Monke
     assert ThirdPartyChatModel.from_environment("Other/model").model == "Other/model"
 
 
-def test_missing_or_invalid_configuration_fails_before_network(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_or_invalid_configuration_fails_before_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     for key in (
         "EPIPILOT_RESEARCH_API_BASE_URL",
         "EPIPILOT_RESEARCH_API_KEY",
@@ -161,6 +158,7 @@ def test_http_failure_and_token_limit_are_safe(
             raise urllib.error.HTTPError(
                 request.full_url, 401, "sensitive provider response", {}, None
             )
+
     monkeypatch.setattr(
         "epipilot.workspace.remote_model.urllib.request.build_opener",
         lambda handler: FailingOpener(),
@@ -188,7 +186,8 @@ def test_schema_conversion_keeps_safety_in_local_pydantic() -> None:
 
 
 def test_http_configuration_endpoint_does_not_expose_key(
-    tmp_path: Any, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
