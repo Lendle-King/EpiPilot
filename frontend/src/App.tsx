@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import ReactFlow, { Background, Controls, type Edge, type Node } from '@xyflow/react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import ReactFlow, { Background, Controls, type Edge, type Node, Position } from '@xyflow/react';
 import {
   Activity, ArrowRight, BookOpen, Check, CheckCircle2, ChevronRight, CircleAlert,
   Clock3, Copy, ExternalLink, FileText, FolderGit2, GitBranch, GitCommitHorizontal,
@@ -46,7 +46,7 @@ const nav: { view: View; name: string; icon: typeof Activity }[] = [
   { view: 'activity', name: 'Activity timeline', icon: Clock3 }
 ];
 
-function Badge({ children, tone = '' }: { children: React.ReactNode; tone?: string }) {
+function Badge({ children, tone = '' }: { children: ReactNode; tone?: string }) {
   return <span className={'badge ' + tone}>{children}</span>;
 }
 function Empty({ children }: { children: React.ReactNode }) {
@@ -70,7 +70,7 @@ function NewProject({ close, create }: {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true); setError('');
     try { await create({ mode, name, goal, repository_path: mode === 'adopt' ? path : undefined }); }
@@ -132,21 +132,21 @@ function Graph({ project }: { project: Project }) {
     const sources = [...new Set(project.candidates.map(c => c.source_path))].slice(0, 6);
     const nodes: Node[] = [{
       id: 'root', position: { x: 0, y: 140 }, data: { label: project.name },
-      sourcePosition: 'right', type: 'input',
+      sourcePosition: Position.Right, type: 'input',
       style: { background: '#e9edff', border: '1px solid #8491ef', borderRadius: 12, width: 180, padding: 14, fontWeight: 700 }
     }];
     const edges: Edge[] = [];
     sources.forEach((source, i) => {
       const sid = 'src' + i;
       nodes.push({ id: sid, position: { x: 270, y: i * 140 }, data: { label: source },
-        sourcePosition: 'right', targetPosition: 'left',
+        sourcePosition: Position.Right, targetPosition: Position.Left,
         style: { background: 'white', border: '1px solid #dfe4ed', borderRadius: 12, width: 220, padding: 12 } });
       edges.push({ id: 'r' + i, source: 'root', target: sid });
       const note = project.candidates.find(c => c.source_path === source && c.review !== 'rejected');
       if (note) {
         const nid = 'note' + i;
         nodes.push({ id: nid, position: { x: 585, y: i * 140 },
-          data: { label: note.text.slice(0, 90) }, targetPosition: 'left', type: 'output',
+          data: { label: note.text.slice(0, 90) }, targetPosition: Position.Left, type: 'output',
           style: { background: note.review === 'accepted_note' ? '#edf8f3' : '#fff9ec',
             border: '1px solid #dfe4ed', borderRadius: 12, width: 240, padding: 12, fontSize: 11 } });
         edges.push({ id: 'n' + i, source: sid, target: nid });
