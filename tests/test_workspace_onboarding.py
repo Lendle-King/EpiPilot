@@ -121,8 +121,12 @@ def test_http_onboarding_and_review(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert client.get("/api/health").json()["status"] == "ok"
     response = client.post(
         "/api/projects",
-        json={"mode": "adopt", "name": "ETF", "goal": "Study independent alpha",
-              "repository_path": str(repo)},
+        json={
+            "mode": "adopt",
+            "name": "ETF",
+            "goal": "Study independent alpha",
+            "repository_path": str(repo),
+        },
     )
     assert response.status_code == 201, response.text
     data = response.json()
@@ -136,5 +140,10 @@ def test_http_onboarding_and_review(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert changed.json()["events"][0]["kind"] == "candidate_review"
     assert client.get("/api/projects/" + data["id"] + "/chat-prompt").status_code == 200
     assert client.get("/api/projects/not-a-project").status_code == 404
-    assert client.post("/api/projects/" + data["id"] + "/intent",
-                       json={"message": "Verify B3 original sources first"}).status_code == 200
+    assert (
+        client.post(
+            "/api/projects/" + data["id"] + "/intent",
+            json={"message": "Verify B3 original sources first"},
+        ).status_code
+        == 200
+    )
