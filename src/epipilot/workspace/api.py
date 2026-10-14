@@ -6,6 +6,7 @@ canonical evidence, execute remote GitHub/Notion actions, or place trades.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from subprocess import TimeoutExpired
@@ -16,6 +17,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 from epipilot.workspace.onboarding import WorkspaceStore
+from epipilot.workspace.research_agent import LocalOllamaModel, ResearchOnboardingAgent
 
 app = FastAPI(title="EpiPilot Research Workspace", version="0.1.0")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
@@ -117,6 +119,73 @@ def get_chat_prompt(project_id: str) -> dict[str, str]:
         _raise(error)
     return {}
 
+
+
+class AgentRunInput(BaseModel):
+    model: str = Field(min_length=1, max_length=100)
+    max_documents: int = Field(default=4, ge=1, le=6)
+
+
+class ChatImportInput(BaseModel):
+    source_path: str = Field(min_length=1, max_length=500)
+    response_json: str = Field(min_length=2, max_length=70000)
+
+
+class SemanticReviewInput(BaseModel):
+    decision: Literal["accepted_note", "rejected"]
+
+
+@app.get("/api/projects/{project_id}/research-agent")
+def research_report(project_id: str) -> dict[str, object]:
+    try:
+        return ResearchOnboardingAgent(_store()).report(project_id)
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.get("/api/projects/{project_id}/research-agent/chat-packet")
+def research_chat_packet(project_id: str, max_documents: int = 2) -> dict[str, object]:
+    try:
+        return ResearchOnboardingAgent(_store()).chat_packet(project_id, max_documents)
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-agent/run")
+async def run_research_agent(project_id: str, body: AgentRunInput) -> dict[str, object]:
+    try:
+        agent = ResearchOnboardingAgent(_store())
+        return await asyncio.to_thread(
+            agent.run_local, project_id, LocalOllamaModel(body.model),
+            "local_ollama:" + body.model, body.max_documents,
+        )
+    except (KeyError, ValueError, OSError, RuntimeError, TimeoutExpired) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-agent/chat-import")
+def import_research_chat(project_id: str, body: ChatImportInput) -> dict[str, object]:
+    try:
+        return ResearchOnboardingAgent(_store()).import_chat_batch(
+            project_id, body.source_path, body.response_json
+        )
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-agent/claims/{claim_id}/review")
+def review_research_claim(
+    project_id: str, claim_id: str, body: SemanticReviewInput
+) -> dict[str, object]:
+    try:
+        return ResearchOnboardingAgent(_store()).review(project_id, claim_id, body.decision)
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
 
 def main() -> None:
     import uvicorn
