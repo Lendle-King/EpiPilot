@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -219,7 +219,7 @@ def _verify_quote(document: SnapshotDocument, claim: GroundedClaim) -> None:
 
 def reconcile(
     results: list[tuple[SnapshotDocument, ClaimBatch]],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Deduplicate exact normalized propositions and flag possible contradictions.
 
     Contradiction hints are NOT scientific adjudications; a changed context/date
@@ -254,8 +254,19 @@ def reconcile(
                 assert isinstance(present, list)
                 if citation not in present:
                     present.append(citation)
+    return {
+        "schema_version": 1,
+        "claims": list(claims.values()),
+        "potential_conflicts": potential_conflicts(list(claims.values())),
+        "raw_claim_count": sum(len(batch.claims) for _, batch in results),
+        "distinct_claim_count": len(claims),
+        "independently_verified": False,
+    }
+
+
+def potential_conflicts(claims: list[dict[str, Any]]) -> list[dict[str, str]]:
     grouped: dict[str, set[str]] = {}
-    for claim in claims.values():
+    for claim in claims:
         grouped.setdefault(str(claim["topic_key"]), set()).add(str(claim["stance"]))
     conflicts = [
         {"topic_key": topic, "reason": "potential opposing source claims; check date, "
@@ -263,14 +274,7 @@ def reconcile(
         for topic, stances in sorted(grouped.items())
         if {"supports", "contradicts"} <= stances
     ]
-    return {
-        "schema_version": 1,
-        "claims": list(claims.values()),
-        "potential_conflicts": conflicts,
-        "raw_claim_count": sum(len(batch.claims) for _, batch in results),
-        "distinct_claim_count": len(claims),
-        "independently_verified": False,
-    }
+    return conflicts
 
 
 class ResearchOnboardingAgent:
@@ -333,6 +337,23 @@ class ResearchOnboardingAgent:
             raise ValueError("Unknown pinned source document")
         batch = ClaimBatch.model_validate_json(raw)
         report = reconcile([(document, batch)])
+        prior = self.report(project_id)
+        if prior.get("available") and prior.get("git_commit") == item["git_commit"]:
+            merged: dict[str, dict[str, Any]] = {
+                claim["id"]: claim for claim in prior["claims"]
+            }
+            for claim in report["claims"]:
+                if claim["id"] in merged:
+                    refs = merged[claim["id"]]["citations"]
+                    for ref in claim["citations"]:
+                        if ref not in refs:
+                            refs.append(ref)
+                else:
+                    merged[claim["id"]] = claim
+            report["claims"] = list(merged.values())
+            report["raw_claim_count"] += int(prior["raw_claim_count"])
+            report["distinct_claim_count"] = len(merged)
+            report["potential_conflicts"] = potential_conflicts(list(merged.values()))
         return self._persist(project_id, str(item["git_commit"]), "chatgpt_manual", report)
 
     def _persist(
@@ -376,7 +397,7 @@ class ResearchOnboardingAgent:
             if value["run_id"] == row["run_id"]:
                 seen.setdefault(value["claim_id"], value["decision"])
         for claim in report["claims"]:
-            claim["review"] = seen.get(claim["id"], "pending")
+            claim["review"] = seen.get(claim["id"], claim.get("review", "pending"))
         return {
             **report, "available": True, "run_id": row["run_id"],
             "git_commit": row["git_commit"], "provider": row["provider"],
