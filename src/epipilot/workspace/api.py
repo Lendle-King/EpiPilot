@@ -7,8 +7,8 @@ canonical evidence, execute remote GitHub/Notion actions, or place trades.
 from __future__ import annotations
 
 import os
-from subprocess import TimeoutExpired
 from pathlib import Path
+from subprocess import TimeoutExpired
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
