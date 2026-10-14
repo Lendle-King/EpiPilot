@@ -120,7 +120,6 @@ def get_chat_prompt(project_id: str) -> dict[str, str]:
     return {}
 
 
-
 class AgentRunInput(BaseModel):
     model: str = Field(min_length=1, max_length=100)
     max_documents: int = Field(default=4, ge=1, le=6)
@@ -158,8 +157,11 @@ async def run_research_agent(project_id: str, body: AgentRunInput) -> dict[str, 
     try:
         agent = ResearchOnboardingAgent(_store())
         return await asyncio.to_thread(
-            agent.run_local, project_id, LocalOllamaModel(body.model),
-            "local_ollama:" + body.model, body.max_documents,
+            agent.run_local,
+            project_id,
+            LocalOllamaModel(body.model),
+            "local_ollama:" + body.model,
+            body.max_documents,
         )
     except (KeyError, ValueError, OSError, RuntimeError, TimeoutExpired) as error:
         _raise(error)
