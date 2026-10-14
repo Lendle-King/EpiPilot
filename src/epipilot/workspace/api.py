@@ -7,6 +7,7 @@ canonical evidence, execute remote GitHub/Notion actions, or place trades.
 from __future__ import annotations
 
 import os
+from subprocess import TimeoutExpired
 from pathlib import Path
 from typing import Literal
 
@@ -69,16 +70,10 @@ def list_projects() -> list[dict[str, object]]:
 def create_project(body: ProjectInput) -> dict[str, object]:
     try:
         return _store().create(body.name, body.goal, body.mode, body.repository_path)
-    except (ValueError, OSError, subprocess_timeout()) as error:
+    except (ValueError, OSError, TimeoutExpired) as error:
         _raise(error)
     return {}
 
-
-def subprocess_timeout() -> type[Exception]:
-    """Expose the subprocess timeout type without broad exception swallowing."""
-    from subprocess import TimeoutExpired
-
-    return TimeoutExpired
 
 
 @app.get("/api/projects/{project_id}")
