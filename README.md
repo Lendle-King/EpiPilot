@@ -45,6 +45,12 @@ Before contributing, read:
 
 The repository enforces formatting, linting, type checking, and tests through CI.
 
+## Local Research Workspace UI (experimental)
+
+The React/FastAPI Research Workspace supports **new project creation** and **adoption of local Git research repositories**. Adopting a repo pins a commit and extracts historical observation/knowledge candidates with source-file, line and content-hash provenance. Review notes in an evidence inbox, view source lineage, Git status and audit history, and record human intent or copy a project context prompt into ordinary ChatGPT Chat. Imported notes are **not** independently verified facts; this staging UI does not write GitHub/Notion remotely or trade.
+
+Start with `pip install -e '.[ui]'` then `python -m epipilot.workspace.api`; separately run `cd frontend && npm install && npm run dev` and visit `http://127.0.0.1:5173`. Details: [Research Workspace guide](docs/RESEARCH_WORKSPACE.md).
+
 ## Development
 
 EpiPilot currently targets Python 3.11+.
