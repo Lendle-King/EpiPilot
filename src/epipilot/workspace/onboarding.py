@@ -46,7 +46,12 @@ def scan_history(root: Path, commit: str) -> list[dict[str, Any]]:
         for p in paths
         if p == "README.md"
         or (p.startswith("docs/") and p.lower().endswith((".md", ".json", ".yaml")))
-    ][:80]
+    ]
+    # Recent dated research reports take precedence over older trial archives.
+    selected.sort(
+        key=lambda p: max(re.findall(r"20[0-9]{6}", p), default="0"), reverse=True
+    )
+    selected = selected[:80]
     candidates: list[dict[str, Any]] = []
     for path in selected:
         result = subprocess.run(
@@ -62,6 +67,7 @@ def scan_history(root: Path, commit: str) -> list[dict[str, Any]]:
         except UnicodeDecodeError:
             continue
         digest = hashlib.sha256(result.stdout).hexdigest()
+        per_file = 0
         for line_no, line in enumerate(source.splitlines(), 1):
             text = line.strip()
             if (
@@ -83,8 +89,11 @@ def scan_history(root: Path, commit: str) -> list[dict[str, Any]]:
                     "git_commit": commit,
                 }
             )
+            per_file += 1
             if len(candidates) == 220:
                 return candidates
+            if per_file == 8:
+                break
     return candidates
 
 
@@ -234,9 +243,14 @@ class WorkspaceStore:
                 "SELECT * FROM workspace_events WHERE project_id=? ORDER BY seq DESC LIMIT 100",
                 (project_id,),
             ).fetchall()
+            reviews = conn.execute(
+                "SELECT payload FROM workspace_events "
+                "WHERE project_id=? AND kind='candidate_review' ORDER BY seq DESC",
+                (project_id,),
+            ).fetchall()
         data = dict(project)
         latest_reviews: dict[str, str] = {}
-        for e in events:
+        for e in reviews:
             payload = json.loads(str(e["payload"]))
             if e["kind"] == "candidate_review":
                 latest_reviews.setdefault(payload["candidate_id"], payload["decision"])
