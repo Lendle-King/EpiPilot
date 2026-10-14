@@ -17,7 +17,8 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 from epipilot.workspace.onboarding import WorkspaceStore
-from epipilot.workspace.research_agent import LocalOllamaModel, ResearchOnboardingAgent
+from epipilot.workspace.remote_model import ThirdPartyChatModel, model_configuration
+from epipilot.workspace.research_agent import ResearchOnboardingAgent
 
 app = FastAPI(title="EpiPilot Research Workspace", version="0.1.0")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
@@ -121,7 +122,7 @@ def get_chat_prompt(project_id: str) -> dict[str, str]:
 
 
 class AgentRunInput(BaseModel):
-    model: str = Field(min_length=1, max_length=100)
+    model: str | None = Field(default=None, min_length=1, max_length=160)
     max_documents: int = Field(default=4, ge=1, le=6)
 
 
@@ -152,15 +153,22 @@ def research_chat_packet(project_id: str, max_documents: int = 2) -> dict[str, o
     return {}
 
 
+@app.get("/api/research-model/config")
+def research_model_config() -> dict[str, object]:
+    return model_configuration()
+
+
 @app.post("/api/projects/{project_id}/research-agent/run")
 async def run_research_agent(project_id: str, body: AgentRunInput) -> dict[str, object]:
     try:
         agent = ResearchOnboardingAgent(_store())
+        model = ThirdPartyChatModel.from_environment(body.model)
         return await asyncio.to_thread(
-            agent.run_local,
+            agent.run_model,
             project_id,
-            LocalOllamaModel(body.model),
-            "local_ollama:" + body.model,
+            model,
+            "third_party:" + model_configuration()["provider_host"].__str__()
+            + ":" + model.model,
             body.max_documents,
         )
     except (KeyError, ValueError, OSError, RuntimeError, TimeoutExpired) as error:
