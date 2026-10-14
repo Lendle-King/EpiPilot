@@ -11,8 +11,6 @@ import hashlib
 import json
 import re
 import subprocess
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -22,7 +20,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from epipilot.workspace.onboarding import WorkspaceStore, _now, git
 
-_MODEL_URL = "http://127.0.0.1:11434/api/chat"
 _MAX_DOCS = 6
 _MAX_DOCUMENT_BYTES = 100_000
 _MAX_LINES = 180
@@ -87,47 +84,6 @@ class ExtractionModel(Protocol):
     """Semantic candidate extractor; validation remains in the controller."""
 
     def extract(self, prompt: str) -> ClaimBatch: ...
-
-
-@dataclass(frozen=True)
-class LocalOllamaModel:
-    """Optional LOCAL semantic engine. Never accepts a caller-provided URL."""
-
-    model: str
-    timeout: float = 110.0
-
-    def extract(self, prompt: str) -> ClaimBatch:
-        if not re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,100}", self.model):
-            raise ValueError("invalid local Ollama model identifier")
-        request = urllib.request.Request(
-            _MODEL_URL,
-            data=json.dumps(
-                {
-                    "model": self.model,
-                    "stream": False,
-                    "format": ClaimBatch.model_json_schema(),
-                    "options": {"temperature": 0},
-                    "messages": [
-                        {"role": "system", "content": GUIDANCE},
-                        {"role": "user", "content": prompt},
-                    ],
-                }
-            ).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            # Fixed loopback endpoint, no redirects to third-party hosts.
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                if response.geturl() != _MODEL_URL:
-                    raise ValueError("unexpected model endpoint redirect")
-                raw = response.read(350_000)
-        except (urllib.error.URLError, TimeoutError) as error:
-            raise RuntimeError("Local Ollama is unavailable or timed out") from error
-        message = json.loads(raw)["message"]["content"]
-        if not isinstance(message, str):
-            raise ValueError("local model returned no textual response")
-        return ClaimBatch.model_validate_json(message)
 
 
 def _eligible_files(root: Path, commit: str) -> list[str]:
@@ -312,7 +268,7 @@ class ResearchOnboardingAgent:
             "Do not include credentials or sensitive materials in ChatGPT.",
         }
 
-    def run_local(
+    def run_model(
         self,
         project_id: str,
         model: ExtractionModel,
