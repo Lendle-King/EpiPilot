@@ -172,9 +172,10 @@ def test_chatgpt_manual_batches_validate_merge_and_review(tmp_path: Path) -> Non
         agent.review(project_id, "nonexistent", "accepted_note")
     with pytest.raises(ValueError):
         agent.import_chat_batch(project_id, "other.md", '{"claims":[]}')
-    assert len(
-        [e for e in store.get(project_id)["events"] if e["kind"] == "semantic_claim_review"]
-    ) == 1
+    assert (
+        len([e for e in store.get(project_id)["events"] if e["kind"] == "semantic_claim_review"])
+        == 1
+    )
 
 
 def test_existing_repo_snapshot_is_immutable_during_analysis(tmp_path: Path) -> None:
