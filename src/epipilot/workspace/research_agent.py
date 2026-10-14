@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import sqlite3
 import subprocess
 import urllib.error
 import urllib.request
@@ -266,7 +265,7 @@ def potential_conflicts(claims: list[dict[str, Any]]) -> list[dict[str, str]]:
     grouped: dict[str, set[str]] = {}
     for claim in claims:
         grouped.setdefault(str(claim["topic_key"]), set()).add(str(claim["stance"]))
-    conflicts = [
+    return [
         {
             "topic_key": topic,
             "reason": "potential opposing source claims; check date, "
@@ -275,7 +274,6 @@ def potential_conflicts(claims: list[dict[str, Any]]) -> list[dict[str, str]]:
         for topic, stances in sorted(grouped.items())
         if {"supports", "contradicts"} <= stances
     ]
-    return conflicts
 
 
 class ResearchOnboardingAgent:
