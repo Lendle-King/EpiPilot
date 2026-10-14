@@ -167,8 +167,7 @@ async def run_research_agent(project_id: str, body: AgentRunInput) -> dict[str, 
             agent.run_model,
             project_id,
             model,
-            "third_party:" + model_configuration()["provider_host"].__str__()
-            + ":" + model.model,
+            "third_party:" + str(model_configuration()["provider_host"]) + ":" + model.model,
             body.max_documents,
         )
     except (KeyError, ValueError, OSError, RuntimeError, TimeoutExpired) as error:
