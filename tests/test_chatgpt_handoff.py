@@ -40,11 +40,13 @@ def test_rejects_unsafe_inputs() -> None:
     with pytest.raises(ValueError, match="safe"):
         _spec("../escape")
     with pytest.raises(ValueError, match="GitHub"):
-        ResearchHandoff("id", "goal", "context", ("https://evil.com/path",), (
-            "https://notion.so/abc",))
+        ResearchHandoff(
+            "id", "goal", "context", ("https://evil.com/path",), ("https://notion.so/abc",)
+        )
     with pytest.raises(ValueError, match="HTTPS"):
-        ResearchHandoff("id", "goal", "context", ("https://github.com/a/b",), (
-            "http://notion.so/abc",))
+        ResearchHandoff(
+            "id", "goal", "context", ("https://github.com/a/b",), ("http://notion.so/abc",)
+        )
 
 
 def test_handoff_state_and_receipt_are_explicitly_unverified(tmp_path: Path) -> None:
@@ -54,22 +56,29 @@ def test_handoff_state_and_receipt_are_explicitly_unverified(tmp_path: Path) -> 
     assert store.status("gui-1")["state"] == HandoffState.PREPARED
     assert store.prepare(_spec()) == prompt
     with pytest.raises(ValueError, match="differs"):
-        store.prepare(ResearchHandoff("gui-1", "different", "ctx", _spec().github_repos,
-                                     _spec().notion_pages))
+        store.prepare(
+            ResearchHandoff("gui-1", "different", "ctx", _spec().github_repos, _spec().notion_pages)
+        )
     with pytest.raises(ValueError, match="opened"):
         store.report("gui-1", b'{"summary":"pretend done"}')
     store.opened("gui-1")
-    store.report("gui-1", json.dumps({
-        "summary": "Finished as claimed",
-        "github_evidence": ["https://github.com/Lendle-King/EpiPilot/pull/123"],
-        "notion_evidence": ["https://www.notion.so/example123"],
-    }).encode())
+    store.report(
+        "gui-1",
+        json.dumps(
+            {
+                "summary": "Finished as claimed",
+                "github_evidence": ["https://github.com/Lendle-King/EpiPilot/pull/123"],
+                "notion_evidence": ["https://www.notion.so/example123"],
+            }
+        ).encode(),
+    )
     state = store.status("gui-1")
     assert state["state"] == HandoffState.RESULT_REPORTED
     assert "verified" not in state and "passed" not in state
     assert state["session"] == session_for_task("gui-1")
     assert json.loads((prompt.parent / "receipt.json").read_text())["summary"] == (
-        "Finished as claimed")
+        "Finished as claimed"
+    )
     with pytest.raises(ValueError, match="reopen"):
         store.opened("gui-1")
     with pytest.raises(ValueError, match="opened"):
@@ -96,7 +105,11 @@ async def test_browser_uses_visible_restored_session_and_fixed_site() -> None:
     with patch.object(AgentBrowserLauncher, "_run", new_callable=AsyncMock) as command:
         await browser.open("epipilot-test")
         command.assert_awaited_once_with(
-            "--session", "epipilot-test", "--restore", "--headed", "open",
+            "--session",
+            "epipilot-test",
+            "--restore",
+            "--headed",
+            "open",
             "https://chatgpt.com/",
         )
         command.reset_mock()
