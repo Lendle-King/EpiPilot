@@ -106,6 +106,13 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full milestone plan through V1.
 
 EpiPilot is in early V0 development. Architecture contracts and quality gates are intentionally being stabilized before UI or multi-agent parallelism is added.
 
+
+## Experimental: ChatGPT Web research handoff
+
+EpiPilot includes an optional **human-supervised** `agent-browser` integration that opens ChatGPT and prepares structured research tasks. GitHub experiment actions and Notion updates are delegated exclusively to ChatGPT's supported Work/Codex and connected capabilities; EpiPilot does not call those APIs through this workflow. Completion reports remain **unverified** until independently checked. This feature does not automate ChatGPT messages or scrape conversations.
+
+See [ChatGPT Browser Handoff](docs/CHATGPT_BROWSER_HANDOFF.md) for setup, commands, safety boundaries and limitations.
+
 ## License
 
 EpiPilot is licensed under the [Apache License 2.0](LICENSE). See [`NOTICE`](NOTICE) for attribution information.
