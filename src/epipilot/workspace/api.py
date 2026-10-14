@@ -73,7 +73,6 @@ def create_project(body: ProjectInput) -> dict[str, object]:
     return {}
 
 
-
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: str) -> dict[str, object]:
     try:
@@ -81,6 +80,7 @@ def get_project(project_id: str) -> dict[str, object]:
     except (KeyError, ValueError, OSError) as error:
         _raise(error)
     return {}
+
 
 @app.get("/api/projects/{project_id}/git")
 def get_git(project_id: str) -> dict[str, object]:
