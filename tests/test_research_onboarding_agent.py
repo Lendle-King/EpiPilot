@@ -47,14 +47,26 @@ def _repo(root: Path) -> Path:
 
 
 def _claim(
-    proposition: str, topic: str, stance: str, line: int, quote: str,
-    *, kind: str = "observation", execution: str = "completed", scientific: str = "blocked",
+    proposition: str,
+    topic: str,
+    stance: str,
+    line: int,
+    quote: str,
+    *,
+    kind: str = "observation",
+    execution: str = "completed",
+    scientific: str = "blocked",
 ) -> GroundedClaim:
     return GroundedClaim.model_validate(
         {
-            "proposition": proposition, "topic_key": topic, "stance": stance,
-            "source_line": line, "exact_quote": quote,
-            "kind": kind, "execution_status": execution, "scientific_status": scientific,
+            "proposition": proposition,
+            "topic_key": topic,
+            "stance": stance,
+            "source_line": line,
+            "exact_quote": quote,
+            "kind": kind,
+            "execution_status": execution,
+            "scientific_status": scientific,
             "caveat": "Historical data is not equivalent to qualified forward returns.",
         }
     )
@@ -66,27 +78,37 @@ class FakeScientificModel:
     def extract(self, prompt: str) -> ClaimBatch:
         common = _claim(
             "Workflow completed; that does not prove a profitable alpha",
-            "alpha_qualification", "neutral", 2,
+            "alpha_qualification",
+            "neutral",
+            2,
             "GitHub Actions SUCCESS: workflow completed but alpha was not qualified.",
         )
         if "trial_20261014.md" in prompt:
-            return ClaimBatch(claims=[
+            return ClaimBatch(
+                claims=[
+                    common,
+                    _claim(
+                        "PIT qualification appears supported in the later research report",
+                        "pit_data_qualification",
+                        "supports",
+                        3,
+                        "New original filing evidence QUALIFIES PIT data for prospective testing.",
+                        scientific="supported",
+                    ),
+                ]
+            )
+        return ClaimBatch(
+            claims=[
                 common,
                 _claim(
-                    "PIT qualification appears supported in the later research report",
-                    "pit_data_qualification", "supports", 3,
-                    "New original filing evidence QUALIFIES PIT data for prospective testing.",
-                    scientific="supported",
+                    "PIT historical source validation is still blocked",
+                    "pit_data_qualification",
+                    "contradicts",
+                    3,
+                    "Scientific verdict: PIT source remains BLOCKED due to missing original filings.",
                 ),
-            ])
-        return ClaimBatch(claims=[
-            common,
-            _claim(
-                "PIT historical source validation is still blocked",
-                "pit_data_qualification", "contradicts", 3,
-                "Scientific verdict: PIT source remains BLOCKED due to missing original filings.",
-            ),
-        ])
+            ]
+        )
 
 
 def _setup(tmp_path: Path) -> tuple[WorkspaceStore, str]:
@@ -121,7 +143,9 @@ def test_rejects_hallucinated_quotes_without_partial_persistence(tmp_path: Path)
     docs = snapshot_documents(repo, commit, 2)
     fabricated = _claim(
         "This result is fabricated and cannot be traced to a source line",
-        "fabricated_claim", "supports", 2,
+        "fabricated_claim",
+        "supports",
+        2,
         "This invented statement never appeared anywhere in the document.",
     )
     with pytest.raises(ValueError, match="Ungrounded"):
@@ -148,7 +172,9 @@ def test_chatgpt_manual_batches_validate_merge_and_review(tmp_path: Path) -> Non
         agent.review(project_id, "nonexistent", "accepted_note")
     with pytest.raises(ValueError):
         agent.import_chat_batch(project_id, "other.md", '{"claims":[]}')
-    assert len([e for e in store.get(project_id)["events"] if e["kind"] == "semantic_claim_review"]) == 1
+    assert len(
+        [e for e in store.get(project_id)["events"] if e["kind"] == "semantic_claim_review"]
+    ) == 1
 
 
 def test_existing_repo_snapshot_is_immutable_during_analysis(tmp_path: Path) -> None:
@@ -196,9 +222,16 @@ def test_http_semantic_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     )
     assert reviewed.status_code == 200
     assert any(c["review"] == "accepted_note" for c in reviewed.json()["claims"])
-    forged = json.dumps({"claims": [{
-        **batch.claims[0].model_dump(), "exact_quote": "fabricated citation which is not real"
-    }]})
+    forged = json.dumps(
+        {
+            "claims": [
+                {
+                    **batch.claims[0].model_dump(),
+                    "exact_quote": "fabricated citation which is not real",
+                }
+            ]
+        }
+    )
     failure = client.post(
         "/api/projects/" + pid + "/research-agent/chat-import",
         json={"source_path": doc["path"], "response_json": forged},
@@ -209,6 +242,6 @@ def test_http_semantic_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
 def agent_reports(store: WorkspaceStore, project_id: str) -> list[object]:
     with store._db() as conn:
-        return list(conn.execute(
-            "SELECT run_id FROM semantic_onboarding WHERE project_id=?", (project_id,)
-        ))
+        return list(
+            conn.execute("SELECT run_id FROM semantic_onboarding WHERE project_id=?", (project_id,))
+        )
