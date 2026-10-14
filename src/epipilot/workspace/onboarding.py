@@ -48,9 +48,7 @@ def scan_history(root: Path, commit: str) -> list[dict[str, Any]]:
         or (p.startswith("docs/") and p.lower().endswith((".md", ".json", ".yaml")))
     ]
     # Recent dated research reports take precedence over older trial archives.
-    selected.sort(
-        key=lambda p: max(re.findall(r"20[0-9]{6}", p), default="0"), reverse=True
-    )
+    selected.sort(key=lambda p: max(re.findall(r"20[0-9]{6}", p), default="0"), reverse=True)
     selected = selected[:80]
     candidates: list[dict[str, Any]] = []
     for path in selected:
