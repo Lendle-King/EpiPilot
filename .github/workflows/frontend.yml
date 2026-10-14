@@ -1,0 +1,24 @@
+name: Frontend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install UI dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+      - name: Type-check and build
+        working-directory: frontend
+        run: npm run build
