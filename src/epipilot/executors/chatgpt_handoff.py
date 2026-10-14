@@ -168,7 +168,7 @@ def _atomic_private_write(path: Path, data: bytes) -> None:
             output.write(data)
             output.flush()
             os.fsync(output.fileno())
-        os.replace(temp_name, path)
+        Path(temp_name).replace(path)
     finally:
         temporary = Path(temp_name)
         if temporary.exists():
