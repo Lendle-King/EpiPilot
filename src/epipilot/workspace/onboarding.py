@@ -72,7 +72,7 @@ def scan_history(root: Path, commit: str) -> list[dict[str, Any]]:
             ):
                 continue
             key = hashlib.sha256(
-                f"{commit}\0{path}\0{line_no}\0{text}".encode("utf-8")
+                f"{commit}\0{path}\0{line_no}\0{text}".encode()
             ).hexdigest()[:24]
             candidates.append(
                 {
@@ -122,7 +122,8 @@ class WorkspaceStore:
                 "repository_path TEXT, git_commit TEXT, git_branch TEXT, created_at TEXT);"
                 "CREATE TABLE IF NOT EXISTS candidates ("
                 "id TEXT, project_id TEXT, kind TEXT, text TEXT, "
-                "source_path TEXT, line INTEGER, source_sha256 TEXT, git_commit TEXT, PRIMARY KEY(id, project_id));"
+                "source_path TEXT, line INTEGER, source_sha256 TEXT, git_commit TEXT, "
+                "PRIMARY KEY(id, project_id));"
                 "CREATE TABLE IF NOT EXISTS workspace_events ("
                 "seq INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, kind TEXT, "
                 "payload TEXT, occurred_at TEXT);"
