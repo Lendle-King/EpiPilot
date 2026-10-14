@@ -122,7 +122,7 @@ def _setup(tmp_path: Path) -> tuple[WorkspaceStore, str]:
 def test_semantic_agent_deduplicates_and_exposes_temporal_conflict(tmp_path: Path) -> None:
     store, project_id = _setup(tmp_path)
     agent = ResearchOnboardingAgent(store)
-    result = agent.run_local(project_id, FakeScientificModel(), "fake-local", 2)
+    result = agent.run_model(project_id, FakeScientificModel(), "fake-local", 2)
     assert result["available"] is True
     assert result["raw_claim_count"] == 4
     assert result["distinct_claim_count"] == 3
@@ -186,7 +186,7 @@ def test_existing_repo_snapshot_is_immutable_during_analysis(tmp_path: Path) -> 
     (repo / "docs" / "trial_20261014.md").write_text(
         "Fake success: all alpha backtests are newly successful.\n", encoding="utf-8"
     )
-    result = ResearchOnboardingAgent(store).run_local(
+    result = ResearchOnboardingAgent(store).run_model(
         project_id, FakeScientificModel(), "synthetic", 2
     )
     assert result["distinct_claim_count"] == 3
