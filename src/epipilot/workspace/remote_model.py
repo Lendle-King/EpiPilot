@@ -18,7 +18,7 @@ from typing import Any, Literal, cast
 
 from pydantic import ValidationError
 
-from epipilot.workspace.research_agent import ClaimBatch, GUIDANCE
+from epipilot.workspace.research_agent import GUIDANCE, ClaimBatch
 
 ResponseFormat = Literal["json_schema", "json_object"]
 _MAX_RESPONSE_BYTES = 350_000
@@ -97,7 +97,7 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
         newurl: str,
     ) -> None:
         """Never forward the bearer token to a redirect target."""
-        return None
+        return
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,9 +120,9 @@ class ThirdPartyChatModel:
         if self.response_format not in {"json_schema", "json_object"}:
             raise ValueError("Unsupported research API response format")
         if not 1 <= self.timeout <= 180:
-            raise ValueError("Research API timeout must be within 1–180 seconds")
+            raise ValueError("Research API timeout must be within 1-180 seconds")
         if self.max_tokens is not None and not 1 <= self.max_tokens <= 16000:
-            raise ValueError("Research API max_tokens must be within 1–16000")
+            raise ValueError("Research API max_tokens must be within 1-16000")
 
     @classmethod
     def from_environment(cls, model_override: str | None = None) -> ThirdPartyChatModel:
@@ -200,7 +200,7 @@ class ThirdPartyChatModel:
             raise RuntimeError(
                 f"Research API HTTP {error.code}; check endpoint, key, model and JSON mode"
             ) from None
-        except (urllib.error.URLError, TimeoutError) as error:
+        except (urllib.error.URLError, TimeoutError):
             raise RuntimeError("Research API connection failed or timed out") from None
 
         if len(raw) > _MAX_RESPONSE_BYTES:
