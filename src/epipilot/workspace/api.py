@@ -189,6 +189,7 @@ def review_research_claim(
         _raise(error)
     return {}
 
+
 def main() -> None:
     import uvicorn
 
