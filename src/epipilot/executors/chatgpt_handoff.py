@@ -121,7 +121,10 @@ class DelegationReceipt:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("receipt must be UTF-8 JSON") from exc
         if not isinstance(body, dict) or set(body) - {
-            "summary", "github_evidence", "notion_evidence", "limitations"
+            "summary",
+            "github_evidence",
+            "notion_evidence",
+            "limitations",
         }:
             raise ValueError("unexpected receipt fields")
         summary = body.get("summary")
@@ -130,8 +133,10 @@ class DelegationReceipt:
         fields: dict[str, tuple[str, ...]] = {}
         for name in ("github_evidence", "notion_evidence", "limitations"):
             items = body.get(name, [])
-            if not isinstance(items, list) or len(items) > 50 or any(
-                not isinstance(item, str) or not item.strip() for item in items
+            if (
+                not isinstance(items, list)
+                or len(items) > 50
+                or any(not isinstance(item, str) or not item.strip() for item in items)
             ):
                 raise ValueError(f"receipt {name} must be a list of nonempty strings")
             fields[name] = tuple(items)
@@ -192,14 +197,17 @@ class ChatGPTWebHandoffStore:
                 raise ValueError("existing handoff differs; use a new task id")
             return folder / "prompt.md"
         _atomic_private_write(folder / "prompt.md", prompt)
-        self._save_manifest(spec.task_id, {
-            "schema_version": 1,
-            "task_id": spec.task_id,
-            "session": session_for_task(spec.task_id),
-            "state": HandoffState.PREPARED.value,
-            "prompt_sha256": hashlib.sha256(prompt).hexdigest(),
-            "created_at": datetime.now(UTC).isoformat(),
-        })
+        self._save_manifest(
+            spec.task_id,
+            {
+                "schema_version": 1,
+                "task_id": spec.task_id,
+                "session": session_for_task(spec.task_id),
+                "state": HandoffState.PREPARED.value,
+                "prompt_sha256": hashlib.sha256(prompt).hexdigest(),
+                "created_at": datetime.now(UTC).isoformat(),
+            },
+        )
         return folder / "prompt.md"
 
     def status(self, task_id: str) -> dict[str, Any]:
@@ -226,12 +234,16 @@ class ChatGPTWebHandoffStore:
             raise ValueError("handoff must be opened before accepting a report")
         receipt = DelegationReceipt.parse(raw_receipt)
         # Serialize a validated, normalized payload (not arbitrary extra input).
-        data = json.dumps({
-            "summary": receipt.summary,
-            "github_evidence": receipt.github_evidence,
-            "notion_evidence": receipt.notion_evidence,
-            "limitations": receipt.limitations,
-        }, ensure_ascii=False, indent=2).encode("utf-8")
+        data = json.dumps(
+            {
+                "summary": receipt.summary,
+                "github_evidence": receipt.github_evidence,
+                "notion_evidence": receipt.notion_evidence,
+                "limitations": receipt.limitations,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ).encode("utf-8")
         _atomic_private_write(self._folder(task_id) / "receipt.json", data)
         manifest["state"] = HandoffState.RESULT_REPORTED.value
         manifest["receipt_sha256"] = hashlib.sha256(data).hexdigest()
@@ -246,7 +258,8 @@ class ChatGPTWebHandoffStore:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Supervised ChatGPT Web research delegation")
     parser.add_argument(
-        "--state-dir", type=Path,
+        "--state-dir",
+        type=Path,
         default=Path.home() / ".local" / "share" / "epipilot" / "chatgpt-handoffs",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -269,13 +282,15 @@ async def _main() -> None:
     args = _parser().parse_args()
     store = ChatGPTWebHandoffStore(args.state_dir)
     if args.command == "prepare":
-        path = store.prepare(ResearchHandoff(
-            task_id=args.task_id,
-            objective=args.objective,
-            context=args.context_file.read_text(encoding="utf-8"),
-            github_repos=tuple(args.github),
-            notion_pages=tuple(args.notion),
-        ))
+        path = store.prepare(
+            ResearchHandoff(
+                task_id=args.task_id,
+                objective=args.objective,
+                context=args.context_file.read_text(encoding="utf-8"),
+                github_repos=tuple(args.github),
+                notion_pages=tuple(args.notion),
+            )
+        )
         print(f"Handoff prepared. Manually paste the local file into ChatGPT Work: {path}")
     elif args.command == "status":
         print(json.dumps(store.status(args.task_id), indent=2))
