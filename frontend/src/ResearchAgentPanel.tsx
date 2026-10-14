@@ -23,6 +23,8 @@ type ChatPacket = {
   goal: string; instructions: string; schema: object; documents: PacketDocument[];
 };
 type Props = { projectId: string; projectName: string };
+type ApiConfig = { configured: boolean; provider_host: string | null; model: string;
+  response_format: string; key_present: boolean };
 
 async function call<T>(path: string, method = 'GET', value?: object): Promise<T> {
   const res = await fetch('/api' + path, {
@@ -41,10 +43,12 @@ export default function ResearchAgentPanel({ projectId, projectName }: Props) {
   const [report, setReport] = useState<Report | null>(null);
   const [packet, setPacket] = useState<ChatPacket | null>(null);
   const [selectedDoc, setSelectedDoc] = useState('');
-  const [model, setModel] = useState('qwen3:4b');
+  const [model, setModel] = useState('');
+  const [config, setConfig] = useState<ApiConfig | null>(null);
+  const [approved, setApproved] = useState(false);
   const [documentLimit, setDocumentLimit] = useState(4);
   const [raw, setRaw] = useState('');
-  const [mode, setMode] = useState<'local' | 'chat'>('local');
+  const [mode, setMode] = useState<'api' | 'chat'>('api');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -52,6 +56,9 @@ export default function ResearchAgentPanel({ projectId, projectName }: Props) {
   useEffect(() => {
     setReport(null); setPacket(null); setSelectedDoc(''); setError(''); setInfo('');
     call<Report>('/projects/' + projectId + '/research-agent').then(setReport).catch(e => setError(String(e)));
+    call<ApiConfig>('/research-model/config').then(settings => { setConfig(settings); setModel(settings.model); })
+      .catch(e => setError(String(e)));
+    setApproved(false);
   }, [projectId]);
 
   async function analyze() {
@@ -59,10 +66,10 @@ export default function ResearchAgentPanel({ projectId, projectName }: Props) {
     try {
       const result = await call<Report>(
         '/projects/' + projectId + '/research-agent/run', 'POST',
-        { model, max_documents: documentLimit },
+        { model: model || undefined, max_documents: documentLimit },
       );
       setReport(result);
-      setInfo('Extraction completed. Every retained quote was checked against the pinned Git source. Scientific claims remain unverified.');
+      setInfo('Third-party analysis completed. Pinned Git quotes were checked, but scientific claims remain unverified.');
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   }
@@ -128,18 +135,24 @@ export default function ResearchAgentPanel({ projectId, projectName }: Props) {
     </div>
     <p className="helper">Reconstruct experiments, hypotheses, failures and reusable lessons from pinned research documents. Grounding is checked against source lines; model interpretation is not independent scientific verification.</p>
     <div className="agent-modes">
-      <button className={mode === 'local' ? 'active' : ''} onClick={() => setMode('local')}>Local model</button>
+      <button className={mode === 'api' ? 'active' : ''} onClick={() => setMode('api')}>Third-party API</button>
       <button className={mode === 'chat' ? 'active' : ''} onClick={() => setMode('chat')}>Ordinary ChatGPT</button>
     </div>
-    {mode === 'local' ? <div className="agent-configuration">
+    {mode === 'api' ? <div className="agent-configuration">
       <div className="agent-formline">
-        <label>Ollama model <input value={model} onChange={e => setModel(e.target.value)} placeholder="qwen3:4b"/></label>
+        <label>Provider model ID <input value={model} onChange={e => setModel(e.target.value)} placeholder="e.g. deepseek-chat or openai/gpt-4o"/></label>
         <label>Research documents <select value={documentLimit} onChange={e => setDocumentLimit(Number(e.target.value))}>
           {[1, 2, 3, 4, 5, 6].map(n => <option value={n} key={n}>{n}</option>)}
         </select></label>
       </div>
-      <p className="helper">Optional local Ollama process at 127.0.0.1:11434. The UI does not upload files to a remote provider. Large models may take time; this operation runs a bounded document batch.</p>
-      <button className="btn primary" disabled={busy || !model.trim()} onClick={analyze}>
+      <div className="notice"><ShieldCheck size={16}/>{config?.configured
+        ? 'API configured on backend: ' + config.provider_host + ' · ' + config.response_format
+        : 'Configure EPIPILOT_RESEARCH_API_BASE_URL, _API_KEY and _MODEL on the Python server.'}</div>
+      <p className="helper">A bounded excerpt of the selected research documents and your research goal will be transmitted to the configured external API. Never include credentials or sensitive project records. Keys stay in server environment variables, not the browser.</p>
+      <label className="agent-consent"><input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)}/>
+        <span>I authorize sending these research excerpts to the configured third-party model provider.</span>
+      </label>
+      <button className="btn primary" disabled={busy || !approved || !config?.configured || !model.trim()} onClick={analyze}>
         {busy ? <LoaderCircle className="spin" size={16}/> : <FileSearch size={16}/>}
         {busy ? 'Analyzing historical experiments…' : 'Analyze project history'}
       </button>
@@ -161,7 +174,7 @@ export default function ResearchAgentPanel({ projectId, projectName }: Props) {
       <div className="panel-head"><div><span className="eyebrow">RESEARCH RECONSTRUCTION</span><h3>Grounded candidates</h3></div>
         <button className="iconbtn" aria-label="Reload report" onClick={() => call<Report>('/projects/' + projectId + '/research-agent').then(setReport).catch(e => setError(String(e)))}><RefreshCcw size={16}/></button>
       </div>
-      {!report?.available ? <div className="empty"><BookOpen size={27}/><p>No semantic intake yet. Choose a local model or use ChatGPT to prepare a source-grounded batch.</p></div> : <>
+      {!report?.available ? <div className="empty"><BookOpen size={27}/><p>No semantic intake yet. Use the configured third-party API or ChatGPT to prepare source-grounded claims.</p></div> : <>
         <div className="agent-stats">
           <div><strong>{report.distinct_claim_count}</strong><small>Distinct candidates</small></div>
           <div><strong>{report.raw_claim_count}</strong><small>Extracted mentions</small></div>
