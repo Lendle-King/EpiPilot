@@ -71,9 +71,7 @@ def scan_history(root: Path, commit: str) -> list[dict[str, Any]]:
                 or not _RESEARCH.search(text)
             ):
                 continue
-            key = hashlib.sha256(
-                f"{commit}\0{path}\0{line_no}\0{text}".encode()
-            ).hexdigest()[:24]
+            key = hashlib.sha256(f"{commit}\0{path}\0{line_no}\0{text}".encode()).hexdigest()[:24]
             candidates.append(
                 {
                     "id": key,
