@@ -14,7 +14,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
+
+from pydantic import ValidationError
 
 from epipilot.workspace.research_agent import ClaimBatch, GUIDANCE
 
@@ -123,11 +125,13 @@ class ThirdPartyChatModel:
         timeout = float(os.environ.get("EPIPILOT_RESEARCH_API_TIMEOUT", "120"))
         token_setting = os.environ.get("EPIPILOT_RESEARCH_API_MAX_TOKENS")
         tokens = int(token_setting) if token_setting else None
+        if fmt not in {"json_schema", "json_object"}:
+            raise ValueError("Unsupported research API response format")
         return cls(
             base_url=base_url,
             api_key=key,
             model=model,
-            response_format=fmt,  # type: ignore[arg-type]
+            response_format=cast(ResponseFormat, fmt),
             timeout=timeout,
             max_tokens=tokens,
         )
@@ -201,7 +205,9 @@ class ThirdPartyChatModel:
             if not isinstance(message, str):
                 raise ValueError("Research API did not return JSON text content")
             return ClaimBatch.model_validate_json(message)
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
+        except ValidationError:
+            raise ValueError("Research API output failed local schema validation") from None
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError):
             raise ValueError("Research API returned a malformed chat completion") from None
 
 
