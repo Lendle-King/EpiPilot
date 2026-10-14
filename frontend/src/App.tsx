@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import ReactFlow, { Background, Controls, type Edge, type Node, Position } from '@xyflow/react';
+import { ReactFlow, Background, Controls, type Edge, type Node, Position } from '@xyflow/react';
 import {
   Activity, ArrowRight, BookOpen, Check, CheckCircle2, ChevronRight, CircleAlert,
   Clock3, Copy, ExternalLink, FileText, FolderGit2, GitBranch, GitCommitHorizontal,
