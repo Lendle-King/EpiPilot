@@ -27,8 +27,11 @@ _SECRET = re.compile(r"(TOKEN|PASSWORD|API_KEY|SECRET|PRIVATE_KEY)\s*[:=]", re.I
 def git(root: Path, *args: str) -> str:
     """Run a bounded read-only Git command without invoking a shell."""
     process = subprocess.run(
-        ["git", "-C", str(root), *args], capture_output=True, text=True,
-        timeout=15, check=False,
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
     )
     if process.returncode:
         raise ValueError("Cannot inspect selected local Git repository")
@@ -39,14 +42,18 @@ def scan_history(root: Path, commit: str) -> list[dict[str, Any]]:
     """Bounded research-note candidates from the pinned commit, not the working tree."""
     paths = git(root, "ls-tree", "-r", "--name-only", commit).splitlines()
     selected = [
-        p for p in paths if p == "README.md"
+        p
+        for p in paths
+        if p == "README.md"
         or (p.startswith("docs/") and p.lower().endswith((".md", ".json", ".yaml")))
     ][:80]
     candidates: list[dict[str, Any]] = []
     for path in selected:
         result = subprocess.run(
             ["git", "-C", str(root), "show", f"{commit}:{path}"],
-            capture_output=True, timeout=15, check=False,
+            capture_output=True,
+            timeout=15,
+            check=False,
         )
         if result.returncode or len(result.stdout) > 160_000:
             continue
@@ -58,18 +65,26 @@ def scan_history(root: Path, commit: str) -> list[dict[str, Any]]:
         for line_no, line in enumerate(source.splitlines(), 1):
             text = line.strip()
             if (
-                not 22 <= len(text) <= 450 or text.startswith(("#", "|", ">", "http", "["))
-                or _SECRET.search(text) or not _RESEARCH.search(text)
+                not 22 <= len(text) <= 450
+                or text.startswith(("#", "|", ">", "http", "["))
+                or _SECRET.search(text)
+                or not _RESEARCH.search(text)
             ):
                 continue
             key = hashlib.sha256(
                 f"{commit}\0{path}\0{line_no}\0{text}".encode("utf-8")
             ).hexdigest()[:24]
-            candidates.append({
-                "id": key, "kind": "lesson" if _LESSON.search(text) else "observation",
-                "text": text, "source_path": path, "line": line_no,
-                "source_sha256": digest, "git_commit": commit,
-            })
+            candidates.append(
+                {
+                    "id": key,
+                    "kind": "lesson" if _LESSON.search(text) else "observation",
+                    "text": text,
+                    "source_path": path,
+                    "line": line_no,
+                    "source_sha256": digest,
+                    "git_commit": commit,
+                }
+            )
             if len(candidates) == 220:
                 return candidates
     return candidates
@@ -97,9 +112,9 @@ class WorkspaceStore:
     def __init__(self, path: Path, roots: tuple[Path, ...] | None = None) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.roots = tuple(r.expanduser().resolve() for r in (
-            roots if roots is not None else (Path.home(),)
-        ))
+        self.roots = tuple(
+            r.expanduser().resolve() for r in (roots if roots is not None else (Path.home(),))
+        )
         with self._db() as conn:
             conn.executescript(
                 "CREATE TABLE IF NOT EXISTS projects ("
@@ -143,7 +158,10 @@ class WorkspaceStore:
         )
 
     def create(
-        self, name: str, goal: str, mode: Literal["create", "adopt"],
+        self,
+        name: str,
+        goal: str,
+        mode: Literal["create", "adopt"],
         repository_path: str | None = None,
     ) -> dict[str, Any]:
         if not name.strip() or not goal.strip() or len(name) > 120 or len(goal) > 3000:
@@ -162,8 +180,14 @@ class WorkspaceStore:
             root, sha, branch = self._resolve_repo(repository_path)
             notes = scan_history(root, sha)
         item = WorkspaceProject(
-            str(uuid4()), name.strip(), goal.strip(), mode,
-            str(root) if root else None, sha, branch, _now(),
+            str(uuid4()),
+            name.strip(),
+            goal.strip(),
+            mode,
+            str(root) if root else None,
+            sha,
+            branch,
+            _now(),
         )
         with self._db() as conn:
             conn.execute(
@@ -172,19 +196,35 @@ class WorkspaceStore:
             )
             conn.executemany(
                 "INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [(n["id"], item.id, n["kind"], n["text"], n["source_path"],
-                  n["line"], n["source_sha256"], n["git_commit"]) for n in notes],
+                [
+                    (
+                        n["id"],
+                        item.id,
+                        n["kind"],
+                        n["text"],
+                        n["source_path"],
+                        n["line"],
+                        n["source_sha256"],
+                        n["git_commit"],
+                    )
+                    for n in notes
+                ],
             )
-            self._event(conn, item.id, "project_created", {
-                "mode": mode, "git_commit": sha, "candidate_count": len(notes),
-            })
+            self._event(
+                conn,
+                item.id,
+                "project_created",
+                {
+                    "mode": mode,
+                    "git_commit": sha,
+                    "candidate_count": len(notes),
+                },
+            )
         return self.get(item.id)
 
     def get(self, project_id: str) -> dict[str, Any]:
         with self._db() as conn:
-            project = conn.execute(
-                "SELECT * FROM projects WHERE id=?", (project_id,)
-            ).fetchone()
+            project = conn.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
             if project is None:
                 raise KeyError("Unknown project")
             candidates = conn.execute(
@@ -202,12 +242,9 @@ class WorkspaceStore:
             if e["kind"] == "candidate_review":
                 latest_reviews.setdefault(payload["candidate_id"], payload["decision"])
         data["candidates"] = [
-            {**dict(c), "review": latest_reviews.get(c["id"], "pending")}
-            for c in candidates
+            {**dict(c), "review": latest_reviews.get(c["id"], "pending")} for c in candidates
         ]
-        data["events"] = [
-            {**dict(e), "payload": json.loads(str(e["payload"]))} for e in events
-        ]
+        data["events"] = [{**dict(e), "payload": json.loads(str(e["payload"]))} for e in events]
         data["git"] = self.git_status(project_id)
         return data
 
@@ -230,7 +267,9 @@ class WorkspaceStore:
         }
 
     def review(
-        self, project_id: str, candidate_id: str,
+        self,
+        project_id: str,
+        candidate_id: str,
         decision: Literal["accepted_note", "rejected"],
     ) -> dict[str, Any]:
         if decision not in ("accepted_note", "rejected"):
@@ -242,22 +281,31 @@ class WorkspaceStore:
             ).fetchone()
             if not present:
                 raise KeyError("Unknown candidate")
-            self._event(conn, project_id, "candidate_review", {
-                "candidate_id": candidate_id, "decision": decision,
-            })
+            self._event(
+                conn,
+                project_id,
+                "candidate_review",
+                {
+                    "candidate_id": candidate_id,
+                    "decision": decision,
+                },
+            )
         return self.get(project_id)
 
     def intent(self, project_id: str, message: str) -> dict[str, Any]:
         if not message.strip() or len(message) > 3000:
             raise ValueError("Intent must contain 1-3000 characters")
         with self._db() as conn:
-            if not conn.execute(
-                "SELECT 1 FROM projects WHERE id=?", (project_id,)
-            ).fetchone():
+            if not conn.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
                 raise KeyError("Unknown project")
-            self._event(conn, project_id, "user_intent_proposed", {
-                "message": message.strip(),
-            })
+            self._event(
+                conn,
+                project_id,
+                "user_intent_proposed",
+                {
+                    "message": message.strip(),
+                },
+            )
         return self.get(project_id)
 
     def chat_prompt(self, project_id: str) -> str:
