@@ -67,8 +67,16 @@ def _strict_schema(value: Any) -> Any:
     if not isinstance(value, dict):
         return value
     skipped = {
-        "default", "title", "minLength", "maxLength", "pattern",
-        "minimum", "maximum", "minItems", "maxItems", "format",
+        "default",
+        "title",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems",
+        "format",
     }
     result = {key: _strict_schema(child) for key, child in value.items() if key not in skipped}
     if result.get("type") == "object" or "properties" in result:
@@ -153,7 +161,8 @@ class ThirdPartyChatModel:
             # JSON object mode is a compatibility path, not schema enforcement.
             response_format = {"type": "json_object"}
             instructions = (
-                GUIDANCE + "\nReturn a JSON object satisfying this exact schema: "
+                GUIDANCE
+                + "\nReturn a JSON object satisfying this exact schema: "
                 + json.dumps(schema, ensure_ascii=False)
             )
 
@@ -221,7 +230,8 @@ def model_configuration() -> dict[str, object]:
         hostname = None
         valid = False
     return {
-        "configured": valid and bool(os.environ.get("EPIPILOT_RESEARCH_API_KEY"))
+        "configured": valid
+        and bool(os.environ.get("EPIPILOT_RESEARCH_API_KEY"))
         and bool(os.environ.get("EPIPILOT_RESEARCH_API_MODEL")),
         "provider_host": hostname,
         "model": os.environ.get("EPIPILOT_RESEARCH_API_MODEL", ""),
