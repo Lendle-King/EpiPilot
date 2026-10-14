@@ -1,3 +1,4 @@
+import ResearchAgentPanel from './ResearchAgentPanel';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { ReactFlow, Background, Controls, type Edge, type Node, Position } from '@xyflow/react';
 import {
@@ -24,7 +25,7 @@ type Project = {
   created_at: string; candidates: Candidate[]; events: EventRecord[]; git: GitState;
 };
 type Summary = Pick<Project, 'id' | 'name' | 'goal' | 'mode'>;
-type View = 'overview' | 'evidence' | 'graph' | 'git' | 'activity';
+type View = 'overview' | 'agent' | 'evidence' | 'graph' | 'git' | 'activity';
 
 async function api<T>(path: string, method = 'GET', body?: object): Promise<T> {
   const response = await fetch('/api' + path, {
@@ -40,6 +41,7 @@ async function api<T>(path: string, method = 'GET', body?: object): Promise<T> {
 
 const nav: { view: View; name: string; icon: typeof Activity }[] = [
   { view: 'overview', name: 'Overview', icon: LayoutDashboard },
+  { view: 'agent', name: 'Research Onboarding Agent', icon: Sparkles },
   { view: 'evidence', name: 'Observations & knowledge', icon: Lightbulb },
   { view: 'graph', name: 'Research graph', icon: GitBranch },
   { view: 'git', name: 'Git workspace', icon: FolderGit2 },
@@ -329,6 +331,7 @@ export default function App() {
             <a className="btn primary" href="https://chatgpt.com/" target="_blank" rel="noreferrer">Open ChatGPT <ExternalLink size={15}/></a></div></div>
           {view !== 'overview' && <div className="section-title"><h2>{nav.find(n => n.view === view)?.name}</h2><p>Traceability first, independent verification before conclusions.</p></div>}
           {view === 'overview' && <Overview project={project}/>}
+          {view === 'agent' && <ResearchAgentPanel projectId={project.id} projectName={project.name}/>}
           {view === 'evidence' && <Notes project={project} filter={filter} onFilter={setFilter} review={review} busy={busy}/>}
           {view === 'graph' && <Graph project={project}/>}
           {view === 'git' && <GitPanel project={project}/>}
