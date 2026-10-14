@@ -105,7 +105,8 @@ class FakeScientificModel:
                     "pit_data_qualification",
                     "contradicts",
                     3,
-                    "Scientific verdict: PIT source remains BLOCKED due to missing original filings.",
+                    "Scientific verdict: PIT source remains BLOCKED due to missing "
+                    "original filings.",
                 ),
             ]
         )
