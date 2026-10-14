@@ -56,7 +56,7 @@ def test_adopt_extracts_provenanced_notes_but_never_verified_evidence(tmp_path: 
     assert all(len(note["source_sha256"]) == 64 for note in notes)
     assert all("verified" not in note for note in notes)
     assert not any("dont-save-this" in note["text"] for note in notes)
-    assert "none reviewed" in store.chat_prompt(item["id"])
+    assert "(no reviewed notes)" in store.chat_prompt(item["id"])
 
     reviewed = store.review(item["id"], notes[0]["id"], "accepted_note")
     assert reviewed["candidates"][0]["review"] == "accepted_note"
