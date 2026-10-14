@@ -30,3 +30,7 @@
 .agent-source blockquote{margin:7px 0 0;padding-left:11px;border-left:2px solid #8497db;color:#4e617e;font-size:11px;line-height:1.6}
 .spin{animation:agentSpin 1s linear infinite}@keyframes agentSpin{to{transform:rotate(360deg)}}
 @media(max-width:650px){.agent-formline{flex-direction:column}.agent-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.agent-configuration label.agent-consent{display:flex;align-items:flex-start;gap:10px;margin:14px 0;color:#526581;line-height:1.55;font-weight:600}
+.agent-configuration .agent-consent input{flex:0 0 auto;width:16px;height:16px;margin-top:2px;accent-color:#4d60df}
+.agent-configuration .agent-consent span{font-size:11px}
