@@ -17,7 +17,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -139,7 +139,12 @@ class DelegationReceipt:
             _validate_url(item, "github")
         for item in fields["notion_evidence"]:
             _validate_url(item, "notion")
-        return cls(summary=summary, **fields)
+        return cls(
+            summary=summary,
+            github_evidence=fields["github_evidence"],
+            notion_evidence=fields["notion_evidence"],
+            limitations=fields["limitations"],
+        )
 
 
 def _private_dir(path: Path) -> None:
@@ -160,8 +165,9 @@ def _atomic_private_write(path: Path, data: bytes) -> None:
             os.fsync(output.fileno())
         os.replace(temp_name, path)
     finally:
-        if os.path.exists(temp_name):
-            os.unlink(temp_name)
+        temporary = Path(temp_name)
+        if temporary.exists():
+            temporary.unlink()
 
 
 @dataclass(slots=True)
@@ -192,7 +198,7 @@ class ChatGPTWebHandoffStore:
             "session": session_for_task(spec.task_id),
             "state": HandoffState.PREPARED.value,
             "prompt_sha256": hashlib.sha256(prompt).hexdigest(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         })
         return folder / "prompt.md"
 
