@@ -163,6 +163,31 @@ class WorkspaceStore:
             (project_id, kind, json.dumps(payload, ensure_ascii=False), _now()),
         )
 
+    def repin_snapshot(self, project_id: str) -> str:
+        """Move the pinned Git snapshot to the current repository HEAD.
+
+        Used after an automated iteration commits new research documents, so the
+        next grounded analysis can see them. The re-pin is recorded as an
+        append-only audit event; prior candidates keep their original commits.
+        """
+        item = self.get(project_id)
+        path = item["repository_path"]
+        if not isinstance(path, str):
+            raise ValueError("Snapshot re-pin requires an adopted Git repository")
+        root, head, branch = self._resolve_repo(path)
+        with self._db() as conn:
+            conn.execute(
+                "UPDATE projects SET git_commit = ? WHERE id = ?",
+                (head, project_id),
+            )
+            self._event(
+                conn,
+                project_id,
+                "snapshot_repinned",
+                {"git_commit": head, "branch": branch, "repository_path": str(root)},
+            )
+        return head
+
     def create(
         self,
         name: str,

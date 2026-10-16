@@ -27,7 +27,7 @@ Use Add project > Start new. Provide a name and explicit research goal. The back
 
 ## Adopt existing research
 
-Use Add project > Adopt existing. Supply the absolute path to a local Git repository. This operation is deliberately read-only and offline.
+Use Add project > Adopt existing. Supply the absolute path to a local Git repository, or use **Browse…** to navigate folders served by the loopback-only `GET /api/fs/list` endpoint (hidden entries are omitted; paths and symlinks resolving outside `EPIPILOT_ALLOWED_ROOTS` fail closed). This operation is deliberately read-only and offline.
 
 1. Validate that the resolved Git root is within allowed directories.
 2. Pin its Git commit SHA and branch; never read uncommitted working tree files as historical evidence.
@@ -53,7 +53,7 @@ Github/Notion remote operations remain delegated to ChatGPT using its authorized
 
 The separate WorkspaceStore SQLite database is a staging UI read model, NOT EpiPilot's canonical project event store. A reviewed note must never automatically create a passed task or verified fact. Integration into ProjectContract, Evidence, Hypothesis, Task DAG and replayable canonical events requires an explicit, tested promotion workflow.
 
-The next milestones are scientific evidence reconciliation, experiment/result contracts, user-approved decision changes, and a bounded autonomous research supervisor. Treat Work or ChatGPT web automation as an independent supported-capability question.
+The next milestones are scientific evidence reconciliation, experiment/result contracts, user-approved decision changes, and a bounded autonomous research supervisor. ChatGPT Web automation is now an explicitly authorized capability of the browser adapter (opt-in, user-initiated).
 
 ## Security
 
@@ -67,4 +67,4 @@ The API currently has no authentication and must remain bound to 127.0.0.1. Do n
     pytest -q tests/test_workspace_onboarding.py
     cd frontend && npm run build
 
-All functionality remains user-initiated and does not scrape or automatically drive ordinary ChatGPT chat.
+All functionality remains user-initiated. Driving the ordinary ChatGPT web chat is supported only through the explicitly authorized browser adapter (see the onboarding-agent guide); GitHub/Notion remote actions and trading remain out of scope.

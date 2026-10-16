@@ -70,6 +70,23 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+## Default model configuration
+
+LLM-backed components resolve their default model profile through
+`epipilot.config.load_default_model_config`:
+
+- provider `Codexforme`, base URL `https://blackaicoding.com/v1`;
+- model `gpt-6.1-sol` with reasoning effort `xhigh`;
+- API key read from `EPIPILOT_API_KEY` in the process environment or a local `.env`
+  file (gitignored); copy `.env.example` to `.env` to get started.
+
+Each field can be overridden with `EPIPILOT_PROVIDER`, `EPIPILOT_BASE_URL`,
+`EPIPILOT_MODEL`, and `EPIPILOT_REASONING_EFFORT`. Missing credentials, unknown
+reasoning efforts, and malformed base URLs fail closed with `ConfigError`. The API key
+is excluded from `repr` and must never be committed. When calling the endpoint through
+`urllib` or similar clients, send an explicit `User-Agent` header; the provider rejects
+requests that carry a default library user agent.
+
 ## V0 foundation
 
 The current V0 foundation intentionally starts with contracts that are difficult to retrofit safely later:
