@@ -147,3 +147,74 @@ def test_http_onboarding_and_review(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         ).status_code
         == 200
     )
+
+
+def test_fs_listing_navigates_within_allowed_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from epipilot.workspace.api import app
+
+    (tmp_path / "alpha").mkdir()
+    _fixture_repo(tmp_path / "research")
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / "notes.txt").write_text("not a directory", encoding="utf-8")
+    monkeypatch.setenv("EPIPILOT_ALLOWED_ROOTS", str(tmp_path))
+    client = TestClient(app)
+
+    listing = client.get("/api/fs/list")
+    assert listing.status_code == 200, listing.text
+    data = listing.json()
+    assert data["path"] == str(tmp_path.resolve())
+    assert data["parent"] is None
+    assert data["roots"] == [str(tmp_path.resolve())]
+    assert data["truncated"] is False
+    by_name = {entry["name"]: entry for entry in data["entries"]}
+    assert {"alpha", "research"} <= set(by_name)
+    assert ".hidden" not in by_name
+    assert "notes.txt" not in by_name
+    assert by_name["research"]["is_git"] is True
+    assert by_name["alpha"]["is_git"] is False
+
+    child = client.get("/api/fs/list", params={"path": str(tmp_path / "alpha")})
+    assert child.status_code == 200, child.text
+    assert child.json()["parent"] == str(tmp_path.resolve())
+
+
+def test_fs_listing_fails_closed_outside_allowed_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from epipilot.workspace.api import app
+
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    inside_file = allowed / "inside.txt"
+    inside_file.write_text("x", encoding="utf-8")
+    (allowed / "escape").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setenv("EPIPILOT_ALLOWED_ROOTS", str(allowed))
+    client = TestClient(app)
+
+    denied = client.get("/api/fs/list", params={"path": str(outside)})
+    assert denied.status_code == 400
+    traversal = client.get("/api/fs/list", params={"path": str(allowed / ".." / "outside")})
+    assert traversal.status_code == 400
+    missing = client.get("/api/fs/list", params={"path": str(allowed / "missing")})
+    assert missing.status_code == 404
+    not_a_dir = client.get("/api/fs/list", params={"path": str(inside_file)})
+    assert not_a_dir.status_code == 400
+
+    listing = client.get("/api/fs/list")
+    assert listing.status_code == 200
+    names = {entry["name"] for entry in listing.json()["entries"]}
+    assert "escape" not in names
+    symlink_in = client.get("/api/fs/list", params={"path": str(allowed / "escape")})
+    assert symlink_in.status_code == 400
