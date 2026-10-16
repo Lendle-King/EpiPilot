@@ -34,3 +34,28 @@
 .agent-configuration label.agent-consent{display:flex;align-items:flex-start;gap:10px;margin:14px 0;color:#526581;line-height:1.55;font-weight:600}
 .agent-configuration .agent-consent input{flex:0 0 auto;width:16px;height:16px;margin-top:2px;accent-color:#4d60df}
 .agent-configuration .agent-consent span{font-size:11px}
+
+.pathrow{display:flex;gap:8px;align-items:center}
+.pathrow input{flex:1;min-width:0}
+.folder-crumbs{display:flex;align-items:center;gap:9px;margin-bottom:10px;min-width:0}
+.folder-crumbs code{font-size:11px;color:#465571;word-break:break-all}
+.folder-list{display:grid;gap:5px;max-height:300px;overflow:auto;border:1px solid #e5eaf2;border-radius:10px;padding:7px;min-height:74px}
+.folder-row{display:flex;align-items:center;gap:9px;width:100%;border:1px solid transparent;background:#fff;border-radius:8px;padding:9px 11px;font-size:12px;color:#3f4f68;text-align:left}
+.folder-row:hover{border-color:#c3cdf7;background:#f8faff}
+.folder-row svg{color:#7b8ce0;flex:0 0 auto}
+.folder-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.agent-digest{margin:18px 0;padding:17px;border:1px solid #e5eaf2;border-radius:12px;background:#fbfcfe}
+.agent-digest h4{margin:2px 0 8px;font-size:15px;letter-spacing:-.2px}
+.digest-section{padding:11px 0;border-top:1px solid #eef1f6}
+.digest-section:first-of-type{border-top:0}
+.digest-section>strong{display:flex;align-items:center;gap:8px;font-size:12px;color:#3b4a63}
+.digest-section ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}
+.digest-section li{display:grid;gap:4px}
+.digest-section li p{margin:0;font-size:12px;line-height:1.6;color:#40506a}
+.digest-section li .source{font-size:10px;color:#98a5b9}
+
+.route-panel .route-actions{display:flex;gap:9px;margin:10px 0}
+.route-panel .route-list{display:grid;gap:12px;margin-top:12px}
+.route-panel .route-input{width:100%;resize:vertical;border:1px solid #e1e6ef;border-radius:9px;padding:11px 13px;font-size:12px;color:#33435d;outline:none;margin:10px 0}
+.route-panel .route-input:focus{border-color:#6578e7}

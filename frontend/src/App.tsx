@@ -1,10 +1,10 @@
-import ResearchAgentPanel from './ResearchAgentPanel';
+import ResearchAgentPanel, { type LoopStatus } from './ResearchAgentPanel';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { ReactFlow, Background, Controls, type Edge, type Node, Position } from '@xyflow/react';
 import {
-  Activity, ArrowRight, BookOpen, Check, CheckCircle2, ChevronRight, CircleAlert,
-  Clock3, Copy, ExternalLink, FileText, FolderGit2, GitBranch, GitCommitHorizontal,
-  LayoutDashboard, Lightbulb, Plus, RefreshCcw, Search, ShieldCheck, Sparkles, X
+  Activity, ArrowRight, BookOpen, Check, CheckCircle2, ChevronRight, ChevronUp, CircleAlert,
+  Clock3, Copy, ExternalLink, FileText, Folder, FolderGit2, GitBranch, GitCommitHorizontal,
+  LayoutDashboard, Lightbulb, Play, Plus, RefreshCcw, Search, ShieldCheck, Sparkles, X
 } from 'lucide-react';
 
 type Candidate = {
@@ -19,6 +19,16 @@ type GitState = {
 type EventRecord = {
   seq: number; kind: string; payload: Record<string, unknown>; occurred_at: string;
 };
+type SemanticClaim = {
+  id: string; kind: string; proposition: string; topic_key: string;
+  caveat: string; citations: { source_path: string; line: number; git_commit: string }[];
+  review: 'pending' | 'accepted_note' | 'rejected';
+};
+type SemanticReport = {
+  available: boolean; claims: SemanticClaim[];
+  potential_conflicts: { topic_key: string; reason: string }[];
+  distinct_claim_count?: number;
+};
 type Project = {
   id: string; name: string; goal: string; mode: string;
   repository_path: string | null; git_commit: string | null; git_branch: string | null;
@@ -26,6 +36,11 @@ type Project = {
 };
 type Summary = Pick<Project, 'id' | 'name' | 'goal' | 'mode'>;
 type View = 'overview' | 'agent' | 'evidence' | 'graph' | 'git' | 'activity';
+type FsEntry = { name: string; path: string; is_git: boolean };
+type FsListing = {
+  path: string; parent: string | null; roots: string[];
+  entries: FsEntry[]; truncated: boolean;
+};
 
 async function api<T>(path: string, method = 'GET', body?: object): Promise<T> {
   const response = await fetch('/api' + path, {
@@ -61,6 +76,61 @@ function Stat({ label, value, note, icon: Icon }: {
     <strong>{value}</strong><small>{note}</small></div>;
 }
 
+function FolderBrowser({ pick, close }: {
+  pick: (path: string) => void; close: () => void;
+}) {
+  const [listing, setListing] = useState<FsListing | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(true);
+  async function load(path?: string) {
+    setBusy(true); setError('');
+    try {
+      const query = path ? '?path=' + encodeURIComponent(path) : '';
+      setListing(await api<FsListing>('/fs/list' + query));
+    } catch (err) { setError(String(err instanceof Error ? err.message : err)); }
+    finally { setBusy(false); }
+  }
+  useEffect(() => { void load(); }, []);
+  const upTo = listing?.parent ?? undefined;
+  return <div className="shade" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}>
+    <div className="modal">
+      <header className="modal-top">
+        <div><span className="eyebrow">FOLDER BROWSER</span>
+          <h2>Select a repository folder</h2>
+          <p>Navigate inside the allowed roots, then choose the folder to adopt.</p></div>
+        <button type="button" className="iconbtn" onClick={close} aria-label="Close"><X size={19}/></button>
+      </header>
+      <div className="folder-crumbs">
+        {upTo && <button type="button" className="btn secondary small" onClick={() => void load(upTo)}>
+          <ChevronUp size={14}/>Up
+        </button>}
+        {listing && <code title={listing.path}>{listing.path}</code>}
+      </div>
+      {error && <p role="alert" className="error"><CircleAlert size={16}/>{error}</p>}
+      <div className="folder-list">
+        {busy ? <p className="helper">Loading…</p>
+          : !listing ? null
+          : listing.entries.length === 0 ? <p className="helper">No subfolders here.</p>
+          : listing.entries.map(entry =>
+            <button type="button" key={entry.path} className="folder-row"
+              onClick={() => void load(entry.path)}>
+              {entry.is_git ? <FolderGit2 size={15}/> : <Folder size={15}/>}
+              <span>{entry.name}</span>
+              {entry.is_git && <Badge tone="green">git</Badge>}
+            </button>)}
+      </div>
+      {listing?.truncated && <p className="helper">Folder list truncated; type the path directly for deeper locations.</p>}
+      <div className="modal-actions">
+        <button type="button" className="btn secondary" onClick={close}>Cancel</button>
+        <button type="button" className="btn primary" disabled={!listing}
+          onClick={() => { if (listing) pick(listing.path); }}>
+          Select this folder<Check size={16}/>
+        </button>
+      </div>
+    </div>
+  </div>;
+}
+
 function NewProject({ close, create }: {
   close: () => void; create: (input: {
     name: string; goal: string; mode: 'adopt' | 'create'; repository_path?: string
@@ -72,6 +142,7 @@ function NewProject({ close, create }: {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [browse, setBrowse] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true); setError('');
@@ -95,7 +166,13 @@ function NewProject({ close, create }: {
       <label>Project name<input value={name} required maxLength={120} placeholder="quant_etf" onChange={e => setName(e.target.value)}/></label>
       <label>Research goal<textarea value={goal} required maxLength={3000} rows={3} placeholder="What should the research discover or verify?" onChange={e => setGoal(e.target.value)}/></label>
       {mode === 'adopt' && <label>Absolute local Git repository path
-        <input value={path} required placeholder="/home/user/projects/quant_etf" onChange={e => setPath(e.target.value)}/>
+        <span className="pathrow">
+          <input value={path} required placeholder="/Users/you/Documents/quant_etf"
+            onChange={e => setPath(e.target.value)}/>
+          <button type="button" className="btn secondary" onClick={() => setBrowse(true)}>
+            Browse…
+          </button>
+        </span>
         <small>Local read-only Git scan. Set EPIPILOT_ALLOWED_ROOTS for other directories.</small>
       </label>}
       <div className="notice"><ShieldCheck size={17}/> Extracted observations require review. This does not write GitHub, Notion or canonical EpiPilot facts.</div>
@@ -103,29 +180,56 @@ function NewProject({ close, create }: {
       <div className="modal-actions"><button type="button" className="btn secondary" onClick={close}>Cancel</button>
         <button type="submit" disabled={busy} className="btn primary">{busy ? 'Scanning…' : 'Continue'}<ArrowRight size={16}/></button></div>
     </form>
+    {browse && <FolderBrowser
+      close={() => setBrowse(false)}
+      pick={value => { setPath(value); setBrowse(false); }}
+    />}
   </div>;
 }
 
-function Notes({ project, filter, onFilter, review, busy }: {
+function Notes({ project, filter, onFilter }: {
   project: Project; filter: string; onFilter: (value: string) => void;
-  review: (id: string, decision: 'accepted_note' | 'rejected') => Promise<void>; busy: boolean;
 }) {
-  const items = project.candidates.filter(n =>
-    (n.text + n.source_path + n.kind).toLowerCase().includes(filter.toLowerCase())
+  const [claims, setClaims] = useState<SemanticClaim[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  function load() {
+    api<SemanticReport>('/projects/' + project.id + '/research-agent')
+      .then(report => setClaims(report.claims.filter(c => c.topic_key.startsWith('market_'))))
+      .catch(() => setClaims([]));
+  }
+  useEffect(() => { load(); }, [project.id]);
+  async function review(id: string, decision: 'accepted_note' | 'rejected') {
+    setBusy(true); setProblem('');
+    try {
+      const updated = await api<SemanticReport>(
+        '/projects/' + project.id + '/research-agent/claims/' + id + '/review',
+        'POST', { decision },
+      );
+      setClaims(updated.claims.filter(c => c.topic_key.startsWith('market_')));
+    } catch (e) { setProblem(String(e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+  const items = claims.filter(claim =>
+    (claim.proposition + claim.topic_key + claim.citations.map(src => src.source_path).join(' '))
+      .toLowerCase().includes(filter.toLowerCase())
   );
   return <section className="panel"><div className="panel-head">
-    <div><span className="eyebrow">EVIDENCE INBOX</span><h3>Research observations & knowledge</h3></div>
-    <Badge tone="amber">{project.candidates.filter(n => n.review === 'pending').length} pending</Badge></div>
-    <div className="search"><Search size={17}/><input value={filter} onChange={e => onFilter(e.target.value)} placeholder="Search observations, findings and sources"/></div>
-    <p className="helper">These are extracted snippets, not verified experimental conclusions. Every candidate is traceable to an immutable Git snapshot.</p>
-    {items.length ? <div className="note-list">{items.map(item => <article className="note" key={item.id}>
+    <div><span className="eyebrow">MARKET KNOWLEDGE</span><h3>市场性质与方法选择依据</h3></div>
+    <Badge tone="amber">{claims.filter(c => c.review === 'pending').length} pending</Badge></div>
+    <div className="search"><Search size={17}/><input value={filter} onChange={e => onFilter(e.target.value)} placeholder="Search market properties, topics and sources"/></div>
+    <p className="helper">此处仅展示 <code>market_*</code> 市场性质 claims（收益分布形态、波动聚集、状态持续性、动量衰减、横截面分散度、相关性结构、流动性与成本结构等），用于指导算法选择与优化。词法预筛碎片不再在此显示；全部 claims 与实验结论见 Research Onboarding Agent。</p>
+    {problem && <p role="alert" className="error">{problem}</p>}
+    {items.length ? <div className="note-list">{items.map(claim => <article className="note" key={claim.id}>
       <div className="note-badges">
-        <Badge tone={item.kind === 'lesson' ? 'violet' : 'blue'}>{item.kind === 'lesson' ? 'Knowledge candidate' : 'Observation'}</Badge>
-        <Badge tone={item.review === 'pending' ? 'amber' : item.review === 'accepted_note' ? 'green' : 'muted'}>{item.review === 'pending' ? 'Needs review' : item.review === 'accepted_note' ? 'Reviewed note' : 'Rejected'}</Badge>
-      </div><p>{item.text}</p><div className="source"><FileText size={14}/>{item.source_path}:{item.line} · {item.git_commit.slice(0, 11)}</div>
-      {item.review === 'pending' && <div className="note-actions"><button className="btn quiet small" disabled={busy} onClick={() => review(item.id, 'rejected')}><X size={14}/> Reject</button>
-        <button className="btn secondary small" disabled={busy} onClick={() => review(item.id, 'accepted_note')}><Check size={14}/> Keep as note</button></div>}
-    </article>)}</div> : <Empty>No matching historical notes.</Empty>}
+        <Badge tone="blue">{claim.topic_key.replaceAll('_', ' ')}</Badge>
+        <Badge tone={claim.review === 'pending' ? 'amber' : claim.review === 'accepted_note' ? 'green' : 'muted'}>{claim.review === 'pending' ? 'Needs review' : claim.review === 'accepted_note' ? 'Reviewed note' : 'Rejected'}</Badge>
+      </div><p>{claim.proposition}</p>
+      {claim.caveat && <p className="agent-caveat">Qualification: {claim.caveat}</p>}
+      {claim.citations.map((src, index) => <div className="source" key={index}><FileText size={14}/>{src.source_path}:{src.line} · {src.git_commit.slice(0, 11)}</div>)}
+      {claim.review === 'pending' && <div className="note-actions"><button className="btn quiet small" disabled={busy} onClick={() => review(claim.id, 'rejected')}><X size={14}/> Reject</button>
+        <button className="btn secondary small" disabled={busy} onClick={() => review(claim.id, 'accepted_note')}><Check size={14}/> Keep as note</button></div>}
+    </article>)}</div> : <Empty>暂无 market_* 市场性质 claims——请在 Research Onboarding Agent 运行语义分析。</Empty>}
   </section>;
 }
 
@@ -179,21 +283,28 @@ function GitPanel({ project }: { project: Project }) {
 }
 
 function Overview({ project }: { project: Project }) {
-  const reviewed = project.candidates.filter(n => n.review === 'accepted_note').length;
-  const pending = project.candidates.filter(n => n.review === 'pending').length;
+  const [semantic, setSemantic] = useState<SemanticReport | null>(null);
+  useEffect(() => {
+    api<SemanticReport>('/projects/' + project.id + '/research-agent')
+      .then(setSemantic).catch(() => setSemantic(null));
+  }, [project.id]);
+  const claims = semantic?.claims ?? [];
+  const market = claims.filter(c => c.topic_key.startsWith('market_'));
+  const pending = claims.filter(c => c.review === 'pending').length;
   return <><div className="stats">
-    <Stat label="Extracted notes" value={project.candidates.length} note="From pinned source history" icon={FileText}/>
-    <Stat label="Reviewed" value={reviewed} note="Useful notes, not facts" icon={CheckCircle2}/>
+    <Stat label="Semantic claims" value={semantic?.distinct_claim_count ?? 0} note="From pinned source history" icon={FileText}/>
+    <Stat label="Market properties" value={market.length} note="Guides algorithm selection" icon={CheckCircle2}/>
     <Stat label="Needs attention" value={pending} note="Awaiting user review" icon={CircleAlert}/>
   </div>
   <section className="panel"><div className="panel-head"><div><span className="eyebrow">PROJECT INTENT</span><h3>Research mission</h3></div><Badge tone="blue">Goal</Badge></div>
     <p className="mission">{project.goal}</p>
     <div className="notice"><ShieldCheck size={16}/> A research objective is not an accomplished result. Scientific claims require independent verification.</div>
   </section>
-  <section className="panel"><div className="panel-head"><div><span className="eyebrow">HISTORICAL SIGNALS</span><h3>Recent extracted observations</h3></div><Badge>{project.mode === 'adopt' ? 'Adopted snapshot' : 'New mission'}</Badge></div>
-    {project.candidates.length ? project.candidates.filter(n => n.review !== 'rejected').slice(0, 5).map(n =>
-      <div className="signal" key={n.id}><span className={'signal-dot ' + (n.review === 'accepted_note' ? 'checked' : '')}/><div><p>{n.text}</p><small>{n.source_path}:{n.line} · {n.review === 'pending' ? 'Unreviewed' : 'Reviewed note'}</small></div></div>)
-      : <Empty>No imported observations. New projects can add evidence as research progresses.</Empty>}
+  <section className="panel"><div className="panel-head"><div><span className="eyebrow">MARKET PROPERTIES</span><h3>市场性质 (方法选择依据)</h3></div><Badge>{project.mode === 'adopt' ? 'Adopted snapshot' : 'New mission'}</Badge></div>
+    <p className="helper">市场自身的统计与结构性质，用于指导算法选择；词法预筛碎片不在此显示。</p>
+    {market.length ? market.filter(n => n.review !== 'rejected').slice(0, 5).map(n =>
+      <div className="signal" key={n.id}><span className={'signal-dot ' + (n.review === 'accepted_note' ? 'checked' : '')}/><div><p>{n.proposition}</p><small>{n.topic_key.replaceAll('_', ' ')} · {n.citations[0]?.source_path}:{n.citations[0]?.line} · {n.review === 'pending' ? 'Unreviewed' : 'Reviewed note'}</small></div></div>)
+      : <Empty>暂无 market_* 市场性质 claims——请在 Research Onboarding Agent 运行语义分析。</Empty>}
   </section></>;
 }
 
@@ -262,6 +373,8 @@ export default function App() {
   const [filter, setFilter] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [loop, setLoop] = useState<LoopStatus | null>(null);
+  const [loopBusy, setLoopBusy] = useState(false);
 
   useEffect(() => {
     api<Summary[]>('/projects').then(items => {
@@ -277,15 +390,25 @@ export default function App() {
     setProjects(await api<Summary[]>('/projects'));
     setProject(item); setSelected(item.id); setModal(false); setView('overview'); setError('');
   }
-  async function review(id: string, decision: 'accepted_note' | 'rejected') {
-    if (!project) return;
-    setBusy(true);
-    try { setProject(await api<Project>('/projects/' + project.id + '/candidates/' + id + '/review', 'POST', { decision })); }
-    catch (e) { setError(String(e)); } finally { setBusy(false); }
-  }
   async function intent(message: string) {
     if (!project) return;
     setProject(await api<Project>('/projects/' + project.id + '/intent', 'POST', { message }));
+  }
+  async function startAutoLoop() {
+    if (!project) return;
+    setLoopBusy(true); setError('');
+    try {
+      setLoop(await api<LoopStatus>(
+        '/projects/' + project.id + '/research-agent/loop', 'POST', { max_rounds: 3 },
+      ));
+      const timer = setInterval(async () => {
+        try {
+          const status = await api<LoopStatus>('/projects/' + project.id + '/research-agent/loop');
+          setLoop(status);
+          if (!status.running) { clearInterval(timer); setLoopBusy(false); }
+        } catch { clearInterval(timer); setLoopBusy(false); }
+      }, 5000);
+    } catch (e) { setError(String(e)); setLoopBusy(false); }
   }
   async function copyPrompt() {
     if (!project) return;
@@ -314,7 +437,6 @@ export default function App() {
       {project && <><span className="sidebar-label tools-label">PROJECT TOOLS</span>
         {nav.map(n => <button className={'nav-btn ' + (view === n.view ? 'active' : '')} key={n.view} onClick={() => setView(n.view)}>
           <n.icon size={17}/>{n.name}
-          {n.view === 'evidence' && project.candidates.some(c => c.review === 'pending') && <span className="nav-dot"/>}
         </button>)}</>}
       <div className="sidebar-foot"><ShieldCheck size={18}/><div><strong>Local-first workspace</strong><span>Remote operations disabled</span></div></div>
     </nav>
@@ -327,12 +449,18 @@ export default function App() {
         {error && <div role="alert" className="error global-error"><CircleAlert size={16}/>{error}<button onClick={() => setError('')}><X size={15}/></button></div>}
         {project ? <><div className="page-head"><div><span className="eyebrow">RESEARCH PROJECT / {project.mode.toUpperCase()}</span>
           <h1>{project.name}</h1><p>{project.git.attached ? project.git.branch + ' · ' + project.git.commit?.slice(0, 12) : 'New research mission'}</p></div>
-          <div className="page-actions"><button className="btn secondary" onClick={copyPrompt}><Copy size={16}/>{copied ? 'Copied brief' : 'Copy ChatGPT brief'}</button>
+          <div className="page-actions">
+            <button className="btn primary" disabled={!project || loopBusy} onClick={startAutoLoop}>
+              <Play size={16}/>{loopBusy ? '自动迭代运行中…' : '启动自动迭代'}
+            </button>
+            {loop?.running && <Badge tone="amber">第 {loop.round} 轮 · {loop.step}</Badge>}
+            {loop && !loop.running && loop.stop_reason && <Badge tone="blue">{loop.stop_reason}</Badge>}
+            <button className="btn secondary" onClick={copyPrompt}><Copy size={16}/>{copied ? 'Copied brief' : 'Copy ChatGPT brief'}</button>
             <a className="btn primary" href="https://chatgpt.com/" target="_blank" rel="noreferrer">Open ChatGPT <ExternalLink size={15}/></a></div></div>
           {view !== 'overview' && <div className="section-title"><h2>{nav.find(n => n.view === view)?.name}</h2><p>Traceability first, independent verification before conclusions.</p></div>}
           {view === 'overview' && <Overview project={project}/>}
-          {view === 'agent' && <ResearchAgentPanel projectId={project.id} projectName={project.name}/>}
-          {view === 'evidence' && <Notes project={project} filter={filter} onFilter={setFilter} review={review} busy={busy}/>}
+          {view === 'agent' && <ResearchAgentPanel projectId={project.id} projectName={project.name} loopStatus={loop}/>}
+          {view === 'evidence' && <Notes project={project} filter={filter} onFilter={setFilter}/>}
           {view === 'graph' && <Graph project={project}/>}
           {view === 'git' && <GitPanel project={project}/>}
           {view === 'activity' && <Timeline project={project}/>}
