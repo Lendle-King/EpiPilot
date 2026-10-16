@@ -84,7 +84,9 @@ The selected snapshot has at most six tracked documents, 100 KiB/file, limited o
 
 ## Ordinary ChatGPT Chat
 
-The manual option is unchanged: prepare a pinned source+schema packet, paste it into ordinary ChatGPT chat, then paste back the structured JSON. The same original-source checks and audit logic apply. ChatGPT-connected GitHub/Notion capabilities remain separate from the model-analysis API. EpiPilot does not programmatically drive or scrape the ChatGPT Web chat.
+The manual option is unchanged: prepare a pinned source+schema packet, paste it into ordinary ChatGPT chat, then paste back the structured JSON. The same original-source checks and audit logic apply. ChatGPT-connected GitHub/Notion capabilities remain separate from the model-analysis API.
+
+EpiPilot can also **drive the ChatGPT Web chat programmatically** through an explicitly authorized browser adapter (`pip install -e '.[chatgpt]'` then `playwright install chromium`): it launches a persistent local browser profile, submits an iteration pack, waits for the reply, extracts the structured JSON and feeds it through the same local validation/import pipeline as the manual path. The adapter drives the **system Google Chrome** by default (`channel=chrome`), because automation-built Chromium is rejected by some sites with a "browser is not safe" wall; set the channel to `''` to use bundled Chromium instead. The adapter is opt-in, user-initiated, and keeps the logged-in session in a local profile directory. Caveats: automating a consumer web UI may be restricted by the provider's terms of service, the UI can change without notice (the adapter fails closed with a clear error rather than guessing), and only content you are authorized to disclose is ever submitted.
 
 ## Tests
 

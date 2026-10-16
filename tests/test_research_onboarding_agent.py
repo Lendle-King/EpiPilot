@@ -119,6 +119,35 @@ def _setup(tmp_path: Path) -> tuple[WorkspaceStore, str]:
     return store, str(project["id"])
 
 
+def test_extraction_prompt_injects_goal_and_requires_chinese_output(tmp_path: Path) -> None:
+    from epipilot.workspace.research_agent import GUIDANCE, extraction_prompt
+
+    store, project_id = _setup(tmp_path)
+    item = store.get(project_id)
+    docs = snapshot_documents(Path(str(item["repository_path"])), str(item["git_commit"]))
+    assert docs, "fixture snapshot must expose at least one document"
+
+    prompt = extraction_prompt(docs[0], "研究目标: 验证策略表现")
+    assert "研究目标: 验证策略表现" in prompt
+    assert "Research goal (context, NOT evidence)" in prompt
+    assert "Prefer lines that inform the" in prompt
+    assert "data environment's properties" in prompt
+    assert "methodological lessons" in prompt
+
+    assert "Simplified Chinese" in GUIDANCE
+    assert "research goal itself" in GUIDANCE
+    assert "verbatim in its source language" in GUIDANCE
+    assert "data environment itself" in GUIDANCE
+    assert "data_" in GUIDANCE
+    assert "steer future research routes" in GUIDANCE
+    assert "starts with market_" in GUIDANCE or "prefixed with market_" in GUIDANCE
+    assert "guide algorithm selection" in GUIDANCE
+    assert "market_regime_persistence" in GUIDANCE
+    assert "do not bury market-level" in GUIDANCE
+    assert "topic_key prefixed with market_" in prompt
+    assert "Market extraction requirement" in prompt
+
+
 def test_semantic_agent_deduplicates_and_exposes_temporal_conflict(tmp_path: Path) -> None:
     store, project_id = _setup(tmp_path)
     agent = ResearchOnboardingAgent(store)
@@ -152,6 +181,201 @@ def test_rejects_hallucinated_quotes_without_partial_persistence(tmp_path: Path)
     with pytest.raises(ValueError, match="Ungrounded"):
         reconcile([(docs[0], ClaimBatch(claims=[fabricated]))])
     assert agent.report(project_id)["available"] is False
+
+
+_GOOD_QUOTE = "GitHub Actions SUCCESS: workflow completed but alpha was not qualified."
+
+
+class ScriptedModel:
+    """Deterministic per-call batches to exercise retry and isolation paths."""
+
+    def __init__(self, responses: list[ClaimBatch]) -> None:
+        self._responses = list(responses)
+        self.prompts: list[str] = []
+
+    def extract(self, prompt: str) -> ClaimBatch:
+        self.prompts.append(prompt)
+        return self._responses.pop(0)
+
+
+def _good_batch() -> ClaimBatch:
+    return ClaimBatch(
+        claims=[
+            _claim(
+                "完成的工作流执行不等同于策略科学验证",
+                "alpha_qualification",
+                "neutral",
+                2,
+                _GOOD_QUOTE,
+            )
+        ]
+    )
+
+
+def _bad_batch() -> ClaimBatch:
+    return ClaimBatch(
+        claims=[
+            _claim(
+                "This claim uses a hallucinated source quotation",
+                "alpha_qualification",
+                "neutral",
+                2,
+                "THIS QUOTE DOES NOT EXIST IN THE DOCUMENT",
+            )
+        ]
+    )
+
+
+class _AlwaysBad:
+    def extract(self, prompt: str) -> ClaimBatch:
+        return _bad_batch()
+
+
+def test_run_model_retries_grounding_failure_with_corrective_prompt(
+    tmp_path: Path,
+) -> None:
+    store, project_id = _setup(tmp_path)
+    model = ScriptedModel([_bad_batch(), _good_batch(), _good_batch()])
+    result = ResearchOnboardingAgent(store).run_model(project_id, model, "fake", 2)
+    assert result["rejected_documents"] == []
+    assert result["distinct_claim_count"] >= 1
+    assert len(model.prompts) == 3  # one retry for the first document
+    assert "CORRECTIVE CONSTRAINT" not in model.prompts[0]
+    assert "CORRECTIVE CONSTRAINT" in model.prompts[1]
+    assert "CORRECTIVE CONSTRAINT" not in model.prompts[2]
+
+
+def test_run_model_rejects_only_the_ungrounded_document(tmp_path: Path) -> None:
+    store, project_id = _setup(tmp_path)
+
+    class Selective:
+        def extract(self, prompt: str) -> ClaimBatch:
+            return _bad_batch() if "trial_20261014" in prompt else _good_batch()
+
+    result = ResearchOnboardingAgent(store).run_model(project_id, Selective(), "fake", 2)
+    rejected = result["rejected_documents"]
+    assert isinstance(rejected, list)
+    assert [entry["path"] for entry in rejected] == ["docs/trial_20261014.md"]
+    assert result["distinct_claim_count"] == 1
+    claim = result["claims"][0]
+    assert claim["citations"][0]["source_path"] == "docs/trial_20261013.md"
+
+
+def test_run_model_fails_closed_when_no_batch_grounds(tmp_path: Path) -> None:
+    store, project_id = _setup(tmp_path)
+    with pytest.raises(ValueError, match="No document produced"):
+        ResearchOnboardingAgent(store).run_model(project_id, _AlwaysBad(), "fake", 2)
+
+
+def test_run_model_keeps_verified_batches_when_provider_fails_mid_run(
+    tmp_path: Path,
+) -> None:
+    store, project_id = _setup(tmp_path)
+
+    class Flaky:
+        def extract(self, prompt: str) -> ClaimBatch:
+            if "trial_20261014" in prompt:
+                raise RuntimeError("Research API connection failed or timed out")
+            return _good_batch()
+
+    result = ResearchOnboardingAgent(store).run_model(project_id, Flaky(), "fake", 2)
+    assert result["distinct_claim_count"] == 1
+    assert [entry["path"] for entry in result["rejected_documents"]] == ["docs/trial_20261014.md"]
+
+
+def test_run_model_aborts_after_two_consecutive_provider_failures(
+    tmp_path: Path,
+) -> None:
+    store, project_id = _setup(tmp_path)
+
+    class Dead:
+        def extract(self, prompt: str) -> ClaimBatch:
+            raise RuntimeError("Research API connection failed or timed out")
+
+    with pytest.raises(RuntimeError, match="connection failed"):
+        ResearchOnboardingAgent(store).run_model(project_id, Dead(), "fake", 2)
+    report = ResearchOnboardingAgent(store).report(project_id)
+    assert report["distinct_claim_count"] == 0
+    paths = [entry["path"] for entry in report["rejected_documents"]]
+    assert {"docs/trial_20261014.md", "docs/trial_20261013.md"} <= set(paths)
+
+
+def test_experience_digest_groups_key_points_without_duplication() -> None:
+    from epipilot.workspace.research_agent import experience_digest
+
+    def point(topic: str, kind: str, text: str, line: int) -> dict[str, object]:
+        return {
+            "topic_key": topic,
+            "kind": kind,
+            "proposition": text,
+            "citations": [{"source_path": "docs/a.md", "line": line}],
+        }
+
+    report = {
+        "claims": [
+            point("data_point_in_time_universe", "observation", "PIT声明不足以证明可得性", 3),
+            point("market_momentum_decay", "observation", "中期动量在持有约20日后衰减明显", 4),
+            point("annual_return_target", "experiment", "未达15%年化收益目标", 9),
+            point("parameter_freeze_discipline", "lesson", "验证失败后不应修改参数", 1),
+            point("forward_shadow_validation", "unknown", "前向影子证据仍不足", 2),
+            point("stateful_regime_entry", "hypothesis", "状态化市场规则待检验", 5),
+            point("gross_exposure_constraint", "observation", "总敞口限制在不超过1", 7),
+        ],
+        "rejected_documents": [{"path": "README.md", "reason": "ungrounded"}],
+    }
+    digest = experience_digest(report)
+    names = [section["name"] for section in digest["sections"]]
+    assert names == [
+        "市场性质(方法选择依据)",
+        "目标达成与实盘约束",
+        "机制与结构设计",
+        "数据环境性质",
+        "方法论经验教训",
+        "待检验假设",
+        "开放问题(路线输入)",
+    ]
+    total = sum(section["count"] for section in digest["sections"])
+    assert total == 7  # every claim classified exactly once
+    market_section = digest["sections"][0]
+    assert market_section["count"] == 1
+    assert market_section["key_points"][0]["topic_key"] == "market_momentum_decay"
+    data_section = next(s for s in digest["sections"] if s["name"] == "数据环境性质")
+    assert data_section["count"] == 1
+    key_point = data_section["key_points"][0]
+    assert key_point["topic_key"] == "data_point_in_time_universe"
+    assert key_point["source_path"] == "docs/a.md"
+    assert key_point["line"] == 3
+    assert digest["rejected_documents"] == [{"path": "README.md", "reason": "ungrounded"}]
+    assert digest["kind_counts"] == {
+        "observation": 3,
+        "experiment": 1,
+        "lesson": 1,
+        "unknown": 1,
+        "hypothesis": 1,
+    }
+
+
+def test_experience_digest_caps_key_points_and_is_deterministic() -> None:
+    from epipilot.workspace.research_agent import experience_digest
+
+    claims = [
+        {
+            "topic_key": f"annual_return_target_{index}",
+            "kind": "experiment",
+            "proposition": f"第{index}条收益结论",
+            "citations": [{"source_path": "docs/b.md", "line": index}],
+        }
+        for index in range(9)
+    ]
+    digest = experience_digest({"claims": claims, "rejected_documents": []})
+    section = next(s for s in digest["sections"] if s["name"] == "目标达成与实盘约束")
+    assert section["count"] == 9
+    assert len(section["key_points"]) == 5
+    again = experience_digest({"claims": claims, "rejected_documents": []})
+    assert digest == again
+
+    with pytest.raises(ValueError, match="top_per_section"):
+        experience_digest({"claims": []}, top_per_section=0)
 
 
 def test_chatgpt_manual_batches_validate_merge_and_review(tmp_path: Path) -> None:

@@ -75,6 +75,7 @@ def test_openai_compatible_chat_payload_and_server_only_auth(
     request = fake.requests[0]
     assert request.full_url == "https://openrouter.ai/api/v1/chat/completions"
     assert request.get_header("Authorization") == "Bearer test-secret-never-log"
+    assert request.get_header("User-agent") == "epipilot/0.1.0"
     body = json.loads(request.data)
     assert body["model"] == "openai/gpt-4o"
     assert body["response_format"]["type"] == "json_schema"

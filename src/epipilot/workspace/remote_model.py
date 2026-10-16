@@ -145,7 +145,6 @@ class ThirdPartyChatModel:
         )
 
     def extract(self, prompt: str) -> ClaimBatch:
-        endpoint, _host = _endpoint(self.base_url)
         schema = ClaimBatch.model_json_schema()
         if self.response_format == "json_schema":
             response_format: dict[str, Any] = {
@@ -177,7 +176,33 @@ class ThirdPartyChatModel:
         }
         if self.max_tokens is not None:
             body["max_tokens"] = self.max_tokens
+        message = self._post_chat(body)
+        try:
+            return ClaimBatch.model_validate_json(message)
+        except ValidationError:
+            raise ValueError("Research API output failed local schema validation") from None
 
+    def complete_json(self, system: str, prompt: str) -> Any:
+        """Return a parsed JSON object; local schema validation is the caller's job."""
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "stream": False,
+        }
+        if self.max_tokens is not None:
+            body["max_tokens"] = self.max_tokens
+        message = self._post_chat(body)
+        try:
+            return json.loads(message)
+        except json.JSONDecodeError:
+            raise ValueError("Research API returned non-JSON content") from None
+
+    def _post_chat(self, body: dict[str, Any]) -> str:
+        endpoint, _host = _endpoint(self.base_url)
         request = urllib.request.Request(
             endpoint,
             data=json.dumps(body, ensure_ascii=False).encode(),
@@ -185,6 +210,8 @@ class ThirdPartyChatModel:
                 "Authorization": "Bearer " + self.api_key,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                # Some providers reject urllib's default Python-urllib user agent.
+                "User-Agent": "epipilot/0.1.0",
             },
             method="POST",
         )
@@ -213,9 +240,7 @@ class ThirdPartyChatModel:
             message = choice["message"]["content"]
             if not isinstance(message, str):
                 raise ValueError("Research API did not return JSON text content")
-            return ClaimBatch.model_validate_json(message)
-        except ValidationError:
-            raise ValueError("Research API output failed local schema validation") from None
+            return message
         except (KeyError, IndexError, TypeError, json.JSONDecodeError):
             raise ValueError("Research API returned a malformed chat completion") from None
 
