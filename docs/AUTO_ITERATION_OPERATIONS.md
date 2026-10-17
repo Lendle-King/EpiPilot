@@ -35,6 +35,9 @@ optional for DOM inspection and must not be broadened merely to diagnose a reply
 The loop checkpoint counts archived rounds; starting with `max_rounds` permits
 that many additional rounds after the latest checkpoint. Operators must account
 for the remaining overall budget when resuming after a failure.
+The forward watchdog treats its `--max-rounds` value as the overall project
+budget and submits only the remaining count when it observes a new eligible
+session; this prevents a resumed watch from exceeding the original budget.
 After a backend restart, the loop status endpoint restores the latest persisted
 checkpoint for observation with `running: false`; starting a new loop still
 uses that checkpoint and does not replay completed rounds.
