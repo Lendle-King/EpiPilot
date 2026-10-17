@@ -63,6 +63,8 @@ def test_route_guidance_prefers_public_diagnostics_when_inputs_missing() -> None
     assert "bounded data-readiness or diagnostic route" in ROUTE_GUIDANCE
     assert "must not treat public diagnostics as V2.5 evidence" in ROUTE_GUIDANCE
     assert "do not repeat a route that only requests missing artifacts" in ROUTE_GUIDANCE
+    assert "committed host-side validation" in ROUTE_GUIDANCE
+    assert "do not block solely because" in ROUTE_GUIDANCE
 
 
 def test_route_generation_is_grounded_on_claim_ids(tmp_path: Any) -> None:

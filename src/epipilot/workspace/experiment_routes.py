@@ -43,6 +43,10 @@ ROUTE_GUIDANCE = (
     "(9) A diagnostic route may validate coverage, joins, ledger invariants or an "
     "explicitly non-canonical public-track backtest, but it must not infer historical "
     "membership, backfill forward observations, or relax a frozen benchmark gate. "
+    "(10) If the host handoff contains committed host-side validation that directly "
+    "covers the public diagnostic, do not block solely because the executor sandbox "
+    "cannot open the host raw files. Treat the summary as an orchestrator observation, "
+    "state that no independent raw rerun occurred, and never fabricate rows or results. "
     "Return ONLY a JSON object matching the schema."
 )
 
