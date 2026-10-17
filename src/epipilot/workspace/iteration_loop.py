@@ -152,15 +152,26 @@ class AutoIterationLoop:
 
                 review = dict(reviewed.get("review") or {})
                 verdict = str(review.get("verdict", "")).strip().lower()
-                state.verdicts.append(verdict)
-                state.rounds_completed += 1
                 state.step = "update_claims"
                 state.message = f"round {round_index}: recording report and refreshing claims"
                 report_markdown = str(review.get("report_markdown", ""))
-                if report_markdown and repo_path is not None:
-                    self._commit_round_report(repo_path, round_index, report_markdown)
-                    store.repin_snapshot(project_id)
+                if repo_path is None or not report_markdown.strip():
+                    raise ValueError("Round requires a repository and a nonblank experiment report")
+                report_path = self._commit_round_report(repo_path, round_index, report_markdown)
+                store.repin_snapshot(project_id)
                 agent.run_model(project_id, claim_model, claim_provider, claim_max_documents)
+                refreshed = agent.report(project_id)
+                if any(
+                    entry.get("path") == report_path
+                    for entry in refreshed.get("rejected_documents", [])
+                ) or not any(
+                    ref.get("source_path") == report_path
+                    for claim in refreshed.get("claims", [])
+                    for ref in claim.get("citations", [])
+                ):
+                    raise ValueError("Archived experiment report did not produce grounded claims")
+                state.verdicts.append(verdict)
+                state.rounds_completed += 1
                 if verdict in _STOP_VERDICTS or verdict.startswith("goal_met"):
                     state.step = "done"
                     state.message = f"round {round_index}: verdict {verdict}"
@@ -176,7 +187,7 @@ class AutoIterationLoop:
             state.stop_reason = f"重大问题: {error}"
 
     @staticmethod
-    def _commit_round_report(repo_path: Path, round_index: int, markdown: str) -> None:
+    def _commit_round_report(repo_path: Path, round_index: int, markdown: str) -> str:
         target_dir = repo_path / "docs" / "auto_iteration"
         target_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -189,6 +200,7 @@ class AutoIterationLoop:
             "-m",
             f"docs(auto-iteration): round {round_index} experiment report",
         )
+        return str(path.relative_to(repo_path))
 
     @staticmethod
     def _persist_summary(project_id: str, store: WorkspaceStore, state: LoopState) -> None:

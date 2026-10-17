@@ -11,6 +11,13 @@ claims, then append the checkpoint. A failure during archival or extraction
 fails closed before a new checkpoint is recorded. Existing audit rows are
 never replaced.
 
+A repository path and a nonblank report are required to complete a round.
+The newly archived report must itself contribute quote-grounded claims and
+must not appear in `rejected_documents`; successful extraction from older
+documents cannot satisfy this gate. Missing/skipped/rejected report extraction
+leaves the review and any committed report available for audit, while leaving
+the completed-round count and checkpoint unchanged.
+
 The Chrome extension must return the `assistantText` field, including an empty
 string when no assistant response exists. The backend rejects an older loaded
 extension before typing or submitting a prompt. Reload EpiPilot at

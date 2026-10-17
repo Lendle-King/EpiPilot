@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -10,11 +11,28 @@ from epipilot.workspace.chatgpt_web import ChatGPTWebError
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
 from epipilot.workspace.iteration_loop import AutoIterationLoop
 from test_experiment_routes import FakeRouteModel, _route_payload, _seed_claims
-from test_research_onboarding_agent import _good_batch, _setup
+from test_research_onboarding_agent import _bad_batch, _good_batch, _setup
 
 
 class AlwaysGood:
     def extract(self, prompt: str) -> Any:
+        if "Source document: docs/auto_iteration/" in prompt:
+            line = next(
+                (
+                    match
+                    for match in re.finditer(r"^\[L(\d+)\] (.+)$", prompt, re.MULTILINE)
+                    if len(match[2].strip()) >= 14
+                ),
+                None,
+            )
+            if line is None:
+                return _bad_batch()
+            claim = (
+                _good_batch()
+                .claims[0]
+                .model_copy(update={"source_line": int(line[1]), "exact_quote": line[2]})
+            )
+            return _good_batch().model_copy(update={"claims": [claim]})
         return _good_batch()
 
 
@@ -30,7 +48,7 @@ class SequenceDriver:
         return self._replies.pop(0)
 
 
-def _review(verdict: str, report: str = "") -> str:
+def _review(verdict: str, report: str = "# Round report\nSynthetic observation only.") -> str:
     return (
         '{"verdict": "' + verdict + '", "evaluation_zh": "评估结论与 claims 一致。", '
         '"results_digest_zh": "对照结果已汇总, 指标符合预期。", '
@@ -39,7 +57,14 @@ def _review(verdict: str, report: str = "") -> str:
     )
 
 
-def _start(tmp_path: Any, driver: SequenceDriver, max_rounds: int) -> tuple[Any, dict]:
+def _start(
+    tmp_path: Any,
+    driver: SequenceDriver,
+    max_rounds: int,
+    *,
+    claim_model: Any = None,
+    archive: bool = True,
+) -> tuple[Any, dict]:
     store, project_id = _setup(tmp_path)
     claim_id = _seed_claims(store, project_id)
     loop = AutoIterationLoop()
@@ -47,11 +72,11 @@ def _start(tmp_path: Any, driver: SequenceDriver, max_rounds: int) -> tuple[Any,
         project_id,
         store=store,
         route_model=FakeRouteModel(_route_payload(claim_id)),
-        claim_model=AlwaysGood(),
+        claim_model=claim_model or AlwaysGood(),
         claim_provider="fake",
         driver=driver,
         project_name="QUANT_ETF",
-        repo_path=tmp_path / "repo",
+        repo_path=tmp_path / "repo" if archive else None,
         max_rounds=max_rounds,
     )
     return store, status
@@ -201,3 +226,34 @@ def test_terminal_round_archives_report_before_checkpoint(tmp_path: Any, verdict
     assert checkpoint is not None
     assert checkpoint["rounds_completed"] == 1
     assert status["stop_reason"] == f"阶段判定停止: {verdict}"
+
+
+@pytest.mark.parametrize(
+    "archive,report", [(False, "# Report\nSynthetic observation only."), (True, " ")]
+)
+def test_terminal_round_without_archive_does_not_advance_checkpoint(
+    tmp_path: Any, archive: bool, report: str
+) -> None:
+    store, status = _start(
+        tmp_path, SequenceDriver([_review("blocked", report)]), 10, archive=archive
+    )
+    assert status["step"] == "stopped"
+    assert status["rounds_completed"] == 0
+    assert ExperimentRoutePlanner(store).load_loop_checkpoint(_project_of(store)) is None
+
+
+def test_rejected_new_report_does_not_advance_checkpoint(tmp_path: Any) -> None:
+    class BadReport(AlwaysGood):
+        def extract(self, prompt: str) -> Any:
+            if "Source document: docs/auto_iteration/" in prompt:
+                return _bad_batch()
+            return super().extract(prompt)
+
+    store, status = _start(
+        tmp_path, SequenceDriver([_review("blocked")]), 10, claim_model=BadReport()
+    )
+    assert status["step"] == "stopped"
+    assert status["rounds_completed"] == 0
+    assert ExperimentRoutePlanner(store).load_loop_checkpoint(_project_of(store)) is None
+    # The committed observation and rejected extraction stay available for audit.
+    assert len(list((tmp_path / "repo" / "docs" / "auto_iteration").glob("*.md"))) == 1
