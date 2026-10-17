@@ -53,6 +53,7 @@ def test_browser_settings_require_https_and_positive_timeout(tmp_path: Any) -> N
         ChatGPTWebSettings(profile_dir=tmp_path, timeout_seconds=0)
     settings = ChatGPTWebSettings(profile_dir=tmp_path)
     assert settings.url == "https://chatgpt.com/"
+    assert settings.timeout_seconds == 7200.0
     assert settings.browser_channel == "chrome"
     assert settings.browser_executable is None
     native = ChatGPTWebSettings(profile_dir=tmp_path, browser_executable="/usr/bin/chrome")

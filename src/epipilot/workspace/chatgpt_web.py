@@ -78,7 +78,10 @@ class ChatGPTWebSettings:
     profile_dir: Path
     url: str = _DEFAULT_URL
     headless: bool = False
-    timeout_seconds: float = 240.0
+    # A ChatGPT Web experiment may legitimately run for a long time. Keep the
+    # isolated/CDP fallback on the same two-hour reply window as the extension
+    # bridge so a temporary bridge disconnect does not shorten the contract.
+    timeout_seconds: float = 7200.0
     # Prefer the system Google Chrome: automation-built Chromium is rejected by
     # some sites (incl. ChatGPT) with a "browser not safe" wall. Empty string
     # selects Playwright's bundled Chromium instead.
