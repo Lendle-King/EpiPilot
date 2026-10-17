@@ -75,6 +75,15 @@ _CORRECTIVE_SUFFIX = (
     "unsure of exact wording, extract fewer claims instead."
 )
 
+_MINIMAL_CORRECTIVE_SUFFIX = (
+    "\n\nMINIMAL GROUNDED FALLBACK: the previous two extraction strategies failed. "
+    "Use a stricter, smaller response: return at most two claims, and only when "
+    "the exact_quote is a short (14-80 character) character-for-character "
+    "substring of one numbered source line. Do not combine lines, normalize "
+    "punctuation, or paraphrase the quote. If no claim is completely certain, "
+    'return {"claims": []}.'
+)
+
 
 class GroundedClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -509,15 +518,15 @@ class ResearchOnboardingAgent:
         *,
         priority_paths: Sequence[str] = (),
     ) -> dict[str, object]:
-        """Extract per document with one corrective retry and per-document isolation.
+        """Extract per document with bounded corrective retries and isolation.
 
-        A batch whose citations fail exact grounding is retried once with a
-        corrective instruction, then rejected alone. Every verified batch is
-        merged and persisted immediately, so a later provider failure cannot
-        discard earlier grounded work. Rejections and provider failures are
-        recorded in ``rejected_documents`` for auditability; two consecutive
-        provider failures abort the remaining run. Unchanged failures are never
-        retried more than once.
+        A batch whose citations fail exact grounding gets one corrective retry
+        and one minimal-extraction fallback, then is rejected alone. Every
+        verified batch is merged and persisted immediately, so a later provider
+        failure cannot discard earlier grounded work. Rejections and provider
+        failures are recorded in ``rejected_documents`` for auditability; two
+        consecutive provider failures abort the remaining run. The fallback is
+        a changed, bounded strategy rather than an unbounded retry.
         """
         item, docs = self._project_documents(
             project_id,
@@ -755,9 +764,12 @@ class ResearchOnboardingAgent:
         self, model: ExtractionModel, document: SnapshotDocument, goal: str
     ) -> ClaimBatch | None:
         prompt = extraction_prompt(document, goal)
-        for attempt in range(2):
+        # Each suffix changes the strategy; the bounded third pass is a minimal
+        # extraction fallback, not an unbounded retry of the same failure.
+        suffixes = ("", _CORRECTIVE_SUFFIX, _MINIMAL_CORRECTIVE_SUFFIX)
+        for suffix in suffixes:
             try:
-                batch = model.extract(prompt + (_CORRECTIVE_SUFFIX if attempt else ""))
+                batch = model.extract(prompt + suffix)
                 for item in batch.claims:
                     _verify_quote(document, item)
             except ValueError:

@@ -293,6 +293,22 @@ def test_run_model_retries_grounding_failure_with_corrective_prompt(
     assert "CORRECTIVE CONSTRAINT" not in model.prompts[2]
 
 
+def test_run_model_uses_minimal_grounding_fallback_after_two_failures(
+    tmp_path: Path,
+) -> None:
+    store, project_id = _setup(tmp_path)
+    model = ScriptedModel([_bad_batch(), _bad_batch(), _good_batch(), _good_batch()])
+
+    result = ResearchOnboardingAgent(store).run_model(project_id, model, "fake", 2)
+
+    assert result["rejected_documents"] == []
+    assert result["distinct_claim_count"] >= 1
+    assert len(model.prompts) == 4
+    assert "CORRECTIVE CONSTRAINT" in model.prompts[1]
+    assert "MINIMAL GROUNDED FALLBACK" in model.prompts[2]
+    assert "MINIMAL GROUNDED FALLBACK" not in model.prompts[3]
+
+
 def test_run_model_rejects_only_the_ungrounded_document(tmp_path: Path) -> None:
     store, project_id = _setup(tmp_path)
 
