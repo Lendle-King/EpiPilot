@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from epipilot.workspace.chatgpt_web import ChatGPTWebError
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
 from epipilot.workspace.iteration_loop import AutoIterationLoop
@@ -178,3 +180,24 @@ def test_checkpoint_records_last_successful_round(tmp_path: Any) -> None:
     assert checkpoint is not None
     assert checkpoint["rounds_completed"] == 1
     assert checkpoint["verdicts"] == ["goal_met"]
+
+
+@pytest.mark.parametrize("verdict", ["blocked", "goal_met"])
+def test_terminal_round_archives_report_before_checkpoint(tmp_path: Any, verdict: str) -> None:
+    from epipilot.workspace.onboarding import git
+
+    store, status = _start(
+        tmp_path,
+        SequenceDriver([_review(verdict, "# Terminal report\nNo independent result.")]),
+        max_rounds=10,
+    )
+    repo = tmp_path / "repo"
+    reports = list((repo / "docs" / "auto_iteration").glob("round_1_*.md"))
+    assert len(reports) == 1
+    relative = str(reports[0].relative_to(repo))
+    assert "No independent result." in git(repo, "show", f"HEAD:{relative}")
+    assert store.get(_project_of(store))["git_commit"] == git(repo, "rev-parse", "HEAD")
+    checkpoint = ExperimentRoutePlanner(store).load_loop_checkpoint(_project_of(store))
+    assert checkpoint is not None
+    assert checkpoint["rounds_completed"] == 1
+    assert status["stop_reason"] == f"阶段判定停止: {verdict}"

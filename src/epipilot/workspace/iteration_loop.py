@@ -154,13 +154,6 @@ class AutoIterationLoop:
                 verdict = str(review.get("verdict", "")).strip().lower()
                 state.verdicts.append(verdict)
                 state.rounds_completed += 1
-                if verdict in _STOP_VERDICTS or verdict.startswith("goal_met"):
-                    state.step = "done"
-                    state.message = f"round {round_index}: verdict {verdict}"
-                    state.stop_reason = f"阶段判定停止: {verdict}"
-                    planner.record_loop_checkpoint(project_id, state.snapshot())
-                    return
-
                 state.step = "update_claims"
                 state.message = f"round {round_index}: recording report and refreshing claims"
                 report_markdown = str(review.get("report_markdown", ""))
@@ -168,6 +161,12 @@ class AutoIterationLoop:
                     self._commit_round_report(repo_path, round_index, report_markdown)
                     store.repin_snapshot(project_id)
                 agent.run_model(project_id, claim_model, claim_provider, claim_max_documents)
+                if verdict in _STOP_VERDICTS or verdict.startswith("goal_met"):
+                    state.step = "done"
+                    state.message = f"round {round_index}: verdict {verdict}"
+                    state.stop_reason = f"阶段判定停止: {verdict}"
+                    planner.record_loop_checkpoint(project_id, state.snapshot())
+                    return
                 planner.record_loop_checkpoint(project_id, state.snapshot())
             state.step = "done"
             state.stop_reason = f"达到最大轮次 {max_rounds}"
