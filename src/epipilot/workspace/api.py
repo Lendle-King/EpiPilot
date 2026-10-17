@@ -445,7 +445,14 @@ def _pending_reply_deadline(project_id: str, route_run_id: str) -> datetime:
 @app.post("/api/browser-bridge/inspect")
 def browser_bridge_inspect() -> dict[str, object]:
     """Read-only diagnosis of the ChatGPT tab: DOM state plus a screenshot."""
-    _extension_hub.heartbeat()
+    # Do not manufacture a heartbeat from the diagnostic request itself.  The
+    # extension must have polled recently; otherwise fail closed before
+    # queueing a command that cannot be serviced.
+    if not _extension_hub.connected:
+        raise HTTPException(
+            status_code=503,
+            detail="EpiPilot Chrome extension is not connected",
+        )
     opened = _extension_hub.request("open_tab", url="https://chatgpt.com", match="chatgpt.com")
     tab_id = int(opened["tab_id"])
     _extension_hub.request("tab_focus", tab_id=tab_id)

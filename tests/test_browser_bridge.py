@@ -60,6 +60,38 @@ def test_hub_queues_commands_and_resolves_results() -> None:
     assert outcome["value"] == {"tabs": []}
 
 
+def test_inspect_fails_closed_without_extension_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException
+
+    from epipilot.workspace import api
+
+    class DisconnectedHub:
+        connected = False
+
+        def __init__(self) -> None:
+            self.heartbeat_calls = 0
+            self.request_calls = 0
+
+        def heartbeat(self, name: str = "") -> None:
+            self.heartbeat_calls += 1
+
+        def request(self, action: str, **payload: Any) -> dict[str, Any]:
+            self.request_calls += 1
+            raise AssertionError("a disconnected bridge must not enqueue commands")
+
+    hub = DisconnectedHub()
+    monkeypatch.setattr(api, "_extension_hub", hub)
+
+    with pytest.raises(HTTPException) as raised:
+        api.browser_bridge_inspect()
+
+    assert raised.value.status_code == 503
+    assert hub.heartbeat_calls == 0
+    assert hub.request_calls == 0
+
+
 def test_extension_driver_runs_the_full_chatgpt_sequence() -> None:
     reads = [
         {
