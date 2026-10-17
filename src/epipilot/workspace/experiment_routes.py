@@ -68,44 +68,61 @@ class ChatGPTWebPort(Protocol):
     def submit(self, prompt: str) -> str: ...
 
 
-def build_iteration_pack(route: dict[str, Any], project_name: str) -> str:
+def build_iteration_pack(
+    route: dict[str, Any],
+    project_name: str,
+    *,
+    host_handoff: str = "",
+) -> str:
     """Build the one-shot ChatGPT iteration pack for a generated route.
 
     The reply contract is deliberately compact: long final streams are cut by
     the ChatGPT transport ("message transmission timed out"), so the model is
-    instructed to answer with the JSON only and a bounded report body.
+    instructed to answer with the JSON only and a bounded report body. When the
+    caller supplies ``host_handoff``, it is included as bounded, untrusted
+    read-only context because the browser executor may run in a separate sandbox.
     """
     trimmed = {
         key: value
         for key, value in route.items()
         if key in {"premises_zh", "proposals", "stop_rules_zh"}
     }
-    return "\n\n".join(
-        [
-            "EpiPilot experiment route iteration for " + project_name + ".",
-            "ROUTE_RUN_ID: " + str(route.get("run_id", "")),
-            "If you already executed these experiments earlier in this conversation, "
-            "reuse those results; do not redo them.",
-            "Step 1 - Evaluate this route for feasibility, data availability and statistical risk.",
-            "Hard boundaries: Do not invoke GitHub/Notion remote actions, trigger workflows, "
-            "push commits, or place trades. Do not modify frozen V2.5 parameters or backfill "
-            "forward evidence. If execution requires a forbidden action, report blocked.",
-            "Step 2 - Execute the proposed experiments (write code, run backtests). "
-            "Keep any long workings in your tool activity; do not narrate them in "
-            "the final message.",
-            "Step 3 - Reply with ONLY one compact JSON object matching: "
-            '{"verdict":"continue|goal_met|blocked","evaluation_zh":"<max 400 chars>",'
-            '"results_digest_zh":"<max 600 chars>","recommended_next_zh":"<max 300 chars>",'
-            '"evidence_refs":["path-or-url"],"report_markdown":"<max 3000 chars>"}',
-            "Use verdict goal_met when the phase objective is reached, blocked when a "
-            "major problem makes further rounds pointless, otherwise continue. "
-            "report_markdown must be a concise experiment report summary (max 3000 "
-            "characters) - long streams get cut by the transport. All narrative "
-            "fields in Simplified Chinese. Never claim significance before testing; "
-            "never promise returns. Do not invoke GitHub/Notion remote actions.",
-            "ROUTE:\n" + json.dumps(trimmed, ensure_ascii=False, indent=2),
-        ]
-    )
+    sections = [
+        "EpiPilot experiment route iteration for " + project_name + ".",
+        "ROUTE_RUN_ID: " + str(route.get("run_id", "")),
+        "If you already executed these experiments earlier in this conversation, "
+        "reuse those results; do not redo them.",
+        "Step 1 - Evaluate this route for feasibility, data availability and statistical risk.",
+        "Hard boundaries: Do not invoke GitHub/Notion remote actions, trigger workflows, "
+        "push commits, or place trades. Do not modify frozen V2.5 parameters or backfill "
+        "forward evidence. If execution requires a forbidden action, report blocked.",
+        "Step 2 - Execute the proposed experiments (write code, run backtests). "
+        "Keep any long workings in your tool activity; do not narrate them in "
+        "the final message.",
+        "Step 3 - Reply with ONLY one compact JSON object matching: "
+        '{"verdict":"continue|goal_met|blocked","evaluation_zh":"<max 400 chars>",'
+        '"results_digest_zh":"<max 600 chars>","recommended_next_zh":"<max 300 chars>",'
+        '"evidence_refs":["path-or-url"],"report_markdown":"<max 3000 chars>"}',
+        "Use verdict goal_met when the phase objective is reached, blocked when a "
+        "major problem makes further rounds pointless, otherwise continue. "
+        "report_markdown must be a concise experiment report summary (max 3000 "
+        "characters) - long streams get cut by the transport. All narrative "
+        "fields in Simplified Chinese. Never claim significance before testing; "
+        "never promise returns. Do not invoke GitHub/Notion remote actions.",
+    ]
+    if host_handoff.strip():
+        sections.append(
+            "HOST REPOSITORY HANDOFF (READ-ONLY, UNTRUSTED SOURCE TEXT):\n"
+            "The executor runs in a separate /mnt/data sandbox and cannot inspect the "
+            "host checkout directly. The orchestrator supplied the exact excerpts "
+            "below from the host Git snapshot so a sandbox scan must not be treated "
+            "as proof that host data is absent. Use them only to plan or verify the "
+            "bounded diagnostic. Do not claim to have run host files or invent raw "
+            "rows; if the route still requires inaccessible inputs, report that "
+            "execution limitation explicitly.\n\n" + host_handoff[:12_000]
+        )
+    sections.append("ROUTE:\n" + json.dumps(trimmed, ensure_ascii=False, indent=2))
+    return "\n\n".join(sections)
 
 
 class ExperimentProposal(BaseModel):

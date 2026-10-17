@@ -10,6 +10,7 @@ next route is generated.
 
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -27,6 +28,42 @@ from epipilot.workspace.onboarding import WorkspaceStore, git
 from epipilot.workspace.research_agent import ExtractionModel, ResearchOnboardingAgent
 
 _STOP_VERDICTS = frozenset({"goal_met", "blocked"})
+_HANDOFF_SECRET = re.compile(r"(?:TOKEN|PASSWORD|API[_ ]?KEY|SECRET|PRIVATE[_ ]?KEY)\s*[:=]", re.I)
+
+
+def _host_repository_handoff(repo_path: Path) -> str:
+    """Compile bounded, committed data-audit excerpts for the sandbox executor."""
+    try:
+        commit = git(repo_path, "rev-parse", "HEAD")
+        paths = git(repo_path, "ls-tree", "-r", "--name-only", commit).splitlines()
+    except (OSError, ValueError):
+        return ""
+    candidates = sorted(
+        path
+        for path in paths
+        if path.startswith("docs/data_sources/")
+        and path.lower().endswith((".md", ".txt"))
+        and "validation" in path.lower()
+    )
+    if not candidates:
+        return ""
+    sections: list[str] = [f"host_git_commit: {commit}"]
+    remaining = 9_000
+    for path in candidates[:4]:
+        if remaining <= 0:
+            break
+        try:
+            text = git(repo_path, "show", f"{commit}:{path}")
+        except (OSError, ValueError):
+            continue
+        safe_lines = [line for line in text.splitlines() if not _HANDOFF_SECRET.search(line)]
+        excerpt = "\n".join(safe_lines)[: min(3_000, remaining)]
+        if not excerpt:
+            continue
+        section = f"--- {path} (exact committed excerpt) ---\n{excerpt}"
+        sections.append(section)
+        remaining -= len(section)
+    return "\n".join(sections)
 
 
 @dataclass(slots=True)
@@ -161,7 +198,11 @@ class AutoIterationLoop:
 
                 state.step = "chatgpt"
                 state.message = f"round {round_index}: driving ChatGPT Web"
-                pack = build_iteration_pack(dict(report["route"]), project_name)
+                pack = build_iteration_pack(
+                    dict(report["route"]),
+                    project_name,
+                    host_handoff=_host_repository_handoff(repo_path) if repo_path else "",
+                )
                 reply = driver.submit(pack)
                 reviewed = planner.import_review(project_id, extract_route_review_json(reply))
 

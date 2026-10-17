@@ -50,6 +50,17 @@ def test_iteration_pack_carries_route_and_contract() -> None:
     assert "Do not invoke GitHub/Notion remote actions" in pack
 
 
+def test_iteration_pack_carries_read_only_host_handoff() -> None:
+    pack = build_iteration_pack(
+        {"proposals": []},
+        "QUANT_ETF",
+        host_handoff="docs/data_sources/public_panel_validation.md\nRows: 37712",
+    )
+    assert "HOST REPOSITORY HANDOFF" in pack
+    assert "sandbox" in pack
+    assert "public_panel_validation.md" in pack
+
+
 def test_browser_settings_require_https_and_positive_timeout(tmp_path: Any) -> None:
     with pytest.raises(ValueError, match="https"):
         ChatGPTWebSettings(profile_dir=tmp_path, url="http://chatgpt.com/")
