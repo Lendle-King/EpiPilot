@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -173,19 +174,31 @@ def _snapshot_document(
     )
 
 
-def snapshot_documents(root: Path, commit: str, limit: int = _MAX_DOCS) -> list[SnapshotDocument]:
+def snapshot_documents(
+    root: Path,
+    commit: str,
+    limit: int = _MAX_DOCS,
+    *,
+    priority_paths: Sequence[str] = (),
+) -> list[SnapshotDocument]:
     if not 1 <= limit <= _MAX_DOCS:
         raise ValueError("document limit must be 1-12")
     documents: list[SnapshotDocument] = []
     eligible_paths = set(_eligible_files(root, commit))
-    for path in sorted(
-        eligible_paths,
-        key=lambda name: (
-            max(re.findall(r"20[0-9]{6}", name), default="0"),
-            name,
-        ),
-        reverse=True,
-    ):
+    ordered_paths = [path for path in priority_paths if path in eligible_paths]
+    ordered_paths.extend(
+        path
+        for path in sorted(
+            eligible_paths,
+            key=lambda name: (
+                max(re.findall(r"20[0-9]{6}", name), default="0"),
+                name,
+            ),
+            reverse=True,
+        )
+        if path not in ordered_paths
+    )
+    for path in ordered_paths:
         if len(documents) == limit:
             break
         document = _snapshot_document(root, commit, path, eligible_paths=eligible_paths)
@@ -456,7 +469,11 @@ class ResearchOnboardingAgent:
             )
 
     def _project_documents(
-        self, project_id: str, limit: int
+        self,
+        project_id: str,
+        limit: int,
+        *,
+        priority_paths: Sequence[str] = (),
     ) -> tuple[dict[str, object], list[SnapshotDocument]]:
         item = self.store.get(project_id)
         path, commit = item["repository_path"], item["git_commit"]
@@ -464,7 +481,12 @@ class ResearchOnboardingAgent:
             raise ValueError("Semantic onboarding requires an adopted Git repository")
         # Revalidate path against the allowlist at execution time; never fetch remote.
         root, _head, _branch = self.store._resolve_repo(path)
-        return item, snapshot_documents(root, commit, limit)
+        return item, snapshot_documents(
+            root,
+            commit,
+            limit,
+            priority_paths=priority_paths,
+        )
 
     def chat_packet(self, project_id: str, max_documents: int = 2) -> dict[str, object]:
         item, docs = self._project_documents(project_id, max_documents)
@@ -484,6 +506,8 @@ class ResearchOnboardingAgent:
         model: ExtractionModel,
         provider: str,
         max_documents: int = 4,
+        *,
+        priority_paths: Sequence[str] = (),
     ) -> dict[str, object]:
         """Extract per document with one corrective retry and per-document isolation.
 
@@ -495,7 +519,11 @@ class ResearchOnboardingAgent:
         provider failures abort the remaining run. Unchanged failures are never
         retried more than once.
         """
-        item, docs = self._project_documents(project_id, max_documents)
+        item, docs = self._project_documents(
+            project_id,
+            max_documents,
+            priority_paths=priority_paths,
+        )
         if not docs:
             raise ValueError("No qualifying tracked research documents in Git snapshot")
         goal = str(item["goal"])

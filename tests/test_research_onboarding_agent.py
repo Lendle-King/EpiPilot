@@ -148,6 +148,36 @@ def test_extraction_prompt_injects_goal_and_requires_chinese_output(tmp_path: Pa
     assert "Market extraction requirement" in prompt
 
 
+def test_snapshot_documents_prioritizes_the_current_round_report(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "repo")
+    report_path = repo / "docs" / "auto_iteration" / "round_10_20261017_183939.md"
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text(
+        "# Round 10\nThe current route remains blocked pending a reproducible data panel.\n",
+        encoding="utf-8",
+    )
+    for index in range(20):
+        (repo / "docs" / f"data_source_{index:02d}_20261018.md").write_text(
+            f"# Source {index}\nA bounded data-readiness observation {index}.\n",
+            encoding="utf-8",
+        )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add current round report and source notes")
+    commit = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+
+    documents = snapshot_documents(
+        repo,
+        commit,
+        12,
+        priority_paths=("docs/auto_iteration/round_10_20261017_183939.md",),
+    )
+
+    assert documents[0].path == "docs/auto_iteration/round_10_20261017_183939.md"
+    assert len(documents) == 12
+
+
 def test_semantic_agent_deduplicates_and_exposes_temporal_conflict(tmp_path: Path) -> None:
     store, project_id = _setup(tmp_path)
     agent = ResearchOnboardingAgent(store)

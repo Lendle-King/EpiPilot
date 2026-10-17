@@ -174,7 +174,13 @@ class AutoIterationLoop:
                     raise ValueError("Round requires a repository and a nonblank experiment report")
                 report_path = self._commit_round_report(repo_path, round_index, report_markdown)
                 store.repin_snapshot(project_id)
-                agent.run_model(project_id, claim_model, claim_provider, claim_max_documents)
+                agent.run_model(
+                    project_id,
+                    claim_model,
+                    claim_provider,
+                    claim_max_documents,
+                    priority_paths=(report_path,),
+                )
                 refreshed = agent.report(project_id)
                 if any(
                     entry.get("path") == report_path
