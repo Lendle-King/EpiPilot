@@ -136,40 +136,61 @@ def _eligible_files(root: Path, commit: str) -> list[str]:
     )
 
 
+def _snapshot_document(
+    root: Path,
+    commit: str,
+    path: str,
+    *,
+    eligible_paths: set[str] | None = None,
+) -> SnapshotDocument | None:
+    """Read one eligible Git document into a bounded immutable snapshot."""
+    allowed = eligible_paths if eligible_paths is not None else set(_eligible_files(root, commit))
+    if path not in allowed:
+        return None
+    process = subprocess.run(
+        ["git", "-C", str(root), "show", f"{commit}:{path}"],
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+    if process.returncode or len(process.stdout) > _MAX_DOCUMENT_BYTES:
+        return None
+    try:
+        body = process.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    lines = tuple(body.splitlines())
+    visible = lines[:_MAX_LINES]
+    numbered = "\n".join(f"[L{index}] {line[:600]}" for index, line in enumerate(visible, 1))
+    if len(numbered) > 16_000:
+        numbered = "\n".join(numbered.splitlines()[:95])
+    return SnapshotDocument(
+        path,
+        commit,
+        hashlib.sha256(process.stdout).hexdigest(),
+        numbered,
+        lines,
+    )
+
+
 def snapshot_documents(root: Path, commit: str, limit: int = _MAX_DOCS) -> list[SnapshotDocument]:
     if not 1 <= limit <= _MAX_DOCS:
         raise ValueError("document limit must be 1-12")
     documents: list[SnapshotDocument] = []
-    for path in _eligible_files(root, commit):
+    eligible_paths = set(_eligible_files(root, commit))
+    for path in sorted(
+        eligible_paths,
+        key=lambda name: (
+            max(re.findall(r"20[0-9]{6}", name), default="0"),
+            name,
+        ),
+        reverse=True,
+    ):
         if len(documents) == limit:
             break
-        process = subprocess.run(
-            ["git", "-C", str(root), "show", f"{commit}:{path}"],
-            capture_output=True,
-            check=False,
-            timeout=15,
-        )
-        if process.returncode or len(process.stdout) > _MAX_DOCUMENT_BYTES:
-            continue
-        try:
-            body = process.stdout.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-        lines = tuple(body.splitlines())
-        # Do not pass entire repositories, binaries or unrestricted private files.
-        visible = lines[:_MAX_LINES]
-        numbered = "\n".join(f"[L{index}] {line[:600]}" for index, line in enumerate(visible, 1))
-        if len(numbered) > 16_000:
-            numbered = "\n".join(numbered.splitlines()[:95])
-        documents.append(
-            SnapshotDocument(
-                path,
-                commit,
-                hashlib.sha256(process.stdout).hexdigest(),
-                numbered,
-                lines,
-            )
-        )
+        document = _snapshot_document(root, commit, path, eligible_paths=eligible_paths)
+        if document is not None:
+            documents.append(document)
     return documents
 
 
@@ -215,6 +236,21 @@ def _verify_quote(document: SnapshotDocument, claim: GroundedClaim) -> None:
         or len(claim.exact_quote.strip()) < 14
     ):
         raise ValueError(f"Ungrounded model citation in {document.path} line {claim.source_line}")
+
+
+def _source_has_grounded_claim(report: dict[str, Any], source_path: str) -> bool:
+    """Return whether the current report already carries a citation for a source.
+
+    The citation itself is only accepted after ``reconcile`` has verified the
+    quoted bytes against the pinned snapshot.  Reusing this predicate lets a
+    later refresh preserve an explicitly imported grounded batch instead of
+    asking a model to replace it with an empty or rejected batch.
+    """
+    return any(
+        ref.get("source_path") == source_path
+        for claim in report.get("claims", [])
+        for ref in claim.get("citations", [])
+    )
 
 
 def reconcile(
@@ -266,6 +302,7 @@ def reconcile(
         "distinct_claim_count": len(claims),
         "independently_verified": False,
         "rejected_documents": [],
+        "resolved_documents": [],
     }
 
 
@@ -463,9 +500,29 @@ class ResearchOnboardingAgent:
             raise ValueError("No qualifying tracked research documents in Git snapshot")
         goal = str(item["goal"])
         commit = str(item["git_commit"])
+        repo_path = item.get("repository_path")
+        if not isinstance(repo_path, str):
+            raise ValueError("Semantic onboarding requires an adopted Git repository")
+        root, _head, _branch = self.store._resolve_repo(repo_path)
+        prior = self.report(project_id)
+        if prior.get("available") and prior.get("git_commit") != commit:
+            carried = self._carry_forward_prior(project_id, commit, root, prior)
+            if carried is not None:
+                self._persist(project_id, commit, provider, carried)
         verified_any = False
         consecutive_infra_failures = 0
         for document in docs:
+            prior = self.report(project_id)
+            if (
+                prior.get("available")
+                and prior.get("git_commit") == commit
+                and _source_has_grounded_claim(prior, document.path)
+            ):
+                # A manually imported, byte-grounded batch is authoritative
+                # candidate evidence for this snapshot. Do not ask a later
+                # model refresh to invalidate it or recreate a stale rejection.
+                verified_any = True
+                continue
             try:
                 batch = self._extract_grounded(model, document, goal)
             except RuntimeError:
@@ -481,14 +538,18 @@ class ResearchOnboardingAgent:
                     raise
                 continue
             consecutive_infra_failures = 0
-            if batch is None:
+            if batch is None or not batch.claims:
                 self._record_rejection(
                     project_id,
                     commit,
                     provider,
                     document.path,
-                    "citations failed exact grounding after one "
-                    "corrective retry; batch rejected in full",
+                    (
+                        "model returned an empty claim batch; document rejected in full"
+                        if batch is not None
+                        else "citations failed exact grounding after one "
+                        "corrective retry; batch rejected in full"
+                    ),
                 )
                 continue
             verified_any = True
@@ -497,6 +558,118 @@ class ResearchOnboardingAgent:
         if not verified_any:
             raise ValueError("No document produced a fully grounded claim batch")
         return self.report(project_id)
+
+    def _carry_forward_prior(
+        self,
+        project_id: str,
+        commit: str,
+        root: Path,
+        prior: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Re-anchor prior claims only when every cited byte still verifies.
+
+        A repository commit changes the citation identity even when the cited
+        document is untouched.  Reusing the old report without checking the
+        current Git blob would make a stale citation look current.  Claims
+        whose cited source changed or disappeared are dropped as a group for
+        that source so the next model pass must reconsider the document.
+        """
+        old_commit = prior.get("git_commit")
+        if not prior.get("available") or not isinstance(old_commit, str) or old_commit == commit:
+            return None
+        eligible_paths = set(_eligible_files(root, commit))
+        documents: dict[str, SnapshotDocument | None] = {}
+        invalid_paths: set[str] = set()
+        candidates: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        for raw_claim in prior.get("claims", []):
+            if not isinstance(raw_claim, dict):
+                continue
+            raw_refs = raw_claim.get("citations")
+            if not isinstance(raw_refs, list) or not raw_refs:
+                continue
+            updated_refs: list[dict[str, Any]] = []
+            valid = True
+            paths: set[str] = set()
+            for raw_ref in raw_refs:
+                if not isinstance(raw_ref, dict):
+                    valid = False
+                    break
+                source_path = raw_ref.get("source_path")
+                if not isinstance(source_path, str):
+                    valid = False
+                    break
+                paths.add(source_path)
+                if source_path not in documents:
+                    documents[source_path] = _snapshot_document(
+                        root,
+                        commit,
+                        source_path,
+                        eligible_paths=eligible_paths,
+                    )
+                document = documents[source_path]
+                try:
+                    verifier = GroundedClaim.model_validate(
+                        {
+                            "kind": raw_claim["kind"],
+                            "proposition": raw_claim["proposition"],
+                            "topic_key": raw_claim["topic_key"],
+                            "stance": raw_claim["stance"],
+                            "execution_status": raw_claim["execution_status"],
+                            "scientific_status": raw_claim["scientific_status"],
+                            "source_line": raw_ref["line"],
+                            "exact_quote": raw_ref["exact_quote"],
+                            "caveat": raw_claim.get("caveat", ""),
+                        }
+                    )
+                    if document is None:
+                        raise ValueError("source document is unavailable")
+                    _verify_quote(document, verifier)
+                except (KeyError, TypeError, ValueError):
+                    valid = False
+                    break
+                updated_refs.append(
+                    {
+                        **raw_ref,
+                        "source_sha256": document.source_sha256,
+                        "git_commit": commit,
+                    }
+                )
+            if valid and updated_refs:
+                carried_claim = dict(raw_claim)
+                carried_claim["citations"] = updated_refs
+                carried_claim["review"] = "pending"
+                candidates.append((carried_claim, updated_refs))
+            else:
+                invalid_paths.update(paths)
+
+        carried_claims = [
+            claim
+            for claim, refs in candidates
+            if not any(ref.get("source_path") in invalid_paths for ref in refs)
+        ]
+        carried_paths = {
+            str(ref.get("source_path"))
+            for claim in carried_claims
+            for ref in claim.get("citations", [])
+            if isinstance(ref, dict)
+        }
+        report = reconcile([])
+        report["claims"] = carried_claims
+        report["raw_claim_count"] = int(prior.get("raw_claim_count", len(carried_claims)))
+        report["distinct_claim_count"] = len(carried_claims)
+        report["potential_conflicts"] = potential_conflicts(carried_claims)
+        report["rejected_documents"] = list(prior.get("rejected_documents") or [])
+        report["resolved_documents"] = list(prior.get("resolved_documents") or [])
+        report["carry_forwarded_from_commit"] = old_commit
+        report["carry_forwarded_claim_count"] = len(carried_claims)
+        report["carry_forward_dropped_documents"] = [
+            {
+                "path": path,
+                "reason": "prior citation did not match the new Git blob; re-extraction required",
+            }
+            for path in sorted(invalid_paths - carried_paths)
+        ]
+        return report
 
     def _record_rejection(
         self,
@@ -535,6 +708,14 @@ class ResearchOnboardingAgent:
         report["raw_claim_count"] += int(prior["raw_claim_count"])
         report["distinct_claim_count"] = len(merged)
         report["potential_conflicts"] = potential_conflicts(list(merged.values()))
+        resolved = list(report.get("resolved_documents") or [])
+        resolved_paths = {str(entry.get("path")) for entry in resolved}
+        for entry in prior.get("resolved_documents") or []:
+            path = str(entry.get("path"))
+            if path not in resolved_paths:
+                resolved.append(entry)
+                resolved_paths.add(path)
+        report["resolved_documents"] = resolved
         seen = {entry["path"] for entry in report["rejected_documents"]}
         for entry in prior.get("rejected_documents") or []:
             if entry["path"] not in seen:
@@ -570,6 +751,12 @@ class ResearchOnboardingAgent:
             raise ValueError("Unknown pinned source document")
         batch = ClaimBatch.model_validate_json(raw)
         report = reconcile([(document, batch)])
+        report["resolved_documents"] = [
+            {
+                "path": source_path,
+                "reason": "manual grounded import superseded the active extraction rejection",
+            }
+        ]
         return self._persist(
             project_id,
             str(item["git_commit"]),
@@ -614,6 +801,14 @@ class ResearchOnboardingAgent:
         if row is None:
             return {"available": False, "claims": [], "potential_conflicts": []}
         report = json.loads(str(row["report_json"]))
+        resolved_paths = {
+            str(entry.get("path")) for entry in report.get("resolved_documents") or []
+        }
+        report["unresolved_rejected_documents"] = [
+            entry
+            for entry in report.get("rejected_documents") or []
+            if str(entry.get("path")) not in resolved_paths
+        ]
         seen: dict[str, str] = {}
         for record in reviews:
             value = json.loads(str(record["payload"]))

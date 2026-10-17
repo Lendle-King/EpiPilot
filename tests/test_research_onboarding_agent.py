@@ -285,6 +285,94 @@ def test_run_model_fails_closed_when_no_batch_grounds(tmp_path: Path) -> None:
         ResearchOnboardingAgent(store).run_model(project_id, _AlwaysBad(), "fake", 2)
 
 
+def test_run_model_rejects_an_empty_claim_batch(tmp_path: Path) -> None:
+    store, project_id = _setup(tmp_path)
+
+    class Empty:
+        def extract(self, prompt: str) -> ClaimBatch:
+            del prompt
+            return ClaimBatch(claims=[])
+
+    with pytest.raises(ValueError, match="No document produced"):
+        ResearchOnboardingAgent(store).run_model(project_id, Empty(), "fake", 1)
+    report = ResearchOnboardingAgent(store).report(project_id)
+    assert report["distinct_claim_count"] == 0
+    assert [entry["path"] for entry in report["unresolved_rejected_documents"]] == [
+        "docs/trial_20261014.md"
+    ]
+
+
+def test_manual_grounded_import_resolves_active_rejection_without_erasing_history(
+    tmp_path: Path,
+) -> None:
+    store, project_id = _setup(tmp_path)
+    agent = ResearchOnboardingAgent(store)
+    with pytest.raises(ValueError, match="No document produced"):
+        agent.run_model(project_id, _AlwaysBad(), "fake", 1)
+
+    result = agent.import_chat_batch(
+        project_id,
+        "docs/trial_20261014.md",
+        _good_batch().model_dump_json(),
+    )
+    assert result["distinct_claim_count"] == 1
+    assert result["rejected_documents"]
+    assert result["unresolved_rejected_documents"] == []
+
+    # A later refresh must reuse the manually grounded batch instead of asking
+    # the model to invalidate it again.
+    refreshed = agent.run_model(project_id, _AlwaysBad(), "fake", 1)
+    assert refreshed["distinct_claim_count"] == 1
+    assert refreshed["unresolved_rejected_documents"] == []
+
+
+def test_run_model_carries_forward_only_reverified_claims_after_repin(
+    tmp_path: Path,
+) -> None:
+    store, project_id = _setup(tmp_path)
+    agent = ResearchOnboardingAgent(store)
+    initial = agent.run_model(project_id, FakeScientificModel(), "fake", 2)
+    initial_ids = {str(claim["id"]) for claim in initial["claims"]}
+    repo = Path(store.get(project_id)["repository_path"])
+    (repo / "docs" / "trial_20261015.md").write_text(
+        "# Repinned attempt\nFresh source evidence is ready for prospective testing.\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "new research snapshot")
+    new_commit = store.repin_snapshot(project_id)
+
+    class CountingModel:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def extract(self, prompt: str) -> ClaimBatch:
+            self.prompts.append(prompt)
+            if "trial_20261015.md" in prompt:
+                return ClaimBatch(
+                    claims=[
+                        _claim(
+                            "Fresh evidence is ready for prospective testing",
+                            "prospective_source_readiness",
+                            "supports",
+                            2,
+                            "Fresh source evidence is ready for prospective testing.",
+                            scientific="supported",
+                        )
+                    ]
+                )
+            return _good_batch()
+
+    model = CountingModel()
+    result = agent.run_model(project_id, model, "fake", 3)
+
+    assert len(model.prompts) == 1
+    assert initial_ids <= {str(claim["id"]) for claim in result["claims"]}
+    carried = next(claim for claim in result["claims"] if claim["id"] in initial_ids)
+    assert carried["citations"][0]["git_commit"] == new_commit
+    assert result["unresolved_rejected_documents"] == []
+
+
 def test_run_model_keeps_verified_batches_when_provider_fails_mid_run(
     tmp_path: Path,
 ) -> None:
