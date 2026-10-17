@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
+from epipilot.workspace.experiment_routes import ROUTE_GUIDANCE, ExperimentRoutePlanner
 from epipilot.workspace.research_agent import ResearchOnboardingAgent
 from test_research_onboarding_agent import ScriptedModel, _good_batch, _setup
 
@@ -57,6 +57,12 @@ def test_route_generation_requires_existing_claims(tmp_path: Any) -> None:
     planner = ExperimentRoutePlanner(store)
     with pytest.raises(ValueError, match="No grounded claims"):
         planner.generate(project_id, FakeRouteModel(_route_payload("x")), "fake")
+
+
+def test_route_guidance_prefers_public_diagnostics_when_inputs_missing() -> None:
+    assert "bounded data-readiness or diagnostic route" in ROUTE_GUIDANCE
+    assert "must not treat public diagnostics as V2.5 evidence" in ROUTE_GUIDANCE
+    assert "do not repeat a route that only requests missing artifacts" in ROUTE_GUIDANCE
 
 
 def test_route_generation_is_grounded_on_claim_ids(tmp_path: Any) -> None:

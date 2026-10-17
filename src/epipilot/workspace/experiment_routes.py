@@ -35,6 +35,14 @@ ROUTE_GUIDANCE = (
     "parameters, no backfilled forward evidence). "
     "(6) Never promise returns or claim statistical significance before testing. "
     "(7) Prefer experiments that reduce the largest unknowns first. "
+    "(8) When a canonical V2.5 input is unavailable but the repository contains "
+    "a documented public-data track, choose a bounded data-readiness or diagnostic "
+    "route that can run with the files actually present; state that it is exploratory, "
+    "must not treat public diagnostics as V2.5 evidence, and do not repeat a route "
+    "that only requests missing artifacts. "
+    "(9) A diagnostic route may validate coverage, joins, ledger invariants or an "
+    "explicitly non-canonical public-track backtest, but it must not infer historical "
+    "membership, backfill forward observations, or relax a frozen benchmark gate. "
     "Return ONLY a JSON object matching the schema."
 )
 
