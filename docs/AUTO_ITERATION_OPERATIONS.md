@@ -27,3 +27,8 @@ For quant_etf, preserve the V2.5 SHA-256 lock and its forward journal. Reports
 and quote-grounded claims do not independently establish CAGR or drawdown.
 Do not backfill forward evidence, enable broker execution, or enable remote
 GitHub/Notion actions as part of recovery.
+
+Exact quotes are matched with their original whitespace. Trimming a quote
+before matching can admit bytes that never occurred in the source line; such
+a mismatch rejects the whole document batch. Line numbers follow the source
+compiler's Unicode `str.splitlines()` convention, including form-feed breaks.

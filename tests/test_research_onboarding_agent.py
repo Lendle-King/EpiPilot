@@ -186,6 +186,24 @@ def test_rejects_hallucinated_quotes_without_partial_persistence(tmp_path: Path)
 _GOOD_QUOTE = "GitHub Actions SUCCESS: workflow completed but alpha was not qualified."
 
 
+@pytest.mark.parametrize("padding", [" ", "\t"])
+def test_manual_import_rejects_added_quote_whitespace(tmp_path: Path, padding: str) -> None:
+    store, project_id = _setup(tmp_path)
+    agent = ResearchOnboardingAgent(store)
+    good = _claim(
+        "An execution success is not evidence of qualified alpha",
+        "alpha_test",
+        "neutral",
+        2,
+        _GOOD_QUOTE,
+    )
+    bad = good.model_copy(update={"exact_quote": padding + _GOOD_QUOTE})
+    batch = ClaimBatch(claims=[good, bad])
+    with pytest.raises(ValueError, match="Ungrounded"):
+        agent.import_chat_batch(project_id, "docs/trial_20261014.md", batch.model_dump_json())
+    assert agent.report(project_id)["available"] is False
+
+
 class ScriptedModel:
     """Deterministic per-call batches to exercise retry and isolation paths."""
 

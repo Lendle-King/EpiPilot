@@ -211,7 +211,7 @@ def _verify_quote(document: SnapshotDocument, claim: GroundedClaim) -> None:
     available = next((line[len(expected) :] for line in exposed if line.startswith(expected)), None)
     if (
         available is None
-        or claim.exact_quote.strip() not in available
+        or claim.exact_quote not in available
         or len(claim.exact_quote.strip()) < 14
     ):
         raise ValueError(f"Ungrounded model citation in {document.path} line {claim.source_line}")
