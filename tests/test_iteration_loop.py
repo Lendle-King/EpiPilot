@@ -9,7 +9,7 @@ import pytest
 
 from epipilot.workspace.chatgpt_web import ChatGPTWebError
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
-from epipilot.workspace.iteration_loop import AutoIterationLoop
+from epipilot.workspace.iteration_loop import AutoIterationLoop, _host_repository_handoff
 from test_experiment_routes import FakeRouteModel, _route_payload, _seed_claims
 from test_research_onboarding_agent import _bad_batch, _good_batch, _setup
 
@@ -364,3 +364,44 @@ def test_http_loop_status_restores_persisted_checkpoint_after_restart(
     assert restored["round"] == 7
     assert restored["rounds_completed"] == 7
     assert restored["stop_reason"] == "阶段判定停止: blocked"
+
+
+def test_host_handoff_prioritizes_recent_validation_reports(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = [
+        "docs/data_sources/old_validation.md",
+        "docs/data_sources/new_validation.md",
+        "docs/data_sources/other_validation.md",
+        "docs/data_sources/fourth_validation.md",
+        "docs/data_sources/fifth_validation.md",
+    ]
+    timestamps = {
+        "old_validation.md": "100",
+        "new_validation.md": "500",
+        "other_validation.md": "300",
+        "fourth_validation.md": "200",
+        "fifth_validation.md": "400",
+    }
+
+    def fake_git(_repo: Any, *args: str) -> str:
+        if args[:2] == ("rev-parse", "HEAD"):
+            return "head"
+        if args[:2] == ("ls-tree", "-r"):
+            return "\n".join(paths)
+        if args[:2] == ("log", "-1"):
+            path = args[-1]
+            return timestamps[path.rsplit("/", 1)[-1]]
+        if args[:2] == ("show", "head:docs/data_sources/new_validation.md"):
+            return "NEW_RESULT"
+        if args[0] == "show":
+            return "OTHER_RESULT"
+        raise AssertionError(args)
+
+    monkeypatch.setattr("epipilot.workspace.iteration_loop.git", fake_git)
+
+    handoff = _host_repository_handoff(tmp_path)
+
+    assert handoff.index("new_validation.md") < handoff.index("fifth_validation.md")
+    assert "NEW_RESULT" in handoff

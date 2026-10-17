@@ -47,6 +47,14 @@ def _host_repository_handoff(repo_path: Path) -> str:
     )
     if not candidates:
         return ""
+
+    def last_commit_timestamp(path: str) -> int:
+        try:
+            return int(git(repo_path, "log", "-1", "--format=%ct", commit, "--", path))
+        except (OSError, ValueError):
+            return 0
+
+    candidates.sort(key=lambda path: (last_commit_timestamp(path), path), reverse=True)
     sections: list[str] = [f"host_git_commit: {commit}"]
     remaining = 9_000
     for path in candidates[:4]:
