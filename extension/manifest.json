@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "EpiPilot Browser Bridge",
+  "version": "0.1.0",
+  "description": "Lets EpiPilot drive pages in your normal Chrome: tab management, DOM reads, clicks, typing and screenshots. Operates only on tabs you select and only while connected to the local EpiPilot backend.",
+  "permissions": ["tabs", "scripting", "activeTab", "alarms"],
+  "host_permissions": ["http://127.0.0.1:8787/*", "https://chatgpt.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "EpiPilot Browser Bridge"
+  }
+}

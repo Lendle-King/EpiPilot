@@ -71,6 +71,7 @@ def test_route_generation_is_grounded_on_claim_ids(tmp_path: Any) -> None:
     assert report["route"]["provider"] == "fake-route"
     assert "Grounded claims" in model.prompts[0]
     assert claim_id in model.prompts[0]
+    assert "Complete claim-id inventory" in model.prompts[0]
 
     with pytest.raises(ValueError, match="unknown claim id"):
         planner.generate(project_id, FakeRouteModel(_route_payload("not-a-real-id")), "fake")
@@ -118,4 +119,22 @@ def test_route_output_tolerates_extra_fields_and_retries_schema_failures(tmp_pat
 
     stubborn = FakeRouteModel([broken, broken])
     with pytest.raises(ValueError, match="schema validation"):
+        planner.generate(project_id, stubborn, "fake")
+
+
+def test_route_retries_when_claim_ids_are_hallucinated(tmp_path: Any) -> None:
+    store, project_id = _setup(tmp_path)
+    claim_id = _seed_claims(store, project_id)
+    planner = ExperimentRoutePlanner(store)
+
+    hallucinated = _route_payload("73a06da3ac87e0fb41507548")
+    model = FakeRouteModel([hallucinated, _route_payload(claim_id)])
+    report = planner.generate(project_id, model, "fake")
+    assert report["route"]["proposals"][0]["basis_claim_ids"] == [claim_id]
+    assert len(model.prompts) == 2
+    assert "unknown claim ids" in model.prompts[1]
+    assert "character-for-character" in model.prompts[1]
+
+    stubborn = FakeRouteModel([hallucinated, hallucinated])
+    with pytest.raises(ValueError, match="unknown claim id"):
         planner.generate(project_id, stubborn, "fake")

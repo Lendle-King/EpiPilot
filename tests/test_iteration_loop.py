@@ -257,3 +257,110 @@ def test_rejected_new_report_does_not_advance_checkpoint(tmp_path: Any) -> None:
     assert ExperimentRoutePlanner(store).load_loop_checkpoint(_project_of(store)) is None
     # The committed observation and rejected extraction stay available for audit.
     assert len(list((tmp_path / "repo" / "docs" / "auto_iteration").glob("*.md"))) == 1
+
+
+def test_resume_uses_original_route_then_continues_round_budget(tmp_path: Any) -> None:
+    store, project_id = _setup(tmp_path)
+    claim_id = _seed_claims(store, project_id)
+    planner = ExperimentRoutePlanner(store)
+    original = planner.generate(project_id, FakeRouteModel(_route_payload(claim_id)), "fake")[
+        "route"
+    ]
+    driver = SequenceDriver([_review("continue"), _review("goal_met")])
+    model = FakeRouteModel(_route_payload(claim_id))
+    status = AutoIterationLoop().start(
+        project_id,
+        store=store,
+        route_model=model,
+        claim_model=AlwaysGood(),
+        claim_provider="fake",
+        driver=driver,
+        project_name="P",
+        repo_path=tmp_path / "repo",
+        max_rounds=2,
+        resume_route_run_id=original["run_id"],
+    )
+    assert status["rounds_completed"] == 2
+    assert original["run_id"] in driver.prompts[0]
+    assert len(model.prompts) == 1
+    with store._db() as conn:
+        assert conn.execute("SELECT count(*) FROM route_runs WHERE kind='route'").fetchone()[0] == 2
+
+
+def test_resume_rejects_wrong_route_before_using_driver(tmp_path: Any) -> None:
+    store, project_id = _setup(tmp_path)
+    claim_id = _seed_claims(store, project_id)
+    model = FakeRouteModel(_route_payload(claim_id))
+    ExperimentRoutePlanner(store).generate(project_id, model, "fake")
+    driver = SequenceDriver([])
+    status = AutoIterationLoop().start(
+        project_id,
+        store=store,
+        route_model=model,
+        claim_model=AlwaysGood(),
+        claim_provider="fake",
+        driver=driver,
+        project_name="P",
+        repo_path=tmp_path / "repo",
+        max_rounds=2,
+        resume_route_run_id="wrong-route",
+    )
+    assert status["step"] == "stopped"
+    assert driver.prompts == []
+    assert status["rounds_completed"] == 0
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [{"resume_route_run_id": "pending"}, {"resume_route_run_id": "wrong", "resume_tab_id": 7}],
+)
+def test_resume_http_rejects_incomplete_or_wrong_binding(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch, binding: dict[str, Any]
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from epipilot.workspace import api
+
+    store, project_id = _setup(tmp_path)
+    claim_id = _seed_claims(store, project_id)
+    ExperimentRoutePlanner(store).generate(
+        project_id, FakeRouteModel(_route_payload(claim_id)), "fake"
+    )
+    monkeypatch.setattr(api, "_store", lambda: store)
+    monkeypatch.setattr(api, "_auto_iteration", AutoIterationLoop())
+    monkeypatch.setattr(api, "_run_auto_iteration_sync", lambda *args: None)
+    with TestClient(api.app) as client:
+        response = client.post(f"/api/projects/{project_id}/research-agent/loop", json=binding)
+    assert response.status_code == 400
+
+
+def test_http_loop_status_restores_persisted_checkpoint_after_restart(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from epipilot.workspace import api
+
+    store, project_id = _setup(tmp_path)
+    checkpoint = {
+        "running": True,
+        "round": 7,
+        "step": "done",
+        "message": "round 7: verdict blocked",
+        "stop_reason": "阶段判定停止: blocked",
+        "verdicts": ["blocked"] * 7,
+        "rounds_completed": 7,
+    }
+    ExperimentRoutePlanner(store).record_loop_checkpoint(project_id, checkpoint)
+    monkeypatch.setattr(api, "_store", lambda: store)
+    monkeypatch.setattr(api, "_auto_iteration", AutoIterationLoop())
+
+    with TestClient(api.app) as client:
+        response = client.get(f"/api/projects/{project_id}/research-agent/loop")
+
+    assert response.status_code == 200
+    restored = response.json()
+    assert restored["running"] is False
+    assert restored["round"] == 7
+    assert restored["rounds_completed"] == 7
+    assert restored["stop_reason"] == "阶段判定停止: blocked"

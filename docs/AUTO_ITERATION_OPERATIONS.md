@@ -35,6 +35,9 @@ optional for DOM inspection and must not be broadened merely to diagnose a reply
 The loop checkpoint counts archived rounds; starting with `max_rounds` permits
 that many additional rounds after the latest checkpoint. Operators must account
 for the remaining overall budget when resuming after a failure.
+After a backend restart, the loop status endpoint restores the latest persisted
+checkpoint for observation with `running: false`; starting a new loop still
+uses that checkpoint and does not replay completed rounds.
 
 For quant_etf, preserve the V2.5 SHA-256 lock and its forward journal. Reports
 and quote-grounded claims do not independently establish CAGR or drawdown.

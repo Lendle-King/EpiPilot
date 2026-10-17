@@ -79,6 +79,7 @@ class AutoIterationLoop:
         max_rounds: int = 3,
         claim_max_documents: int = 12,
         started: threading.Event | None = None,
+        resume_route_run_id: str | None = None,
     ) -> dict[str, Any]:
         if max_rounds < 1:
             raise ValueError("max_rounds must be positive")
@@ -107,6 +108,7 @@ class AutoIterationLoop:
                 repo_path=repo_path,
                 max_rounds=max_rounds,
                 claim_max_documents=claim_max_documents,
+                resume_route_run_id=resume_route_run_id,
             )
         finally:
             state.running = False
@@ -127,6 +129,7 @@ class AutoIterationLoop:
         repo_path: Path | None,
         max_rounds: int,
         claim_max_documents: int,
+        resume_route_run_id: str | None,
     ) -> None:
         planner = ExperimentRoutePlanner(store)
         agent = ResearchOnboardingAgent(store)
@@ -142,7 +145,19 @@ class AutoIterationLoop:
                 state.round_index = round_index
                 state.step = "route"
                 state.message = f"round {round_index}: generating experiment route"
-                report = planner.generate(project_id, route_model, claim_provider)
+                if resume_route_run_id is not None and round_index == completed + 1:
+                    report = planner.report(project_id)
+                    route = report.get("route") or {}
+                    if route.get("run_id") != resume_route_run_id:
+                        raise ValueError("Pending route does not match the requested resume route")
+                    review = report.get("review") or {}
+                    if review.get("created_at", "") >= route.get("created_at", ""):
+                        raise ValueError(
+                            "Pending route already has a review; refusing duplicate recovery"
+                        )
+                    planner.record_loop_resume(project_id, resume_route_run_id, round_index)
+                else:
+                    report = planner.generate(project_id, route_model, claim_provider)
 
                 state.step = "chatgpt"
                 state.message = f"round {round_index}: driving ChatGPT Web"
@@ -163,7 +178,10 @@ class AutoIterationLoop:
                 refreshed = agent.report(project_id)
                 if any(
                     entry.get("path") == report_path
-                    for entry in refreshed.get("rejected_documents", [])
+                    for entry in refreshed.get(
+                        "unresolved_rejected_documents",
+                        refreshed.get("rejected_documents", []),
+                    )
                 ) or not any(
                     ref.get("source_path") == report_path
                     for claim in refreshed.get("claims", [])

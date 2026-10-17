@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
+import urllib.request
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from subprocess import TimeoutExpired
 from typing import Literal
@@ -17,7 +19,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
-from epipilot.workspace.chatgpt_web import ChatGPTWebSettings, PlaywrightChatGPTDriver
+from epipilot.workspace.browser_bridge import (
+    ExtensionBridgeHub,
+    ExtensionChatGPTDriver,
+)
+from epipilot.workspace.chatgpt_web import (
+    ChatGPTWebSettings,
+    PlaywrightChatGPTDriver,
+    resolve_attach_cdp_url,
+)
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
 from epipilot.workspace.iteration_loop import AutoIterationLoop
 from epipilot.workspace.onboarding import WorkspaceStore
@@ -225,6 +235,8 @@ class RouteReviewInput(BaseModel):
 
 class LoopInput(BaseModel):
     max_rounds: int = Field(default=3, ge=1, le=12)
+    resume_route_run_id: str | None = Field(default=None, min_length=1, max_length=40)
+    resume_tab_id: int | None = Field(default=None, ge=1)
 
 
 @app.get("/api/projects/{project_id}/research-agent")
@@ -344,29 +356,186 @@ async def drive_chatgpt_iteration(project_id: str) -> dict[str, object]:
 
 _MAC_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
+_extension_hub = ExtensionBridgeHub()
+
+
+class BridgeHeartbeat(BaseModel):
+    name: str = Field(default="", max_length=80)
+
+
+class BridgeResult(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    ok: bool = True
+    result: dict[str, object] = Field(default_factory=dict)
+    error: str = Field(default="", max_length=2000)
+
+
+@app.post("/api/browser-bridge/heartbeat")
+def browser_bridge_heartbeat(body: BridgeHeartbeat) -> dict[str, object]:
+    _extension_hub.heartbeat(body.name)
+    return {"ok": True}
+
+
+@app.get("/api/browser-bridge/commands")
+def browser_bridge_commands() -> dict[str, object]:
+    """Hand the polling extension its next queued command (also a heartbeat)."""
+    _extension_hub.heartbeat()
+    return {"command": _extension_hub.next_command()}
+
+
+@app.post("/api/browser-bridge/result")
+def browser_bridge_result(body: BridgeResult) -> dict[str, object]:
+    _extension_hub.heartbeat()
+    _extension_hub.submit_result(
+        {"id": body.id, "ok": body.ok, "result": body.result, "error": body.error}
+    )
+    return {"ok": True}
+
+
+@app.get("/api/browser-bridge")
+def browser_bridge_status() -> dict[str, object]:
+    return {
+        "connected": _extension_hub.connected,
+        "extension_name": _extension_hub.extension_name,
+    }
+
+
+class _LazyChatGPTDriver:
+    """Choose the browser driver at call time so late-connecting extensions win."""
+
+    def __init__(
+        self,
+        resume_route_run_id: str | None = None,
+        resume_tab_id: int | None = None,
+        reply_deadline_utc: datetime | None = None,
+    ) -> None:
+        self.resume_route_run_id = resume_route_run_id
+        self.resume_tab_id = resume_tab_id
+        self.reply_deadline_utc = reply_deadline_utc
+
+    def submit(self, prompt: str) -> str:
+        if self.resume_route_run_id is not None:
+            if self.resume_tab_id is None or self.resume_route_run_id not in prompt:
+                raise ValueError("Pending reply is not bound to the requested route and tab")
+            reply = ExtensionChatGPTDriver(
+                hub=_extension_hub,
+            ).wait_existing_reply(
+                self.resume_tab_id,
+                self.resume_route_run_id,
+                deadline_utc=self.reply_deadline_utc,
+            )
+            self.resume_route_run_id = None
+            return reply
+        return _chatgpt_driver().submit(prompt)
+
+
+def _pending_reply_deadline(project_id: str, route_run_id: str) -> datetime:
+    route = ExperimentRoutePlanner(_store()).report(project_id).get("route") or {}
+    if route.get("run_id") != route_run_id:
+        raise ValueError("Pending route does not match the requested resume route")
+    created = datetime.fromisoformat(str(route["created_at"]))
+    if created.tzinfo is None:
+        raise ValueError("Pending route timestamp must be timezone aware")
+    deadline = created + timedelta(hours=2)
+    if deadline <= datetime.now(UTC):
+        raise ValueError("Pending route has exceeded its two-hour reply window")
+    return deadline
+
+
+@app.post("/api/browser-bridge/inspect")
+def browser_bridge_inspect() -> dict[str, object]:
+    """Read-only diagnosis of the ChatGPT tab: DOM state plus a screenshot."""
+    _extension_hub.heartbeat()
+    opened = _extension_hub.request("open_tab", url="https://chatgpt.com", match="chatgpt.com")
+    tab_id = int(opened["tab_id"])
+    _extension_hub.request("tab_focus", tab_id=tab_id)
+    # Reuse the driver's exact selector view so diagnostics match real runs.
+    state = ExtensionChatGPTDriver(hub=_extension_hub)._read_state(tab_id)
+    probes: dict[str, object] = {}
+    for selector in (
+        '[class*="message"]',
+        '[class*="turn"]',
+        '[class*="conversation"]',
+        '[class*="bubble"]',
+        '[class*="response"]',
+        '[class*="answer"]',
+        '[class*="result"]',
+        '[class*="output"]',
+        '[class*="content"]',
+        '[class*="chat"]',
+        '[class*="user"]',
+        '[class*="final"]',
+        "main p",
+        "main pre",
+        "main li",
+    ):
+        try:
+            probes[selector] = _extension_hub.request(
+                "query", tab_id=tab_id, selectors=(selector,), timeout=20.0
+            )
+        except (ValueError, RuntimeError) as error:
+            probes[selector] = {"error": str(error)}
+    try:
+        shot = _extension_hub.request("screenshot", timeout=20.0)
+        screenshot = str(shot.get("dataUrl", ""))
+        shot_error = ""
+    except (ValueError, RuntimeError) as error:
+        # captureVisibleTab needs <all_urls> or a user gesture; keep it optional.
+        screenshot = ""
+        shot_error = str(error)
+    return {
+        "tab_id": tab_id,
+        "state": state,
+        "probes": probes,
+        "screenshot": screenshot,
+        "screenshot_error": shot_error,
+    }
+
+
+def _chatgpt_driver() -> ExtensionChatGPTDriver | PlaywrightChatGPTDriver:
+    """Prefer the user's normal Chrome via the extension, then CDP, then isolated."""
+    mode = (os.environ.get("EPIPILOT_CHATGPT_MODE") or "auto").strip().lower()
+    if mode == "extension" or (mode == "auto" and _extension_hub.connected):
+        return ExtensionChatGPTDriver(hub=_extension_hub)
+    return PlaywrightChatGPTDriver(_chatgpt_settings())
+
+
+def _cdp_probe(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/json/version", timeout=1.0):
+            return True
+    except Exception:
+        return False
+
 
 def _chatgpt_settings() -> ChatGPTWebSettings:
+    """Default to the user's logged-in Chrome (CDP attach) when it is reachable.
+
+    EPIPILOT_CHATGPT_CDP forces an endpoint (or "off" for the isolated
+    instance); otherwise a local CDP endpoint is probed and attach becomes the
+    default mode, falling back to the isolated instance when absent.
+    """
+    profile_dir = Path(
+        os.environ.get(
+            "EPIPILOT_CHATGPT_PROFILE",
+            str(Path.home() / ".local" / "share" / "epipilot" / "chatgpt-profile"),
+        )
+    ).expanduser()
+    attach_cdp = resolve_attach_cdp_url(os.environ.get("EPIPILOT_CHATGPT_CDP"), _cdp_probe)
+    if attach_cdp:
+        return ChatGPTWebSettings(profile_dir=profile_dir, attach_cdp_url=attach_cdp)
     executable = os.environ.get("EPIPILOT_CHATGPT_BROWSER") or (
         _MAC_CHROME if Path(_MAC_CHROME).exists() else None
     )
-    return ChatGPTWebSettings(
-        profile_dir=Path(
-            os.environ.get(
-                "EPIPILOT_CHATGPT_PROFILE",
-                str(Path.home() / ".local" / "share" / "epipilot" / "chatgpt-profile"),
-            )
-        ).expanduser(),
-        browser_executable=executable,
-    )
+    return ChatGPTWebSettings(profile_dir=profile_dir, browser_executable=executable)
 
 
 def _drive_chatgpt_sync(project_id: str) -> dict[str, object]:
     planner = ExperimentRoutePlanner(_store())
     item = _store().get(project_id)
-    settings = _chatgpt_settings()
     return planner.run_chatgpt_iteration(
         project_id,
-        PlaywrightChatGPTDriver(settings),
+        _LazyChatGPTDriver(),
         str(item.get("name", "project")),
     )
 
@@ -375,12 +544,15 @@ _auto_iteration = AutoIterationLoop()
 
 
 def _run_auto_iteration_sync(
-    project_id: str, max_rounds: int, started: threading.Event | None = None
+    project_id: str,
+    max_rounds: int,
+    started: threading.Event | None = None,
+    resume_route_run_id: str | None = None,
+    resume_tab_id: int | None = None,
 ) -> None:
     store = _store()
     item = store.get(project_id)
     repo = item.get("repository_path")
-    settings = _chatgpt_settings()
     provider_label = "third_party:" + str(model_configuration()["provider_host"])
     _auto_iteration.start(
         project_id,
@@ -388,17 +560,35 @@ def _run_auto_iteration_sync(
         route_model=ThirdPartyChatModel.from_environment(None),
         claim_model=ThirdPartyChatModel.from_environment(None),
         claim_provider=provider_label,
-        driver=PlaywrightChatGPTDriver(settings),
+        driver=_LazyChatGPTDriver(
+            resume_route_run_id,
+            resume_tab_id,
+            _pending_reply_deadline(project_id, resume_route_run_id)
+            if resume_route_run_id is not None
+            else None,
+        ),
         project_name=str(item.get("name", "project")),
         repo_path=Path(str(repo)).expanduser() if isinstance(repo, str) and repo else None,
         max_rounds=max_rounds,
         started=started,
+        resume_route_run_id=resume_route_run_id,
     )
 
 
 @app.get("/api/projects/{project_id}/research-agent/loop")
 def auto_iteration_status(project_id: str) -> dict[str, object]:
-    return _auto_iteration.status(project_id)
+    status = _auto_iteration.status(project_id)
+    if status["running"] or status["rounds_completed"]:
+        return status
+    try:
+        checkpoint = ExperimentRoutePlanner(_store()).load_loop_checkpoint(project_id)
+    except (KeyError, ValueError, OSError):
+        return status
+    if checkpoint is None:
+        return status
+    restored = dict(checkpoint)
+    restored["running"] = False
+    return restored
 
 
 @app.post("/api/projects/{project_id}/research-agent/loop")
@@ -407,10 +597,20 @@ def start_auto_iteration(project_id: str, body: LoopInput) -> dict[str, object]:
         _store().get(project_id)  # fail closed on unknown project before spawning
         if _auto_iteration.status(project_id)["running"]:
             raise ValueError("Auto iteration loop is already running for this project")
+        if (body.resume_route_run_id is None) != (body.resume_tab_id is None):
+            raise ValueError("Resume requires both the original route run ID and tab ID")
+        if body.resume_route_run_id is not None:
+            _pending_reply_deadline(project_id, body.resume_route_run_id)
         started = threading.Event()
         threading.Thread(
             target=_run_auto_iteration_sync,
-            args=(project_id, body.max_rounds, started),
+            args=(
+                project_id,
+                body.max_rounds,
+                started,
+                body.resume_route_run_id,
+                body.resume_tab_id,
+            ),
             daemon=True,
         ).start()
         started.wait(timeout=2.0)

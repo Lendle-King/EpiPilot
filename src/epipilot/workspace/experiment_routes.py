@@ -61,23 +61,41 @@ class ChatGPTWebPort(Protocol):
 
 
 def build_iteration_pack(route: dict[str, Any], project_name: str) -> str:
-    """Build the one-shot ChatGPT iteration pack for a generated route."""
+    """Build the one-shot ChatGPT iteration pack for a generated route.
+
+    The reply contract is deliberately compact: long final streams are cut by
+    the ChatGPT transport ("message transmission timed out"), so the model is
+    instructed to answer with the JSON only and a bounded report body.
+    """
+    trimmed = {
+        key: value
+        for key, value in route.items()
+        if key in {"premises_zh", "proposals", "stop_rules_zh"}
+    }
     return "\n\n".join(
         [
             "EpiPilot experiment route iteration for " + project_name + ".",
+            "ROUTE_RUN_ID: " + str(route.get("run_id", "")),
+            "If you already executed these experiments earlier in this conversation, "
+            "reuse those results; do not redo them.",
             "Step 1 - Evaluate this route for feasibility, data availability and statistical risk.",
-            "Step 2 - Execute the proposed experiments (write code, run "
-            "backtests) and produce a report markdown ready to be committed "
-            "into the research repository.",
-            'Step 3 - Return ONLY valid JSON matching: {"verdict":"continue|goal_met|blocked",'
-            '"evaluation_zh":"...","results_digest_zh":"...",'
-            '"recommended_next_zh":"...","evidence_refs":["path-or-url"],'
-            '"report_markdown":"full experiment report in markdown"}',
+            "Hard boundaries: Do not invoke GitHub/Notion remote actions, trigger workflows, "
+            "push commits, or place trades. Do not modify frozen V2.5 parameters or backfill "
+            "forward evidence. If execution requires a forbidden action, report blocked.",
+            "Step 2 - Execute the proposed experiments (write code, run backtests). "
+            "Keep any long workings in your tool activity; do not narrate them in "
+            "the final message.",
+            "Step 3 - Reply with ONLY one compact JSON object matching: "
+            '{"verdict":"continue|goal_met|blocked","evaluation_zh":"<max 400 chars>",'
+            '"results_digest_zh":"<max 600 chars>","recommended_next_zh":"<max 300 chars>",'
+            '"evidence_refs":["path-or-url"],"report_markdown":"<max 3000 chars>"}',
             "Use verdict goal_met when the phase objective is reached, blocked when a "
             "major problem makes further rounds pointless, otherwise continue. "
-            "All narrative fields in Simplified Chinese. Never claim "
-            "significance before testing; never promise returns.",
-            "ROUTE:\n" + json.dumps(route, ensure_ascii=False, indent=2),
+            "report_markdown must be a concise experiment report summary (max 3000 "
+            "characters) - long streams get cut by the transport. All narrative "
+            "fields in Simplified Chinese. Never claim significance before testing; "
+            "never promise returns. Do not invoke GitHub/Notion remote actions.",
+            "ROUTE:\n" + json.dumps(trimmed, ensure_ascii=False, indent=2),
         ]
     )
 
@@ -138,11 +156,18 @@ def _route_prompt(report: dict[str, Any]) -> str:
         lines.append(
             f"- {claim.get('id')} | {claim.get('kind')} | {claim.get('topic_key')} | {text}"
         )
+    lines.append("Complete claim-id inventory (copy only these exact IDs):")
+    lines.append("- " + ", ".join(str(claim.get("id")) for claim in claims))
     conflicts = report.get("potential_conflicts") or []
     if conflicts:
         lines.append("Potential conflicts: " + json.dumps(conflicts, ensure_ascii=False))
     lines.append(f"Claim pool size: {len(claims)} total.")
     lines.append("Return JSON exactly like: " + _ROUTE_SCHEMA_NOTE)
+    lines.append(
+        "IMPORTANT: every basis_claim_ids entry must be copied character-for-character "
+        "from an id in the list above; never invent, shorten or modify an id. Prefer "
+        "3-6 ids per proposal that you can copy exactly."
+    )
     return "\n".join(lines)
 
 
@@ -165,20 +190,22 @@ class ExperimentRoutePlanner:
             raise ValueError("No grounded claims available; run semantic analysis first")
         known = {str(claim.get("id")) for claim in report.get("claims", [])}
         prompt = _route_prompt(report)
-        route = self._validated_route(model, prompt)
+        route, problem = self._validated_route(model, prompt, known)
         if route is None:
             corrective = (
-                prompt + "\n\nCORRECTIVE CONSTRAINT: a previous attempt failed schema "
-                "validation. Return ONLY the exact schema fields (no extras), respect "
-                "the minimum lengths, and cite existing claim ids."
+                prompt
+                + "\n\nCORRECTIVE CONSTRAINT: a previous attempt failed validation ("
+                + problem
+                + "). Return ONLY the exact schema fields (no extras), respect the "
+                "minimum lengths, and copy every basis_claim_ids entry "
+                "character-for-character from the claim list above; never invent or "
+                "modify ids. The complete allowed claim-id inventory is: "
+                + ", ".join(sorted(known))
+                + "."
             )
-            route = self._validated_route(model, corrective)
+            route, problem = self._validated_route(model, corrective, known)
         if route is None:
-            raise ValueError("Route output failed local schema validation")
-        for proposal in route.proposals:
-            for claim_id in proposal.basis_claim_ids:
-                if claim_id not in known:
-                    raise ValueError(f"Route cites unknown claim id: {claim_id}")
+            raise ValueError(f"Route output failed local validation: {problem}")
         self._persist(
             project_id,
             "route",
@@ -187,12 +214,25 @@ class ExperimentRoutePlanner:
         return self.report(project_id)
 
     @staticmethod
-    def _validated_route(model: RouteModel, prompt: str) -> ExperimentRoute | None:
+    def _validated_route(
+        model: RouteModel, prompt: str, known_claim_ids: set[str]
+    ) -> tuple[ExperimentRoute | None, str]:
         payload = model.complete_json(ROUTE_GUIDANCE, prompt)
         try:
-            return ExperimentRoute.model_validate(payload)
-        except ValidationError:
-            return None
+            route = ExperimentRoute.model_validate(payload)
+        except ValidationError as error:
+            return None, f"schema validation failed: {error}"[:400]
+        missing = sorted(
+            {
+                claim_id.strip()
+                for proposal in route.proposals
+                for claim_id in proposal.basis_claim_ids
+                if claim_id.strip() not in known_claim_ids
+            }
+        )
+        if missing:
+            return None, f"unknown claim ids: {missing[:3]}"
+        return route, ""
 
     def import_review(self, project_id: str, raw: str) -> dict[str, Any]:
         if len(raw.encode()) > 70_000:
@@ -208,6 +248,13 @@ class ExperimentRoutePlanner:
         """Persist one autonomous-iteration summary as an auditable record."""
         self.store.get(project_id)
         self._persist(project_id, "loop_summary", {"summary": summary})
+
+    def record_loop_resume(self, project_id: str, route_run_id: str, round_index: int) -> None:
+        """Append recovery provenance without replacing the original route or stop."""
+        self.store.get(project_id)
+        self._persist(
+            project_id, "loop_resume", {"route_run_id": route_run_id, "round": round_index}
+        )
 
     def record_loop_checkpoint(self, project_id: str, checkpoint: dict[str, Any]) -> None:
         """Persist the state of the last fully completed iteration round."""
