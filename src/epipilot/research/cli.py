@@ -161,9 +161,9 @@ def _plan(state: ResearchState, proposal_id: str) -> dict[str, object]:
         "agent_instructions": [
             "Inspect relevant repository code, existing evidence, and competing explanations.",
             "Choose the cheapest discriminative experiment, documenting baseline and controls.",
-            "Preserve original code and artifacts; track revision, config, dataset, seeds and costs.",
+            "Preserve artifacts and record revision, config, dataset, seeds, and costs.",
             "Execute experiment with the coding agent; never invent measurements.",
-            "Use epi record to store an unverified observation, then epi verify with a separate check.",
+            "Record an unverified observation, then run a separate verification check.",
             "Only after scientific review use epi reflect or epi unknown resolve.",
             "Run epi next again; do not blindly repeat an unchanged failed attempt.",
         ],
@@ -225,7 +225,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
         store.add("onboarding_recorded", snapshot)
         return {
             "onboarding": snapshot.model_dump(mode="json"),
-            "warning": "Inventory is NOT evidence. Agent must read experiments and add scoped claims.",
+            "warning": "Inventory is not evidence; inspect experiments before adding claims.",
         }
     if cmd == "status":
         return _status(state)
@@ -305,7 +305,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
         if not ranked:
             return {
                 "status": "no_runnable_proposal",
-                "guidance": "Review budget, unverified experiments, or propose new discriminative actions.",
+                "guidance": "Review remaining budget and unverified experiments, or add new proposals.",
                 **_status(state),
             }
         return {
