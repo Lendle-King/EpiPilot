@@ -90,6 +90,10 @@ and uncertainty per normalized cost. Priors and phase thresholds are heuristic. 
 exploration share (default .2) and starvation guard preserve a feasible exploration option;
 this may forgo an expensive optimization path and is not an optimal-policy guarantee.
 
+The CLI and workspace API use the same default artifact directory derived from project ID.
+If a standalone host explicitly passes --output, retain that flag for all recovery commands;
+the workspace API uses its canonical directory and does not adopt custom standalone paths.
+
 `start`, raw `record`, `verify`/`resume` and `cancel` preserve interruption semantics. An
 active reservation without an observation requires explicit recovery, never silent retry.
 Actual measured costs, including verification, remain recorded even after overruns.

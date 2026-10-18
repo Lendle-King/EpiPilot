@@ -77,10 +77,11 @@ IDs and unchanged measurement guards intentionally prevent duplicate execution.
 
 ## Automated verification and review
 
-Full gate: ruff format --check, ruff check, mypy src, pytest — **268 passed**.
+Full gate: ruff format --check, ruff check, mypy src, pytest — **269 passed**.
 One existing Starlette/httpx deprecation warning remains; no frontend code changed.
 Independent reviewer reran **72 focused tests** and found no remaining material issue for
-shipped adapters. Fixed issues include low-quality scientific promotion, self-labelled
+shipped adapters. A final CLI/API artifact-directory regression and independent review
+also passed after integration. Fixed issues include low-quality scientific promotion, self-labelled
 independent scope, historical-evidence reuse, refuted-question rechecks, incomplete restart
 packets, mutex graph batches, partial verification commits, settlement/reconciliation
 recovery and alias-based sample/retry inflation.

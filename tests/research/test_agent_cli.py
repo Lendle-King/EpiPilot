@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+from pathlib import Path
 
 from test_agent_discovery import batch_for, make_agent
 
@@ -61,3 +62,22 @@ def test_cli_uses_same_canonical_database_and_discovery_protocol(tmp_path):
     assert result["questions"][0]["closed"] is True
     assert call("status")["budget"]["spent"]["wall_seconds"] > 0
     assert not (root / ".research").exists()
+
+
+def test_default_artifacts_match_workspace_api_location(tmp_path, capsys):
+    from epipilot.research.agent_cli import main
+    from epipilot.research.discovery import apply_discovery
+    from epipilot.research.engine import ResearchEngine, stable_id
+    from epipilot.runtime.sqlite_event_store import SqliteEventStore
+
+    _, root, revision = make_agent(tmp_path)
+    db = tmp_path / "workspace.sqlite3"
+    args = ["--root", str(root), "--db", str(db), "--project", "artifact-project"]
+    assert main([*args, "init", "--goal", "Synthetic artifact protocol"]) == 0
+    output = db.parent / "carts" / str(stable_id("artifact-project", "artifacts"))
+    engine = ResearchEngine(SqliteEventStore(db), "artifact-project", output)
+    apply_discovery(engine, root, batch_for(engine, root, revision))
+    capsys.readouterr()
+    assert main([*args, "iterate"]) == 0
+    packet = json.loads(capsys.readouterr().out)
+    assert Path(packet["artifact_path"]).parent == output

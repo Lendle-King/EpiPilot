@@ -21,7 +21,7 @@ from epipilot.research.discovery import (
     git,
     safe_input,
 )
-from epipilot.research.engine import ResearchEngine
+from epipilot.research.engine import ResearchEngine, stable_id
 from epipilot.research.frontier import InputFile, QuestionResolved, Resolution
 from epipilot.research.models import Cost, CostVector, Observation, ResearchGoal
 from epipilot.research.reporting import report
@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command != "init" and not args.db.is_file():
             raise ValueError("canonical database missing; explicit init required")
-        output = args.output or args.db.parent / "research-artifacts" / args.project
+        output = args.output or args.db.parent / "carts" / str(stable_id(args.project, "artifacts"))
         # Project identifiers cannot escape the artifact directory.
         if not args.project or any(
             c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
