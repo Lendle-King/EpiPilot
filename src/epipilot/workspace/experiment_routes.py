@@ -169,7 +169,7 @@ class RouteReview(BaseModel):
     new_claims_zh: list[str] = Field(default_factory=list, max_length=5)
 
 
-def _route_prompt(report: dict[str, Any]) -> str:
+def _route_prompt(report: dict[str, Any], *, require_algorithm: bool = False) -> str:
     claims = list(report.get("claims", []))
 
     def rank(claim: dict[str, Any]) -> tuple[int, int, str]:
@@ -209,7 +209,12 @@ def _route_prompt(report: dict[str, Any]) -> str:
     if conflicts:
         lines.append("Potential conflicts: " + json.dumps(conflicts, ensure_ascii=False))
     lines.append(f"Claim pool size: {len(claims)} total.")
-    lines.append("Return JSON exactly like: " + _ROUTE_SCHEMA_NOTE)
+    schema_note = _ROUTE_SCHEMA_NOTE
+    if require_algorithm:
+        schema_note = schema_note.replace(
+            '{"title":', '{"algorithm_id":"<allowed algorithm_id>","title":'
+        ).replace("six fields", "seven fields")
+    lines.append("Return JSON exactly like: " + schema_note)
     lines.append(
         "IMPORTANT: every basis_claim_ids entry must be copied character-for-character "
         "from an id in the list above; never invent, shorten or modify an id. Prefer "
@@ -243,7 +248,7 @@ class ExperimentRoutePlanner:
         if not report.get("available"):
             raise ValueError("No grounded claims available; run semantic analysis first")
         known = {str(claim.get("id")) for claim in report.get("claims", [])}
-        prompt = _route_prompt(report)
+        prompt = _route_prompt(report, require_algorithm=require_algorithm)
         allowed: set[str] | None = None
         if require_algorithm:
             with self.store._db() as conn:
@@ -306,7 +311,14 @@ class ExperimentRoutePlanner:
         known_claim_ids: set[str],
         allowed_algorithms: set[str] | None = None,
     ) -> tuple[ExperimentRoute | None, str]:
-        payload = model.complete_json(ROUTE_GUIDANCE, prompt)
+        system = ROUTE_GUIDANCE
+        if allowed_algorithms is not None:
+            system += (
+                " This call requires exactly one executable algorithm experiment, not a "
+                "diagnostic-only route. Include algorithm_id in the proposal JSON schema. "
+                "Allowed algorithm_id values: " + ", ".join(sorted(allowed_algorithms)) + "."
+            )
+        payload = model.complete_json(system, prompt)
         try:
             route = ExperimentRoute.model_validate(payload)
         except ValidationError as error:

@@ -163,3 +163,27 @@ def test_route_retries_when_claim_ids_are_hallucinated(tmp_path: Any) -> None:
     stubborn = FakeRouteModel([hallucinated, hallucinated])
     with pytest.raises(ValueError, match="unknown claim id"):
         planner.generate(project_id, stubborn, "fake")
+
+
+def test_algorithm_model_can_follow_the_offered_json_schema(tmp_path: Any) -> None:
+    import json
+
+    store, project_id = _setup(tmp_path)
+    claim_id = _seed_claims(store, project_id)
+    candidate = _route_payload(claim_id)
+    candidate["proposals"][0]["algorithm_id"] = "dual_momentum"
+
+    class SchemaFollowingModel:
+        def complete_json(self, system: str, prompt: str) -> Any:
+            offered = prompt.split("Return JSON exactly like: ", 1)[1]
+            schema, _end = json.JSONDecoder().raw_decode(offered)
+            result = dict(candidate)
+            result["proposals"] = [
+                {key: candidate["proposals"][0][key] for key in schema["proposals"][0]}
+            ]
+            return result
+
+    result = ExperimentRoutePlanner(store).generate(
+        project_id, SchemaFollowingModel(), "fake", require_algorithm=True
+    )
+    assert result["route"]["proposals"][0]["algorithm_id"] == "dual_momentum"
