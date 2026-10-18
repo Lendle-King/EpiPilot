@@ -428,3 +428,11 @@ The project should preserve these invariants across all future versions:
 ## 22. V1.0 success definition
 
 EpiPilot V1.0 should be able to accept a real project goal containing genuine technical uncertainty, clarify only the user-owned decisions, investigate unknowns, supervise a coding agent, verify outcomes independently, revise its plan from evidence, survive interruption/restart, and finish with an auditable verified result.
+
+## Cost-aware research loop
+
+CARTS adds observe → qualify → rank → reserve → execute → independently verify →
+settle → replan. Raw observations, execution status, scientific outcomes and promotion
+qualification remain separate. Heuristic decision value is explicitly not EVSI; unknown
+cost abstains. Existing canonical state/event/task contracts remain authoritative.
+See [operational contract](carts/README.md).

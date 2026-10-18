@@ -18,6 +18,14 @@ def new_event_id() -> EventId:
 
 
 class EventType(StrEnum):
+    RESEARCH_NODE_ADDED = "research_node_added"
+    RESEARCH_CONFIGURED = "research_configured"
+    PROPOSAL_ADDED = "proposal_added"
+    EXPERIMENT_RESERVED = "experiment_reserved"
+    EXPERIMENT_OBSERVED = "experiment_observed"
+    EXPERIMENT_REVIEWED = "experiment_reviewed"
+    BUDGET_SETTLED = "budget_settled"
+
     REQUIREMENT_ADDED = "requirement_added"
     DECISION_MADE = "decision_made"
     UNKNOWN_REGISTERED = "unknown_registered"

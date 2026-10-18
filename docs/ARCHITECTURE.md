@@ -213,3 +213,11 @@ The first implementation is intentionally a Python modular monolith with:
 - deterministic tests for invariants.
 
 Distributed queues, graph databases, Kubernetes, and dedicated vector stores are deferred until concrete scaling requirements justify them.
+
+## CARTS research decisions
+
+`epipilot.research` compiles scientific dependencies and budget/resource metadata over
+canonical hypotheses, tasks and evidence. Typed research events extend the existing
+ProjectState projection and EventStore. Technical PlanGraph dependencies are retained;
+scientific AND/OR eligibility also checks current ancestor validity. Runner and independent
+verifier ports sit outside pure policy/accounting/reducers. See [CARTS](carts/README.md).

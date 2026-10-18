@@ -8,6 +8,7 @@ from epipilot.core.models import Evidence, EvidenceId, Task, TaskId
 from epipilot.epistemics.models import Fact, Hypothesis, Unknown
 from epipilot.planning.graph import PlanGraph
 from epipilot.requirements.models import Decision, Requirement
+from epipilot.research.models import ResearchState
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +71,7 @@ class ProjectState:
     contexts: tuple[ContextRecord, ...] = ()
     verifications: tuple[VerificationRecord, ...] = ()
     artifact_refs: tuple[str, ...] = ()
+    research: ResearchState | None = None
     event_version: int = 0
 
     def __post_init__(self) -> None:

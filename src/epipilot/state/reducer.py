@@ -339,7 +339,9 @@ def _reduce_payload(
         )
         return replace(state, plans=(*state.plans, plan))
 
-    raise InvalidEventOrder(f"no reducer registered for event type {event_type.value}")
+    from epipilot.research.reducer import reduce_research
+
+    return reduce_research(state, payload)
 
 
 def _expect(payload: EventPayload, expected: type[PayloadT]) -> PayloadT:

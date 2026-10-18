@@ -44,6 +44,7 @@ def new_observation_id() -> ObservationId:
 class HypothesisStatus(StrEnum):
     PROPOSED = "proposed"
     ACTIVE = "active"
+    BLOCKED = "blocked"
     SUPPORTED = "supported"
     REFUTED = "refuted"
     INCONCLUSIVE = "inconclusive"

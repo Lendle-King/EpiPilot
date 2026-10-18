@@ -20,10 +20,26 @@ from epipilot.events.payloads import (
     VerificationFailedPayload,
     VerificationPassedPayload,
 )
+from epipilot.research.events import (
+    BudgetSettled,
+    ExperimentObserved,
+    ExperimentReserved,
+    ExperimentReviewed,
+    ProposalAdded,
+    ResearchConfigured,
+    ResearchNodeAdded,
+)
 
 TYPED_EVENT_SCHEMA_VERSION = 2
 
 EVENT_PAYLOAD_TYPES: dict[EventType, type[EventPayload]] = {
+    EventType.RESEARCH_NODE_ADDED: ResearchNodeAdded,
+    EventType.RESEARCH_CONFIGURED: ResearchConfigured,
+    EventType.PROPOSAL_ADDED: ProposalAdded,
+    EventType.EXPERIMENT_RESERVED: ExperimentReserved,
+    EventType.EXPERIMENT_OBSERVED: ExperimentObserved,
+    EventType.EXPERIMENT_REVIEWED: ExperimentReviewed,
+    EventType.BUDGET_SETTLED: BudgetSettled,
     EventType.REQUIREMENT_ADDED: RequirementAddedPayload,
     EventType.DECISION_MADE: DecisionMadePayload,
     EventType.UNKNOWN_REGISTERED: UnknownRegisteredPayload,

@@ -132,3 +132,10 @@ EpiPilot is in early V0 development. Architecture contracts and quality gates ar
 ## License
 
 EpiPilot is licensed under the [Apache License 2.0](LICENSE). See [`NOTICE`](NOTICE) for attribution information.
+
+## Cost-aware research search
+
+[CARTS](docs/carts/README.md) adds vector budgets, research DAG decisions, canonical event
+replay and independently verified experiment feedback. Run `python -m epipilot.research
+--help` for the CLI; [validation results](docs/carts/RESULTS_20261018.md) separate synthetic
+policy comparisons from real ETF integrity audits.

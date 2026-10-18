@@ -1,7 +1,8 @@
 """Loopback-only API for the local research workspace.
 
-This API stages projects and historical notes; it cannot promote EpiPilot
-canonical evidence, execute remote GitHub/Notion actions, or place trades.
+This API stages projects and historical notes. CARTS can record independently
+verified local audit evidence through canonical events. Remote GitHub/Notion
+actions and trading remain disabled.
 """
 
 from __future__ import annotations
@@ -19,6 +20,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
+from epipilot.research.engine import ResearchEngine
+from epipilot.research.etf import ETFAdapter
+from epipilot.research.reporting import report as carts_report
+from epipilot.runtime.sqlite_event_store import SqliteEventStore
 from epipilot.workspace.algorithm_execution import LocalAlgorithmExecutor
 from epipilot.workspace.browser_bridge import (
     ExtensionBridgeHub,
@@ -608,6 +613,14 @@ def _run_auto_iteration_sync(
 
 @app.get("/api/projects/{project_id}/research-agent/loop")
 def auto_iteration_status(project_id: str) -> dict[str, object]:
+    try:
+        carts = _carts_engine(project_id)
+        if carts.state.research is not None:
+            return {**carts_report(carts), "scheduler": "carts"}
+    except KeyError:
+        pass
+    except (ValueError, OSError) as error:
+        _raise(error)
     status = _auto_iteration.status(project_id)
     if status["running"] or status["rounds_completed"]:
         return status
@@ -625,6 +638,13 @@ def auto_iteration_status(project_id: str) -> dict[str, object]:
 @app.post("/api/projects/{project_id}/research-agent/loop")
 def start_auto_iteration(project_id: str, body: LoopInput) -> dict[str, object]:
     try:
+        carts = _carts_engine(project_id)
+        if carts.state.research is not None:
+            if body.resume_route_run_id or body.resume_tab_id:
+                raise ValueError(
+                    "CARTS recovery uses /research-tree/resume; legacy route history is preserved"
+                )
+            return run_research_tree(project_id, body)
         item = _store().get(project_id)  # fail closed before spawning a worker
         repo = item.get("repository_path")
         executor = _local_algorithm_executor(
@@ -658,6 +678,77 @@ def start_auto_iteration(project_id: str, body: LoopInput) -> dict[str, object]:
         ).start()
         started.wait(timeout=2.0)
         return _auto_iteration.status(project_id)
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+def _carts_engine(project_id: str) -> ResearchEngine:
+    store = _store()
+    store.get(project_id)
+    # Workspace staging and canonical events share SQLite, never a second truth store.
+    from epipilot.research.engine import stable_id
+
+    output = store.path.parent / "carts" / str(stable_id(project_id, "artifacts"))
+    return ResearchEngine(SqliteEventStore(store.path), project_id, output)
+
+
+def _carts_adapter(project_id: str) -> ETFAdapter:
+    item = _store().get(project_id)
+    repository = item.get("repository_path")
+    if not isinstance(repository, str) or not repository:
+        raise ValueError("CARTS ETF adapter requires an adopted repository")
+    path = Path(repository).expanduser().resolve()
+    if not _within_roots(path, _allowed_roots()):
+        raise ValueError("repository outside allowed roots")
+    return ETFAdapter(path)
+
+
+@app.get("/api/projects/{project_id}/research-tree")
+def research_tree_status(project_id: str) -> dict[str, object]:
+    try:
+        return {**carts_report(_carts_engine(project_id)), "scheduler": "carts"}
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-tree/import")
+def import_research_tree(project_id: str) -> dict[str, object]:
+    try:
+        if _auto_iteration.status(project_id)["running"]:
+            raise ValueError("legacy loop running; stop it before CARTS cutover")
+        engine = _carts_engine(project_id)
+        _carts_adapter(project_id).initialize(engine)
+        return {**carts_report(engine), "scheduler": "carts"}
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-tree/run")
+def run_research_tree(project_id: str, body: LoopInput) -> dict[str, object]:
+    from epipilot.runtime.event_store import EventStoreError
+
+    try:
+        if _auto_iteration.status(project_id)["running"]:
+            raise ValueError("legacy loop still running")
+        engine, adapter = _carts_engine(project_id), _carts_adapter(project_id)
+        for _ in range(body.max_rounds):
+            if engine.run_next(adapter, adapter) is None:
+                break
+        return {**carts_report(engine), "scheduler": "carts"}
+    except (KeyError, ValueError, OSError, EventStoreError) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-tree/resume")
+def resume_research_tree(project_id: str) -> dict[str, object]:
+    try:
+        engine = _carts_engine(project_id)
+        engine.resume(_carts_adapter(project_id))
+        return {**carts_report(engine), "scheduler": "carts"}
     except (KeyError, ValueError, OSError) as error:
         _raise(error)
     return {}
