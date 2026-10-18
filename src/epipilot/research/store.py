@@ -32,45 +32,45 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("goal already exists; only user-approved goal changes may replace it")
         state.goal = ResearchGoal.model_validate(payload)
     elif kind == "unknown_added":
-        item = Unknown.model_validate(payload)
-        if item.id in state.unknowns:
+        unknown_item = Unknown.model_validate(payload)
+        if unknown_item.id in state.unknowns:
             raise ValueError("duplicate unknown id")
-        state.unknowns[item.id] = item
+        state.unknowns[unknown_item.id] = unknown_item
     elif kind == "claim_added":
-        item = Claim.model_validate(payload)
-        if item.id in state.claims:
+        claim_item = Claim.model_validate(payload)
+        if claim_item.id in state.claims:
             raise ValueError("duplicate claim id")
-        state.claims[item.id] = item
+        state.claims[claim_item.id] = claim_item
     elif kind == "proposal_added":
-        item = Proposal.model_validate(payload)
-        if item.id in state.proposals:
+        proposal_item = Proposal.model_validate(payload)
+        if proposal_item.id in state.proposals:
             raise ValueError("duplicate proposal id")
-        if set(item.depends_on) - state.proposals.keys():
+        if set(proposal_item.depends_on) - state.proposals.keys():
             raise ValueError("proposal dependencies must exist")
-        if set(item.unknown_ids) - state.unknowns.keys():
+        if set(proposal_item.unknown_ids) - state.unknowns.keys():
             raise ValueError("proposal references unknown unknowns")
-        if set(item.claim_ids) - state.claims.keys():
+        if set(proposal_item.claim_ids) - state.claims.keys():
             raise ValueError("proposal references unknown claims")
-        state.proposals[item.id] = item
+        state.proposals[proposal_item.id] = proposal_item
     elif kind == "experiment_recorded":
-        item = Experiment.model_validate(payload["experiment"])
-        evidence = EvidenceRecord.model_validate(payload["evidence"])
+        exp_item = Experiment.model_validate(payload["experiment"])
+        ev_item = EvidenceRecord.model_validate(payload["evidence"])
         if state.goal is None:
             raise ValueError("project has no user goal")
-        if item.id in state.experiments or evidence.id in state.evidence:
+        if exp_item.id in state.experiments or ev_item.id in state.evidence:
             raise ValueError("duplicate experiment or evidence id")
-        proposal = state.proposals.get(item.proposal_id)
+        proposal = state.proposals.get(exp_item.proposal_id)
         if proposal is None or proposal.status != "proposed":
             raise ValueError("experiment needs an available proposal")
-        if state.spent + item.actual_cost > state.goal.budget + 1e-9:
+        if state.spent + exp_item.actual_cost > state.goal.budget + 1e-9:
             raise ValueError("experiment exceeds research budget")
-        if evidence.experiment_id != item.id or item.evidence_id != evidence.id:
+        if ev_item.experiment_id != exp_item.id or exp_item.evidence_id != ev_item.id:
             raise ValueError("experiment and evidence links disagree")
-        if evidence.independently_verified:
+        if ev_item.independently_verified:
             raise ValueError("executor cannot submit independently verified evidence")
-        state.experiments[item.id] = item
-        state.evidence[evidence.id] = evidence
-        state.proposals[item.proposal_id] = proposal.model_copy(
+        state.experiments[exp_item.id] = exp_item
+        state.evidence[ev_item.id] = ev_item
+        state.proposals[exp_item.proposal_id] = proposal.model_copy(
             update={"status": "awaiting_verification"}
         )
     elif kind == "verification_recorded":

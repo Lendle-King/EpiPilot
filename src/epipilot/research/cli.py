@@ -248,27 +248,27 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
         }
     if cmd == "unknown":
         if args.action == "add":
-            item = Unknown(
+            unknown_item = Unknown(
                 id=args.id or research_id("UNK"),
                 question=args.question,
                 importance=args.importance,
                 decision_sensitivity=args.sensitivity,
             )
-            store.add("unknown_added", item)
-            return item.model_dump(mode="json")
+            store.add("unknown_added", unknown_item)
+            return unknown_item.model_dump(mode="json")
         store.append("unknown_resolved", {"unknown_id": args.id, "evidence_id": args.evidence})
         return {"resolved": args.id, "evidence_id": args.evidence}
     if cmd == "claim":
-        item = Claim(
+        claim_item = Claim(
             id=args.id or research_id("CLM"),
             statement=args.statement,
             scope=args.scope,
             assumptions=args.assumption,
         )
-        store.add("claim_added", item)
-        return item.model_dump(mode="json")
+        store.add("claim_added", claim_item)
+        return claim_item.model_dump(mode="json")
     if cmd == "propose":
-        item = Proposal(
+        proposal_item = Proposal(
             id=args.id or research_id("ACT"),
             title=args.title,
             kind=ProposalKind(args.kind),
@@ -284,8 +284,8 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
             estimated_cost=args.cost,
             risk=args.risk,
         )
-        store.add("proposal_added", item)
-        return item.model_dump(mode="json")
+        store.add("proposal_added", proposal_item)
+        return proposal_item.model_dump(mode="json")
     if cmd == "next":
         return [
             {
@@ -318,7 +318,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
         if revision == "unversioned":
             raise ValueError("a pinned Git revision is mandatory for research experiments")
         experiment_id, evidence_id = research_id("EXP"), research_id("EV")
-        experiment = Experiment(
+        new_experiment = Experiment(
             id=experiment_id,
             proposal_id=args.proposal,
             summary=args.summary,
@@ -342,7 +342,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
         store.append(
             "experiment_recorded",
             {
-                "experiment": experiment.model_dump(mode="json"),
+                "experiment": new_experiment.model_dump(mode="json"),
                 "evidence": evidence.model_dump(mode="json"),
             },
         )
@@ -350,7 +350,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
             "experiment_id": experiment_id,
             "evidence_id": evidence_id,
             "verified": False,
-            "next": "epi verify --experiment ID --check COMMAND ARGS...",
+            "next": "epi verify --new_experiment ID --check COMMAND ARGS...",
         }
     if cmd == "verify":
         experiment = state.experiments.get(args.experiment)
