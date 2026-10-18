@@ -305,7 +305,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
         if not ranked:
             return {
                 "status": "no_runnable_proposal",
-                "guidance": "Review remaining budget and unverified experiments, or add new proposals.",
+                "guidance": "Review budget and pending experiments, or add new proposals.",
                 **_status(state),
             }
         return {
