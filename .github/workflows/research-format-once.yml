@@ -1,0 +1,29 @@
+name: One-time research formatting
+on:
+  push:
+    branches: [feat/research-plugin-cost-aware-tree-search]
+    paths: ['.github/workflows/research-format-once.yml']
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'ruff>=0.6'
+      - run: ruff format src/epipilot/research tests/research
+      - run: ruff check --fix src/epipilot/research tests/research
+      - name: Commit formatter output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/epipilot/research tests/research
+          if ! git diff --cached --quiet; then
+            git commit -m "style(research): apply Ruff formatting and safe lint fixes"
+            git push origin HEAD:feat/research-plugin-cost-aware-tree-search
+          fi
