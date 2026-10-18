@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -199,8 +198,7 @@ def test_cli_agent_iteration_and_check(tmp_path: Path, capsys: pytest.CaptureFix
         "--ig", "0.9", "--gain", "0.2", "--cost", "1",
     ]) == 0
     assert main([*root, "iterate"]) == 0
-    payload = json.loads(capsys.readouterr().out.split("\n{")[-1].join([])) if False else None
-    assert payload is None
+    assert '"status": "ready_for_agent"' in capsys.readouterr().out
     assert main([
         *root, "record", "--proposal", "P", "--summary", "Synthetic checked result",
         "--outcome", "inconclusive", "--cost", "0.4", "--revision", "a" * 40,

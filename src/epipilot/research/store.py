@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -90,7 +89,9 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         )
         experiment = state.experiments[evidence.experiment_id]
         proposal = state.proposals[experiment.proposal_id]
-        state.proposals[proposal.id] = proposal.model_copy(update={"status": "completed"})
+        state.proposals[proposal.id] = proposal.model_copy(
+            update={"status": "blocked" if experiment.outcome == "infrastructure_failure" else "completed"}
+        )
     elif kind == "verification_failed":
         if str(payload["evidence_id"]) not in state.evidence:
             raise ValueError("unknown verification evidence")
