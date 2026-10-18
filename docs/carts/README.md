@@ -157,3 +157,10 @@ Historical replay uses actual Git committer availability, never the date in a re
 filename. At each frontier only revealed routes enter the real policy. Historical costs
 are unknown, so measured-cost rankings abstain. Two labeled relative-cost assumptions
 show sensitivity; they do not establish measured historical savings or ETF returns.
+
+## Coding-agent operation
+
+The [agent protocol](AGENT_PROTOCOL.md) adapts semantic discovery and progressive
+optimization from the lightweight plugin onto this canonical backend. Load the portable
+[research operator skill](../../skills/epipilot-research/SKILL.md). Use `epi` or
+`python -m epipilot.research agent`; the original commands remain supported.

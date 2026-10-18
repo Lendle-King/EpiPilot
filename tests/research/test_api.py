@@ -20,3 +20,23 @@ def test_configured_project_uses_carts_in_existing_loop_endpoint(tmp_path, monke
     assert result.status_code == 200
     assert result.json()["rounds_completed"] == 1
     assert client.get("/api/projects/project/research-agent/loop").json()["scheduler"] == "carts"
+
+
+def test_agent_frontier_dispatches_registered_adapter_and_requires_discovery(tmp_path, monkeypatch):
+    from test_agent_cycle import discovered
+
+    engine, _root, _batch = discovered(tmp_path)
+    monkeypatch.setattr(api, "_carts_engine", lambda project: engine)
+
+    def forbidden_adapter(project):
+        raise AssertionError("ETF adapter must not execute agent-native contracts")
+
+    monkeypatch.setattr(api, "_carts_adapter", forbidden_adapter)
+    client = TestClient(api.app)
+    response = client.post("/api/projects/agent/research-tree/run", json={"max_rounds": 10})
+    assert response.status_code == 200
+    assert response.json()["agent"]["action"] == "discovery_required"
+    assert len(engine.state.research.reviews) == 1
+    assert client.get("/api/projects/agent/research-agent/loop").json()["agent"]["questions"][0][
+        "closed"
+    ]

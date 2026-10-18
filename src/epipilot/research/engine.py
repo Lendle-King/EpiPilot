@@ -55,7 +55,7 @@ from epipilot.research.models import (
 from epipilot.research.policy import rank_candidates, validate_graph
 from epipilot.research.ports import EvidenceVerifier, ExperimentRunner
 from epipilot.research.reducer import reduce_research, task_id
-from epipilot.runtime.event_store import EventStore
+from epipilot.runtime.event_store import AtomicEventStore, EventStore
 from epipilot.state.project import ProjectState
 from epipilot.state.reducer import reduce_event
 from epipilot.state.replay import replay_project
@@ -78,6 +78,18 @@ class ResearchEngine:
         event = make_project_event(kind, self.project_id, payload)
         updated = reduce_event(self._state, event)  # validate before durable append
         self.store.append(event, expected_version=self._state.event_version)
+        self._state = updated
+
+    def append_batch(self, entries: tuple[tuple[EventType, EventPayload], ...]) -> None:
+        if not isinstance(self.store, AtomicEventStore):
+            raise ValueError("discovery requires an atomic canonical EventStore")
+        updated = self.state
+        events = tuple(
+            make_project_event(kind, self.project_id, payload) for kind, payload in entries
+        )
+        for event in events:
+            updated = reduce_event(updated, event)
+        self.store.append_many(events, expected_version=self.state.event_version)
         self._state = updated
 
     def initialize(
@@ -224,14 +236,21 @@ class ResearchEngine:
         assert self.state.research is not None
         best = ranking.ranked[0]
         p = self.state.research.proposal(best.proposal_id)
+        return self.reserve(p.id, best.model_dump_json(), ranking.at)
+
+    def reserve(
+        self, identifier: str, explanation: str, at: datetime | None = None
+    ) -> ExperimentProposal:
+        assert self.state.research is not None
+        p = self.state.research.proposal(identifier)
         self.append(
             EventType.EXPERIMENT_RESERVED,
             ExperimentReserved(
                 reservation=Reservation(
                     proposal_id=p.id,
                     costs=BudgetManager(self.state.research).reservation(p),
-                    at=ranking.at,
-                    score_explanation=best.model_dump_json(),
+                    at=at or datetime.now(UTC),
+                    score_explanation=explanation,
                 )
             ),
         )
@@ -310,20 +329,28 @@ class ResearchEngine:
     ) -> None:
         if a.proposal_id != p.id:
             raise ValueError("verifier returned another experiment's assessment")
-        tid = task_id(self.project_id, p.id)
         self._start(p)
+        projected = self.state
+        entries: list[tuple[EventType, EventPayload]] = []
+
+        def emit(kind: EventType, payload: EventPayload) -> None:
+            nonlocal projected
+            projected = reduce_event(projected, make_project_event(kind, self.project_id, payload))
+            entries.append((kind, payload))
+
+        tid = task_id(self.project_id, p.id)
         for previous, target in (
             (TaskStatus.RUNNING, TaskStatus.AGENT_REPORTED_DONE),
             (TaskStatus.AGENT_REPORTED_DONE, TaskStatus.VERIFYING),
         ):
-            if self.state.task(tid).status is previous:
-                self.append(
+            if projected.task(tid).status is previous:
+                emit(
                     EventType.TASK_STATUS_CHANGED,
                     TaskStatusChangedPayload(task_id=tid, status=target),
                 )
         eid = stable_id(self.project_id, f"evidence:{p.id}")
-        if eid not in {e.id for e in self.state.evidence}:
-            self.append(
+        if eid not in {e.id for e in projected.evidence}:
+            emit(
                 EventType.EVIDENCE_RECORDED,
                 EvidenceRecordedPayload(
                     evidence_id=eid,
@@ -338,15 +365,15 @@ class ResearchEngine:
                     task_id=tid,
                 ),
             )
-        if self.state.task(tid).status is TaskStatus.VERIFYING:
-            if not any(v.task_id == tid for v in self.state.verifications):
+        if projected.task(tid).status is TaskStatus.VERIFYING:
+            if not any(v.task_id == tid for v in projected.verifications):
                 if a.verified:
-                    self.append(
+                    emit(
                         EventType.VERIFICATION_PASSED,
                         VerificationPassedPayload(task_id=tid, evidence_id=eid),
                     )
                 else:
-                    self.append(
+                    emit(
                         EventType.VERIFICATION_FAILED,
                         VerificationFailedPayload(task_id=tid, reason="; ".join(a.reasons)),
                     )
@@ -360,18 +387,20 @@ class ResearchEngine:
                     else TaskStatus.FAILED
                 )
             )
-            self.append(
+            emit(
                 EventType.TASK_STATUS_CHANGED,
                 TaskStatusChangedPayload(
                     task_id=tid, status=target, completion_evidence_id=eid if success else None
                 ),
             )
-        self.append(
+        emit(
             EventType.EXPERIMENT_REVIEWED,
             ExperimentReviewed(
                 review=Review(assessment=a, evidence_id=eid, verification_cost=verification_cost)
             ),
         )
+
+        self.append_batch(tuple(entries))
 
     def _settle(self, observation: Observation) -> None:
         from epipilot.research.models import amounts

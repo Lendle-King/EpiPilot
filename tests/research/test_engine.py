@@ -287,22 +287,27 @@ def test_new_hypothesis_can_extend_tree_without_rewriting_history(tmp_path):
     assert engine.store.load("project")[: len(before)] == before
 
 
-@pytest.mark.parametrize("boundary", range(1, 8))
+@pytest.mark.parametrize("boundary", ("before_review", "after_review", "before_settlement"))
 def test_every_finish_append_boundary_is_restartable(tmp_path, monkeypatch, boundary):
     engine = setup(InMemoryEventStore(), tmp_path)
     p = engine.reserve_next()
     engine.observe(Runner().run(p, tmp_path / "raw"))
-    original = engine.append
-    count = 0
+    original_batch, original_append = engine.append_batch, engine.append
 
-    def fail_one(kind, payload):
-        nonlocal count
-        count += 1
-        if count == boundary:
+    def fail_batch(entries):
+        if boundary == "before_review":
             raise RuntimeError("injected process interruption")
-        original(kind, payload)
+        original_batch(entries)
+        if boundary == "after_review":
+            raise RuntimeError("injected process interruption")
 
-    monkeypatch.setattr(engine, "append", fail_one)
+    def fail_settlement(kind, payload):
+        if boundary == "before_settlement" and kind is EventType.BUDGET_SETTLED:
+            raise RuntimeError("injected process interruption")
+        original_append(kind, payload)
+
+    monkeypatch.setattr(engine, "append_batch", fail_batch)
+    monkeypatch.setattr(engine, "append", fail_settlement)
     with pytest.raises(RuntimeError):
         engine.resume(Verifier())
     restarted = ResearchEngine(engine.store, "project", tmp_path)

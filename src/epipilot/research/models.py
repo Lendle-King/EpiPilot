@@ -12,6 +12,7 @@ from pydantic import AwareDatetime, ConfigDict, Field, model_validator
 
 from epipilot.core.contracts import ResourceClaim
 from epipilot.events.payloads import EventPayload
+from epipilot.research.frontier import Quality, ResearchFrontier
 
 
 class Value(EventPayload):
@@ -207,6 +208,7 @@ class Assessment(Value):
     reliability: float = Field(ge=0, le=1)
     scope: Scope
     qualified_for_promotion: bool = False
+    quality: Quality = Quality.INTEGRITY
     reasons: tuple[str, ...] = Field(min_length=1)
 
 
@@ -223,6 +225,7 @@ class Settlement(Value):
 
 class ResearchState(Value):
     goal: ResearchGoal
+    frontier: ResearchFrontier | None = None
     nodes: tuple[ResearchNode, ...] = ()
     proposals: tuple[ExperimentProposal, ...] = ()
     reservations: tuple[Reservation, ...] = ()

@@ -16,6 +16,7 @@ from epipilot.research.events import (
     ResearchConfigured,
     ResearchNodeAdded,
 )
+from epipilot.research.frontier import Quality
 from epipilot.research.models import (
     ExecutionStatus,
     Fidelity,
@@ -47,13 +48,15 @@ def reduce_research(state: ProjectState, payload: EventPayload) -> ProjectState:
     if r is None:
         raise ValueError("research not configured")
     if isinstance(payload, ResearchNodeAdded):
-        node = payload.node
-        if node.hypothesis_id not in {
-            h.id for h in state.hypotheses
-        } or node.basis not in canonical_basis(state):
-            raise ValueError("new research node requires canonical hypothesis and basis")
-        validate_graph((*r.nodes, node))
-        return replace(state, research=r.model_copy(update={"nodes": (*r.nodes, node)}))
+        nodes = (payload.node, *payload.companion_nodes)
+        if any(
+            node.hypothesis_id not in {h.id for h in state.hypotheses}
+            or node.basis not in canonical_basis(state)
+            for node in nodes
+        ):
+            raise ValueError("new research nodes require canonical hypotheses and basis")
+        validate_graph((*r.nodes, *nodes))
+        return replace(state, research=r.model_copy(update={"nodes": (*r.nodes, *nodes)}))
     if isinstance(payload, ProposalAdded):
         p = payload.proposal
         if p.id in {x.id for x in r.proposals}:
@@ -127,6 +130,12 @@ def reduce_research(state: ProjectState, payload: EventPayload) -> ProjectState:
         reliable = (
             a.verified and a.reliability >= p.minimum_reliability and o.samples >= p.minimum_samples
         )
+        if r.frontier is not None:
+            reliable = reliable and all(
+                a.quality >= max(q.minimum_quality, Quality.MEASUREMENT)
+                for q in r.frontier.questions
+                if q.unknown_id in p.unknown_ids
+            )
         if a.qualified_for_promotion and not (
             reliable
             and a.outcome is Outcome.SUPPORT
@@ -185,7 +194,9 @@ def reduce_research(state: ProjectState, payload: EventPayload) -> ProjectState:
         if amounts(s.actual_cost) != actual:
             raise ValueError("settlement must equal measured costs (including overruns)")
         return replace(state, research=r.model_copy(update={"settlements": (*r.settlements, s)}))
-    raise ValueError("unsupported research payload")
+    from epipilot.research.frontier_reducer import reduce_frontier
+
+    return reduce_frontier(state, payload)
 
 
 def canonical_basis(state: ProjectState) -> set[str]:

@@ -84,6 +84,41 @@ class SqliteEventStore:
             )
             return next_version
 
+    def append_many(self, events: tuple[ProjectEvent, ...], *, expected_version: int) -> int:
+        if not events or len({e.aggregate_id for e in events}) != 1:
+            raise ValueError("atomic batch requires one nonempty aggregate")
+        aggregate = events[0].aggregate_id
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT COALESCE(MAX(version),0) FROM project_events WHERE aggregate_id=?",
+                (aggregate,),
+            ).fetchone()
+            if row is None or int(row[0]) != expected_version:
+                raise EventVersionConflict("stale atomic research batch")
+            version = expected_version
+            for event in events:
+                if connection.execute(
+                    "SELECT 1 FROM project_events WHERE event_id=?", (str(event.id),)
+                ).fetchone():
+                    raise DuplicateEvent(f"event {event.id} already exists")
+                version += 1
+                connection.execute(
+                    "INSERT INTO project_events "
+                    "(aggregate_id,version,event_id,event_type,payload,occurred_at,schema_version) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (
+                        aggregate,
+                        version,
+                        str(event.id),
+                        event.type.value,
+                        event.payload,
+                        event.occurred_at.isoformat(),
+                        event.schema_version,
+                    ),
+                )
+            return version
+
     def load(self, aggregate_id: str) -> tuple[ProjectEvent, ...]:
         with self._connect() as connection:
             rows = connection.execute(

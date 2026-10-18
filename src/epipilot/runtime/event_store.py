@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from epipilot.core.events import EventId, ProjectEvent
 
@@ -36,6 +36,11 @@ class EventStore(Protocol):
         ...
 
 
+@runtime_checkable
+class AtomicEventStore(EventStore, Protocol):
+    def append_many(self, events: tuple[ProjectEvent, ...], *, expected_version: int) -> int: ...
+
+
 @dataclass(slots=True)
 class InMemoryEventStore:
     """Reference event store for tests and single-process development.
@@ -61,6 +66,18 @@ class InMemoryEventStore:
         stream.append(event)
         self._seen_event_ids.add(event.id)
         return len(stream)
+
+    def append_many(self, events: tuple[ProjectEvent, ...], *, expected_version: int) -> int:
+        if not events or len({e.aggregate_id for e in events}) != 1:
+            raise ValueError("atomic batch requires one nonempty aggregate")
+        trial = InMemoryEventStore(
+            {k: list(v) for k, v in self._streams.items()}, set(self._seen_event_ids)
+        )
+        version = expected_version
+        for event in events:
+            version = trial.append(event, expected_version=version)
+        self._streams, self._seen_event_ids = trial._streams, trial._seen_event_ids
+        return version
 
     def load(self, aggregate_id: str) -> tuple[ProjectEvent, ...]:
         return tuple(self._streams.get(aggregate_id, ()))

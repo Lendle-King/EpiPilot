@@ -95,7 +95,23 @@ def _infeasible(state: ProjectState, p: ExperimentProposal, at: datetime) -> str
     node = next(n for n in r.nodes if n.hypothesis_id == p.hypothesis_id)
     if p.id in {x.proposal_id for x in r.reservations}:
         return "already submitted; reuse recorded result or explicitly recover in-flight work"
-    if statuses[p.hypothesis_id] in {HypothesisStatus.REFUTED, HypothesisStatus.SUPERSEDED}:
+    from epipilot.research.frontier import Purpose
+
+    recheck = False
+    if r.frontier is not None:
+        contract = next((c for c in r.frontier.contracts if c.proposal_id == p.id), None)
+        recheck = (
+            contract is not None
+            and contract.purpose is Purpose.VERIFY
+            and any(
+                not r.frontier.closed(uid)
+                and any(x.unknown_id == uid for x in r.frontier.resolutions)
+                for uid in p.unknown_ids
+            )
+        )
+    if statuses[p.hypothesis_id] is HypothesisStatus.SUPERSEDED or (
+        statuses[p.hypothesis_id] is HypothesisStatus.REFUTED and not recheck
+    ):
         return "route refuted or superseded; new evidence required"
     if p.available_at and p.available_at > at:
         return "future input unavailable at decision time"

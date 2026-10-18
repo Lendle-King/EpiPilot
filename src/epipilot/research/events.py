@@ -40,3 +40,4 @@ class BudgetSettled(EventPayload):
 
 class ResearchNodeAdded(EventPayload):
     node: ResearchNode
+    companion_nodes: tuple[ResearchNode, ...] = ()

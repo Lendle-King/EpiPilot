@@ -20,6 +20,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
+from epipilot.research.agent_service import AgentService
 from epipilot.research.engine import ResearchEngine
 from epipilot.research.etf import ETFAdapter
 from epipilot.research.reporting import report as carts_report
@@ -616,7 +617,7 @@ def auto_iteration_status(project_id: str) -> dict[str, object]:
     try:
         carts = _carts_engine(project_id)
         if carts.state.research is not None:
-            return {**carts_report(carts), "scheduler": "carts"}
+            return _research_status(carts)
     except KeyError:
         pass
     except (ValueError, OSError) as error:
@@ -704,10 +705,25 @@ def _carts_adapter(project_id: str) -> ETFAdapter:
     return ETFAdapter(path)
 
 
+def _agent_service(engine: ResearchEngine) -> AgentService:
+
+    r = engine.state.research
+    if r is None or r.frontier is None:
+        raise ValueError("agent frontier not configured")
+    return AgentService(engine, Path(r.frontier.repository))
+
+
+def _research_status(engine: ResearchEngine) -> dict[str, object]:
+    data = {**carts_report(engine), "scheduler": "carts"}
+    if engine.state.research is not None and engine.state.research.frontier is not None:
+        data["agent"] = _agent_service(engine).iterate().model_dump(mode="json")
+    return data
+
+
 @app.get("/api/projects/{project_id}/research-tree")
 def research_tree_status(project_id: str) -> dict[str, object]:
     try:
-        return {**carts_report(_carts_engine(project_id)), "scheduler": "carts"}
+        return _research_status(_carts_engine(project_id))
     except (KeyError, ValueError, OSError) as error:
         _raise(error)
     return {}
@@ -720,7 +736,7 @@ def import_research_tree(project_id: str) -> dict[str, object]:
             raise ValueError("legacy loop running; stop it before CARTS cutover")
         engine = _carts_engine(project_id)
         _carts_adapter(project_id).initialize(engine)
-        return {**carts_report(engine), "scheduler": "carts"}
+        return _research_status(engine)
     except (KeyError, ValueError, OSError) as error:
         _raise(error)
     return {}
@@ -733,11 +749,18 @@ def run_research_tree(project_id: str, body: LoopInput) -> dict[str, object]:
     try:
         if _auto_iteration.status(project_id)["running"]:
             raise ValueError("legacy loop still running")
-        engine, adapter = _carts_engine(project_id), _carts_adapter(project_id)
-        for _ in range(body.max_rounds):
-            if engine.run_next(adapter, adapter) is None:
-                break
-        return {**carts_report(engine), "scheduler": "carts"}
+        engine = _carts_engine(project_id)
+        if engine.state.research is not None and engine.state.research.frontier is not None:
+            service = _agent_service(engine)
+            for _ in range(body.max_rounds):
+                if service.run_next() is None:
+                    break
+        else:
+            adapter = _carts_adapter(project_id)
+            for _ in range(body.max_rounds):
+                if engine.run_next(adapter, adapter) is None:
+                    break
+        return _research_status(engine)
     except (KeyError, ValueError, OSError, EventStoreError) as error:
         _raise(error)
     return {}
@@ -747,8 +770,11 @@ def run_research_tree(project_id: str, body: LoopInput) -> dict[str, object]:
 def resume_research_tree(project_id: str) -> dict[str, object]:
     try:
         engine = _carts_engine(project_id)
-        engine.resume(_carts_adapter(project_id))
-        return {**carts_report(engine), "scheduler": "carts"}
+        if engine.state.research is not None and engine.state.research.frontier is not None:
+            _agent_service(engine).verify()
+        else:
+            engine.resume(_carts_adapter(project_id))
+        return _research_status(engine)
     except (KeyError, ValueError, OSError) as error:
         _raise(error)
     return {}

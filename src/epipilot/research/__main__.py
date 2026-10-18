@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from epipilot.research.budget import BudgetManager
@@ -22,6 +23,10 @@ from epipilot.runtime.sqlite_event_store import SqliteEventStore
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "agent":
+        from epipilot.research.agent_cli import main as agent_main
+
+        raise SystemExit(agent_main(sys.argv[2:]))
     parser = argparse.ArgumentParser(description="Cost-Aware Research Tree Search")
     parser.add_argument(
         "command",

@@ -1,0 +1,111 @@
+# Agent-native CARTS integration
+
+The lightweight `feat/research-plugin-cost-aware-tree-search` workflow is adapted to the
+existing CARTS backend. Its independent JSONL `ResearchState`/claim store is deliberately
+not copied. All canonical entities and frontier metadata replay from the existing SQLite
+`project_events`; discovery batches commit in one optimistic transaction. Legacy route,
+checkpoint and workspace history remain intact.
+
+An existing coding agent supplies semantic discovery and implementation. The protocol
+returns a bounded next-action packet and never asks an unconfigured model to invent state.
+This is an agent tool/skill, not an unattended semantic daemon. The host coding agent must
+continue calling it; a scheduled host must be configured separately if desired.
+
+Install the package in its Python environment (`pip install -e '.[dev]'`). Load the portable
+[research skill](../../skills/epipilot-research/SKILL.md) in the coding agent. Module usage
+works without installing the `epi` entry point:
+
+```bash
+python -m epipilot.research agent --root /path/to/research --project PROJECT --db /path/to/workspace.sqlite3 onboard
+python -m epipilot.research agent --root /path/to/research --project PROJECT --db /path/to/workspace.sqlite3 init --goal 'An explicit authorized research goal' --wall-seconds 120
+python -m epipilot.research agent --root /path/to/research --project PROJECT --db /path/to/workspace.sqlite3 iterate
+python -m epipilot.research agent --root /path/to/research --project PROJECT --db /path/to/workspace.sqlite3 schema
+```
+
+`schema` emits the complete strict DiscoveryBatch JSON schema. The packet's event_version
+must equal the batch's based_on_version. basis_ref must reference an existing canonical
+requirement, user decision or evidence. Each Finding supplies canonical hypothesis/node,
+unknown/question, facet (property, variable, boundary, bottleneck or method), stable topic
+key, two distinct explanations, predictions and falsification conditions. Each SourceAnchor
+contains a 40-character Git revision, relative path, one-based line and exact UTF-8 line.
+Quotes validate wording, not scientific truth. Competing explanations persist on Question.
+
+Each AgentProposal combines an ExperimentProposal and MeasurementContract. Contracts pin
+code revision, SHA-256 input files, measurement adapter, rules and purpose. The proposal's
+input_revision equals contract.fingerprint(). Use the typed Python models or schema to
+build JSON; [regression fixtures](../../tests/research/test_agent_discovery.py) show a full
+synthetic example. `snapshot --file PATH` emits input hashes and the current Git revision.
+
+```bash
+epi --root /path/to/research --project PROJECT --db /path/to/workspace.sqlite3 discover --file batch.json
+epi --root /path/to/research --project PROJECT --db /path/to/workspace.sqlite3 run
+epi --root /path/to/research --project PROJECT --db /path/to/workspace.sqlite3 iterate
+```
+
+Fresh discovery is mandatory after each review. A justified empty discovery can end an
+epoch; repeating empty discovery in the same epoch is rejected. Duplicate measurement
+fingerprints, stale versions, unsupported references or invalid source lines reject the
+entire batch. No partially accepted claims or proposals are left behind.
+
+## Measurement and extension boundary
+
+Built-in adapters independently reread hashed inputs: `missingness` profiles observed flags
+by a preregistered date boundary; `series` computes summary return metrics from one ordered,
+unique daily return series (252-trading-day CAGR only at >=252 observations); `integrity`
+checks input availability. Rule thresholds are preregistered, not selected after results.
+
+Quality is set by trusted measurement code, not by an observation or model. Scientific
+questions require MEASUREMENT or above. Built-in offline measurements cannot claim
+independent/prospective evidence; their recomputation does not establish market causality,
+point-in-time validity, absence of survivor bias or independent forward alpha. No built-in
+adapter can promotion-qualify a goal. A failed threshold refutes only if the proposal
+preregistered a definitive negative; otherwise it remains inconclusive.
+
+For a new domain, implement `Computer.measure(root, contract) -> Measured` and `quality`,
+test its real outputs and failure cases, and inject an explicit reviewed name-to-Computer
+mapping into `AgentService(engine, root, computers=...)`. The same adapter recomputes fresh
+measurements in verification. Input fingerprints deliberately ignore filenames/order and
+compare content digests, preventing alias-only retries; duplicate content files are rejected.
+Custom Computers must not derive semantic roles from filenames or input ordering. A domain
+that needs train/test or treatment/control roles requires explicit role-bearing contract
+fields and validation before that adapter can be registered. For costly/non-deterministic training, use existing
+`ExperimentRunner` / `EvidenceVerifier` ports with an independently specified artifact
+verifier; these are Python extension seams, not a dynamic arbitrary `--check` command.
+A domain host must supply its registered binding before the generic CLI can execute it.
+
+The built-in runner meters wall_seconds. Unknown units are rejected instead of treated as
+free. Existing generic ports support typed multi-unit cost vectors and real overrun
+settlement. Cost of semantic coding-agent reasoning/API use is NOT metered automatically;
+budget it in an integrating host before claiming total research cost/efficiency.
+
+## Progression, recovery and compatibility
+
+Phases depend on weighted resolution of relevant unknowns. Any open critical unknown
+prevents optimization phase. Failed infrastructure checks and mere evidence counts do
+not advance phase. Current support and AND/OR prerequisites must remain valid. New
+counterevidence reopens questions; reusing that evidence cannot close them again.
+
+The phase score combines information, improvement, jointly affordable one-step unlocking
+and uncertainty per normalized cost. Priors and phase thresholds are heuristic. A declared
+exploration share (default .2) and starvation guard preserve a feasible exploration option;
+this may forgo an expensive optimization path and is not an optimal-policy guarantee.
+
+`start`, raw `record`, `verify`/`resume` and `cancel` preserve interruption semantics. An
+active reservation without an observation requires explicit recovery, never silent retry.
+Actual measured costs, including verification, remain recorded even after overruns.
+Verification evidence, task outcome and assessment commit atomically; restart cannot mix
+a previous passing check with a changed-input failing assessment. Active recovery precedes
+goal completion until settlement finishes. Pending knowledge reconciliation after settlement
+also returns verification_required after restart. Duplicate resolved file identities and
+noncanonical path aliases cannot increase measurement sample counts. New mutually exclusive hypotheses register
+as one validated graph addition. Use Purpose.VERIFY for changed-input rechecks of a
+reopened refuted hypothesis; this does not unlock dependent optimization before support.
+
+Existing CLI commands remain available. Existing workspace loop/run/resume endpoints
+dispatch registered agent measurements when frontier metadata is enabled; returned `agent`
+contains the next packet. A discovery-required response returns control to the coding
+agent, rather than performing a fixed ETF audit or nested model call.
+
+Security: no .env input paths, shell command interpolation, dynamic executable imports,
+second truth store, public history rewrites, remote writes or trading integrations.
+Source/error artifacts may be sensitive; generated raw outputs remain outside Git.

@@ -29,10 +29,14 @@ from epipilot.research.events import (
     ResearchConfigured,
     ResearchNodeAdded,
 )
+from epipilot.research.frontier import FrontierDiscovered, FrontierInitialized, QuestionResolved
 
 TYPED_EVENT_SCHEMA_VERSION = 2
 
 EVENT_PAYLOAD_TYPES: dict[EventType, type[EventPayload]] = {
+    EventType.RESEARCH_FRONTIER_INITIALIZED: FrontierInitialized,
+    EventType.RESEARCH_FRONTIER_DISCOVERED: FrontierDiscovered,
+    EventType.RESEARCH_QUESTION_RESOLVED: QuestionResolved,
     EventType.RESEARCH_NODE_ADDED: ResearchNodeAdded,
     EventType.RESEARCH_CONFIGURED: ResearchConfigured,
     EventType.PROPOSAL_ADDED: ProposalAdded,
