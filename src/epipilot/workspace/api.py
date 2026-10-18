@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
+from epipilot.workspace.algorithm_execution import LocalAlgorithmExecutor
 from epipilot.workspace.browser_bridge import (
     ExtensionBridgeHub,
     ExtensionChatGPTDriver,
@@ -550,6 +551,18 @@ def _drive_chatgpt_sync(project_id: str) -> dict[str, object]:
 _auto_iteration = AutoIterationLoop()
 
 
+def _local_algorithm_executor(repo_path: Path | None) -> LocalAlgorithmExecutor | None:
+    adapter = repo_path / "scripts/run_epipilot_algorithm_round.py" if repo_path else None
+    if adapter is None or not adapter.is_file():
+        return None
+    python_path = os.environ.get("EPIPILOT_ALGORITHM_PYTHON")
+    if not python_path or not Path(python_path).is_absolute() or not Path(python_path).is_file():
+        raise ValueError("Configure EPIPILOT_ALGORITHM_PYTHON for local algorithm execution")
+    if repo_path is None:
+        raise ValueError("Local algorithm execution requires a repository")
+    return LocalAlgorithmExecutor(repo_path, Path(python_path))
+
+
 def _run_auto_iteration_sync(
     project_id: str,
     max_rounds: int,
@@ -561,6 +574,16 @@ def _run_auto_iteration_sync(
     item = store.get(project_id)
     repo = item.get("repository_path")
     provider_label = "third_party:" + str(model_configuration()["provider_host"])
+    repo_path = Path(str(repo)).expanduser() if isinstance(repo, str) and repo else None
+    executor = _local_algorithm_executor(repo_path)
+    reviewed_recovery = (
+        executor is not None
+        and resume_route_run_id is not None
+        and (ExperimentRoutePlanner(store).report(project_id).get("review") or {}).get(
+            "execution_run_id"
+        )
+        == resume_route_run_id
+    )
     _auto_iteration.start(
         project_id,
         store=store,
@@ -568,17 +591,18 @@ def _run_auto_iteration_sync(
         claim_model=ThirdPartyChatModel.from_environment(None),
         claim_provider=provider_label,
         driver=_LazyChatGPTDriver(
-            resume_route_run_id,
-            resume_tab_id,
+            resume_route_run_id if not reviewed_recovery else None,
+            resume_tab_id if not reviewed_recovery else None,
             _pending_reply_deadline(project_id, resume_route_run_id)
-            if resume_route_run_id is not None
+            if resume_route_run_id is not None and not reviewed_recovery
             else None,
         ),
         project_name=str(item.get("name", "project")),
-        repo_path=Path(str(repo)).expanduser() if isinstance(repo, str) and repo else None,
+        repo_path=repo_path,
         max_rounds=max_rounds,
         started=started,
         resume_route_run_id=resume_route_run_id,
+        algorithm_executor=executor,
     )
 
 
@@ -601,12 +625,24 @@ def auto_iteration_status(project_id: str) -> dict[str, object]:
 @app.post("/api/projects/{project_id}/research-agent/loop")
 def start_auto_iteration(project_id: str, body: LoopInput) -> dict[str, object]:
     try:
-        _store().get(project_id)  # fail closed on unknown project before spawning
+        item = _store().get(project_id)  # fail closed before spawning a worker
+        repo = item.get("repository_path")
+        executor = _local_algorithm_executor(
+            Path(repo).expanduser() if isinstance(repo, str) and repo else None
+        )
         if _auto_iteration.status(project_id)["running"]:
             raise ValueError("Auto iteration loop is already running for this project")
         if (body.resume_route_run_id is None) != (body.resume_tab_id is None):
             raise ValueError("Resume requires both the original route run ID and tab ID")
-        if body.resume_route_run_id is not None:
+        reviewed_recovery = (
+            executor is not None
+            and body.resume_route_run_id is not None
+            and (ExperimentRoutePlanner(_store()).report(project_id).get("review") or {}).get(
+                "execution_run_id"
+            )
+            == body.resume_route_run_id
+        )
+        if body.resume_route_run_id is not None and not reviewed_recovery:
             _pending_reply_deadline(project_id, body.resume_route_run_id)
         started = threading.Event()
         threading.Thread(

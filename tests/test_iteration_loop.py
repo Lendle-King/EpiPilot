@@ -64,22 +64,175 @@ def _start(
     *,
     claim_model: Any = None,
     archive: bool = True,
+    algorithm_executor: Any = None,
 ) -> tuple[Any, dict]:
     store, project_id = _setup(tmp_path)
     claim_id = _seed_claims(store, project_id)
     loop = AutoIterationLoop()
+    payload = _route_payload(claim_id)
+    if algorithm_executor is not None:
+        payload["proposals"][0]["algorithm_id"] = "dual_momentum"
     status = loop.start(
         project_id,
         store=store,
-        route_model=FakeRouteModel(_route_payload(claim_id)),
+        route_model=FakeRouteModel(payload),
         claim_model=claim_model or AlwaysGood(),
         claim_provider="fake",
         driver=driver,
         project_name="QUANT_ETF",
         repo_path=tmp_path / "repo" if archive else None,
         max_rounds=max_rounds,
+        algorithm_executor=algorithm_executor,
     )
     return store, status
+
+
+class RealFileExecutor:
+    def __init__(self, repo: Any) -> None:
+        self.repo = repo
+
+    def execute(self, request: Any) -> Any:
+        import json
+
+        from test_algorithm_execution import receipt_fixture
+
+        path = receipt_fixture(self.repo)
+        payload = json.loads(path.read_text())
+        payload.update(request.model_dump())
+        path.write_text(json.dumps(payload))
+        return path
+
+
+def test_algorithm_round_rejects_summary_only_without_advancing_checkpoint(tmp_path: Any) -> None:
+    driver = SequenceDriver([_review("goal_met")] * 3)
+    store, status = _start(
+        tmp_path, driver, 1, algorithm_executor=RealFileExecutor(tmp_path / "repo")
+    )
+    assert status["rounds_completed"] == 0
+    assert status["step"] == "stopped"
+    assert ExperimentRoutePlanner(store).load_loop_checkpoint(_project_of(store)) is None
+    with store._db() as conn:
+        assert (
+            conn.execute("SELECT count(*) FROM route_runs WHERE kind='loop_attempt'").fetchone()[0]
+            == 3
+        )
+
+
+def test_algorithm_round_repairs_review_and_archives_verified_metrics(tmp_path: Any) -> None:
+    import json
+
+    class RepairDriver(SequenceDriver):
+        def submit(self, prompt: str) -> str:
+            if not self.prompts:
+                self.prompts.append(prompt)
+                return _review("goal_met")
+            route_id = re.search(r"ROUTE_RUN_ID: ([^\n]+)", prompt)[1]
+            self.prompts.append(prompt)
+            payload = json.loads(_review("goal_met"))
+            payload.update(
+                execution_run_id=route_id,
+                candidate_conclusion="reject",
+                new_claims_zh=["合成测试算法实验出现10%最大回撤,只支持测试观测。"],
+            )
+            return json.dumps(payload)
+
+    driver = RepairDriver([])
+    store, status = _start(
+        tmp_path, driver, 1, algorithm_executor=RealFileExecutor(tmp_path / "repo")
+    )
+    assert status["rounds_completed"] == 1
+    assert status["verdicts"] == ["continue"]  # historical evidence cannot prove forward goal
+    assert status["round"] == 1
+    report = next((tmp_path / "repo/docs/auto_iteration").glob("round_1_*.md"))
+    assert "-10.000000%" in report.read_text()
+    assert "reject" in report.read_text()
+    assert "repair" in driver.prompts[1].lower()
+    assert ExperimentRoutePlanner(store).load_loop_checkpoint(_project_of(store)) is not None
+
+
+@pytest.mark.parametrize("explicit_resume", [False, True])
+def test_algorithm_round_resumes_failed_claim_refresh_without_web_or_duplicate_report(
+    tmp_path: Any,
+    explicit_resume: bool,
+) -> None:
+    import json
+
+    class CachedExecutor(RealFileExecutor):
+        path: Any = None
+
+        def execute(self, request: Any) -> Any:
+            if self.path is None:
+                self.path = super().execute(request)
+            return self.path
+
+    class ReviewDriver:
+        def submit(self, prompt: str) -> str:
+            payload = json.loads(_review("continue"))
+            payload.update(
+                execution_run_id=re.search(r"ROUTE_RUN_ID: ([^\n]+)", prompt)[1],
+                candidate_conclusion="reject",
+                new_claims_zh=["本轮算法合成结果未改善基线。"],
+            )
+            return json.dumps(payload)
+
+    class BadReport(AlwaysGood):
+        def extract(self, prompt: str) -> Any:
+            if "Source document: docs/auto_iteration/" in prompt:
+                return _bad_batch()
+            return super().extract(prompt)
+
+    executor = CachedExecutor(tmp_path / "repo")
+    store, failed = _start(
+        tmp_path, ReviewDriver(), 1, claim_model=BadReport(), algorithm_executor=executor
+    )
+    project_id = _project_of(store)
+    assert failed["rounds_completed"] == 0
+    route_id = ExperimentRoutePlanner(store).report(project_id)["route"]["run_id"]
+    resumed = AutoIterationLoop().start(
+        project_id,
+        store=store,
+        route_model=FakeRouteModel({}),
+        claim_model=AlwaysGood(),
+        claim_provider="fake",
+        driver=SequenceDriver([]),
+        project_name="P",
+        repo_path=tmp_path / "repo",
+        max_rounds=1,
+        resume_route_run_id=route_id if explicit_resume else None,
+        algorithm_executor=executor,
+    )
+    assert resumed["rounds_completed"] == 1, resumed
+    assert resumed["round"] == 1
+    assert len(list((tmp_path / "repo/docs/auto_iteration").glob("round_1_*.md"))) == 1
+
+
+def test_imported_review_cannot_bypass_algorithm_contract_during_recovery(tmp_path: Any) -> None:
+    import json
+
+    store, project_id = _setup(tmp_path)
+    claim_id = _seed_claims(store, project_id)
+    payload = _route_payload(claim_id)
+    payload["proposals"][0]["algorithm_id"] = "dual_momentum"
+    planner = ExperimentRoutePlanner(store)
+    route = planner.generate(project_id, FakeRouteModel(payload), "fake")["route"]
+    review = json.loads(_review("blocked"))
+    review["execution_run_id"] = route["run_id"]
+    planner.import_review(project_id, json.dumps(review))
+    status = AutoIterationLoop().start(
+        project_id,
+        store=store,
+        route_model=FakeRouteModel({}),
+        claim_model=AlwaysGood(),
+        claim_provider="fake",
+        driver=SequenceDriver([]),
+        project_name="P",
+        repo_path=tmp_path / "repo",
+        max_rounds=1,
+        algorithm_executor=RealFileExecutor(tmp_path / "repo"),
+    )
+    assert status["rounds_completed"] == 0
+    assert status["step"] == "stopped"
+    assert planner.load_loop_checkpoint(project_id) is None
 
 
 def test_loop_stops_on_goal_met_and_records_rounds(tmp_path: Any) -> None:
@@ -331,6 +484,29 @@ def test_resume_http_rejects_incomplete_or_wrong_binding(
     monkeypatch.setattr(api, "_run_auto_iteration_sync", lambda *args: None)
     with TestClient(api.app) as client:
         response = client.post(f"/api/projects/{project_id}/research-agent/loop", json=binding)
+    assert response.status_code == 400
+
+
+def test_http_algorithm_loop_rejects_missing_interpreter_before_start(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from epipilot.workspace import api
+
+    store, project_id = _setup(tmp_path)
+    script = tmp_path / "repo/scripts/run_epipilot_algorithm_round.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("# synthetic adapter")
+    monkeypatch.delenv("EPIPILOT_ALGORITHM_PYTHON", raising=False)
+    monkeypatch.setattr(api, "_store", lambda: store)
+    monkeypatch.setattr(api, "_auto_iteration", AutoIterationLoop())
+    monkeypatch.setattr(api, "_run_auto_iteration_sync", lambda *args: None)
+    with TestClient(api.app) as client:
+        response = client.post(
+            f"/api/projects/{project_id}/research-agent/loop", json={"max_rounds": 1}
+        )
     assert response.status_code == 400
 
 

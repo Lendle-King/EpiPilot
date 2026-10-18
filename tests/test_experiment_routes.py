@@ -59,6 +59,23 @@ def test_route_generation_requires_existing_claims(tmp_path: Any) -> None:
         planner.generate(project_id, FakeRouteModel(_route_payload("x")), "fake")
 
 
+def test_algorithm_mode_rejects_diagnostic_and_previously_completed_algorithms(
+    tmp_path: Any,
+) -> None:
+    store, project_id = _setup(tmp_path)
+    claim_id = _seed_claims(store, project_id)
+    planner = ExperimentRoutePlanner(store)
+    diagnostic = _route_payload(claim_id)
+    with pytest.raises(ValueError, match="algorithm_id"):
+        planner.generate(project_id, FakeRouteModel(diagnostic), "fake", require_algorithm=True)
+    candidate = _route_payload(claim_id)
+    candidate["proposals"][0]["algorithm_id"] = "dual_momentum"
+    planner.generate(project_id, FakeRouteModel(candidate), "fake", require_algorithm=True)
+    planner.record_loop_checkpoint(project_id, {"algorithm_id": "dual_momentum"})
+    with pytest.raises(ValueError, match="algorithm_id"):
+        planner.generate(project_id, FakeRouteModel(candidate), "fake", require_algorithm=True)
+
+
 def test_route_guidance_prefers_public_diagnostics_when_inputs_missing() -> None:
     assert "bounded data-readiness or diagnostic route" in ROUTE_GUIDANCE
     assert "must not treat public diagnostics as V2.5 evidence" in ROUTE_GUIDANCE

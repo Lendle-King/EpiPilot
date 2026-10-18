@@ -9,11 +9,12 @@ semantic pipeline after the experiment report lands in the research repository.
 from __future__ import annotations
 
 import json
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from epipilot.workspace.algorithm_execution import AlgorithmId
 from epipilot.workspace.chatgpt_web import extract_route_review_json
 from epipilot.workspace.onboarding import WorkspaceStore, _now
 from epipilot.workspace.research_agent import ResearchOnboardingAgent
@@ -139,6 +140,7 @@ class ExperimentProposal(BaseModel):
     design_zh: str = Field(min_length=10, max_length=1200)
     success_criteria_zh: str = Field(min_length=6, max_length=400)
     falsification_zh: str = Field(min_length=6, max_length=400)
+    algorithm_id: AlgorithmId | None = None
 
 
 class ExperimentRoute(BaseModel):
@@ -162,19 +164,35 @@ class RouteReview(BaseModel):
     recommended_next_zh: str = Field(min_length=6, max_length=800)
     evidence_refs: list[str] = Field(max_length=12)
     report_markdown: str = Field(max_length=50_000, default="")
+    execution_run_id: str | None = None
+    candidate_conclusion: Literal["accept", "reject", "inconclusive"] | None = None
+    new_claims_zh: list[str] = Field(default_factory=list, max_length=5)
 
 
 def _route_prompt(report: dict[str, Any]) -> str:
     claims = list(report.get("claims", []))
 
-    def rank(claim: dict[str, Any]) -> tuple[int, str]:
+    def rank(claim: dict[str, Any]) -> tuple[int, int, str]:
         topic = str(claim.get("topic_key", ""))
+        import re
+
+        round_numbers = [
+            int(match[1])
+            for ref in claim.get("citations", [])
+            if (
+                match := re.search(
+                    r"docs/auto_iteration/round_(\d+)_", str(ref.get("source_path", ""))
+                )
+            )
+        ]
+        if round_numbers:
+            return (0, -max(round_numbers), topic)
         important = topic.startswith(("market_", "data_")) or claim.get("kind") in {
             "lesson",
             "unknown",
             "hypothesis",
         }
-        return (0 if important else 1, topic)
+        return (1 if important else 2, 0, topic)
 
     selected = sorted(claims, key=rank)[:60]
     lines = [
@@ -213,13 +231,52 @@ class ExperimentRoutePlanner:
                 "created_at TEXT NOT NULL)"
             )
 
-    def generate(self, project_id: str, model: RouteModel, provider: str) -> dict[str, Any]:
+    def generate(
+        self,
+        project_id: str,
+        model: RouteModel,
+        provider: str,
+        *,
+        require_algorithm: bool = False,
+    ) -> dict[str, Any]:
         report = ResearchOnboardingAgent(self.store).report(project_id)
         if not report.get("available"):
             raise ValueError("No grounded claims available; run semantic analysis first")
         known = {str(claim.get("id")) for claim in report.get("claims", [])}
         prompt = _route_prompt(report)
-        route, problem = self._validated_route(model, prompt, known)
+        allowed: set[str] | None = None
+        if require_algorithm:
+            with self.store._db() as conn:
+                rows = conn.execute(
+                    "SELECT payload_json FROM route_runs WHERE project_id=? "
+                    "AND kind='loop_checkpoint'",
+                    (project_id,),
+                ).fetchall()
+            used = {json.loads(row[0]).get("checkpoint", {}).get("algorithm_id") for row in rows}
+            allowed = {"dual_momentum", "trend_risk_parity", "defensive_momentum"} - used
+            if not allowed:
+                raise ValueError("Algorithm catalog exhausted; add a new evidence-grounded design")
+            previous = self.report(project_id).get("review") or {}
+            prompt += (
+                "\nALGORITHM EXPERIMENT CONTRACT (overrides diagnostic-only guidance): "
+                "Select exactly ONE proposal with algorithm_id copied from: "
+                + ", ".join(sorted(allowed))
+                + ". Compare available candidates against grounded prior results and explain "
+                "the choice. The committed host adapter executes fixed V3 public-history "
+                "protocols: dual_momentum=top3 equal-weight 126/252-day momentum, "
+                "trend200, target vol15%, cap50%, weekly; trend_risk_parity=positive "
+                "252-day trend assets, inverse-vol60, target12%, cap40%, weekly; "
+                "defensive_momentum=top2 risk-adjusted 63/126/252 momentum, "
+                "trend200, inverse-vol60, target12%, cap60%, weekly. All compare against "
+                "fixed M4 conservative on ten public symbols, cutoff 2026-09-30, "
+                "252-session warmup, holdings-aware next-open execution, costs5/10/20bp. "
+                "Development ends2022, reused historical validation starts2023; "
+                "no independent forward claims, no V2.5 change. Data/code repairs are "
+                "within-round work, never the round objective. No parameter tuning. "
+                "Previous review observation: "
+                + str(previous.get("results_digest_zh", "none"))[:1500]
+            )
+        route, problem = self._validated_route(model, prompt, known, allowed)
         if route is None:
             corrective = (
                 prompt
@@ -232,7 +289,7 @@ class ExperimentRoutePlanner:
                 + ", ".join(sorted(known))
                 + "."
             )
-            route, problem = self._validated_route(model, corrective, known)
+            route, problem = self._validated_route(model, corrective, known, allowed)
         if route is None:
             raise ValueError(f"Route output failed local validation: {problem}")
         self._persist(
@@ -244,13 +301,22 @@ class ExperimentRoutePlanner:
 
     @staticmethod
     def _validated_route(
-        model: RouteModel, prompt: str, known_claim_ids: set[str]
+        model: RouteModel,
+        prompt: str,
+        known_claim_ids: set[str],
+        allowed_algorithms: set[str] | None = None,
     ) -> tuple[ExperimentRoute | None, str]:
         payload = model.complete_json(ROUTE_GUIDANCE, prompt)
         try:
             route = ExperimentRoute.model_validate(payload)
         except ValidationError as error:
             return None, f"schema validation failed: {error}"[:400]
+        if allowed_algorithms is not None and (
+            len(route.proposals) != 1 or route.proposals[0].algorithm_id not in allowed_algorithms
+        ):
+            return None, "Select one executable algorithm_id from " + ", ".join(
+                sorted(allowed_algorithms)
+            )
         missing = sorted(
             {
                 claim_id.strip()
@@ -284,6 +350,30 @@ class ExperimentRoutePlanner:
         self._persist(
             project_id, "loop_resume", {"route_run_id": route_run_id, "round": round_index}
         )
+
+    def record_loop_attempt(self, project_id: str, attempt: dict[str, Any]) -> None:
+        """Append an incomplete in-round attempt; never advances a checkpoint."""
+        self.store.get(project_id)
+        self._persist(project_id, "loop_attempt", {"attempt": attempt})
+
+    def record_loop_archive(self, project_id: str, archive: dict[str, Any]) -> None:
+        """Append a route-bound archive location before refreshing claims."""
+        self._persist(project_id, "loop_archive", {"archive": archive})
+
+    def load_loop_archive(
+        self, project_id: str, route_id: str, round_index: int
+    ) -> dict[str, Any] | None:
+        with self.store._db() as conn:
+            rows = conn.execute(
+                "SELECT payload_json FROM route_runs WHERE project_id=? AND kind='loop_archive' "
+                "ORDER BY rowid DESC",
+                (project_id,),
+            ).fetchall()
+        for row in rows:
+            archive = dict(json.loads(row[0])["archive"])
+            if archive.get("route_run_id") == route_id and archive.get("round") == round_index:
+                return archive
+        return None
 
     def record_loop_checkpoint(self, project_id: str, checkpoint: dict[str, Any]) -> None:
         """Persist the state of the last fully completed iteration round."""

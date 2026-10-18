@@ -591,6 +591,12 @@ class ResearchOnboardingAgent:
                 continue
             verified_any = True
             report = self._merge_into_prior(project_id, commit, reconcile([(document, batch)]))
+            report["resolved_documents"].append(
+                {
+                    "path": document.path,
+                    "reason": "automatic byte-grounded extraction superseded any prior rejection",
+                }
+            )
             self._persist(project_id, commit, provider, report)
         if not verified_any:
             raise ValueError("No document produced a fully grounded claim batch")
