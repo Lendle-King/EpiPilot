@@ -1,0 +1,475 @@
+{
+  "project_id": "883d9597-4566-43b3-862e-1e2fb599b674",
+  "event_version": 95,
+  "goal": {
+    "statement": "Mainland listed ETF daily decisions; earliest next open; CAGR >=15%, |MDD|<=20%",
+    "budgets": [
+      {
+        "unit": "wall_seconds",
+        "amount": 120.0
+      }
+    ],
+    "constraints": [
+      {
+        "name": "cagr",
+        "minimum": 0.15,
+        "maximum": null
+      },
+      {
+        "name": "mdd_abs",
+        "minimum": null,
+        "maximum": 0.2
+      }
+    ],
+    "utility_definition": "trusted improvement per normalized resource",
+    "minimum_improvement": 0.0,
+    "required_scope": "prospective",
+    "minimum_samples": 63,
+    "resources": []
+  },
+  "budget": {
+    "spent": {
+      "wall_seconds": 0.18525758397299796
+    },
+    "remaining": {
+      "wall_seconds": 119.814742416027
+    }
+  },
+  "running": false,
+  "rounds_completed": 4,
+  "stop_reason": "blocked_or_exhausted",
+  "tree": [
+    {
+      "id": "62f46670-2fd3-5baa-ad5d-a2fa39b9d616",
+      "label": "Frozen V2.5 baseline; historical 6.71% CAGR / -12.43% MDD (development report)",
+      "status": "proposed",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v8_priority_tree_20261014.md"
+      ],
+      "imported_route_state": "frozen baseline; forward not independently qualified"
+    },
+    {
+      "id": "6876d110-1e72-57de-aaaa-438b3667fc53",
+      "label": "Frozen V3-ADK parent; ~8.08% / -12.07% development report",
+      "status": "proposed",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v8_priority_tree_20261014.md"
+      ],
+      "imported_route_state": "frozen parent; recent continuous journal not locally verified"
+    },
+    {
+      "id": "902a6ee0-b944-5bba-964f-3d0648e94933",
+      "label": "V5-C residual cash historical improvement requires independent forward confirmation",
+      "status": "proposed",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/experiment_v5c_global_low_downside_bond_20261007.md"
+      ],
+      "imported_route_state": "development-positive; zero mature intervals documented Oct14"
+    },
+    {
+      "id": "b26082c2-7120-582f-9318-2be8286e74c3",
+      "label": "Authentic V25/V3/V5 captured journals and mature intervals are available",
+      "status": "blocked",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v8_priority_tree_20261014.md"
+      ],
+      "imported_route_state": "qualification pending"
+    },
+    {
+      "id": "2adcb363-cb60-59e9-845a-2819876ed564",
+      "label": "V6-A high-return parent; 12.228% / -23.847%, development only",
+      "status": "proposed",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v8_priority_tree_20261014.md"
+      ],
+      "imported_route_state": "development-only; drawdown above target"
+    },
+    {
+      "id": "3179629e-9e04-5d91-bf7c-87000b5d4e7c",
+      "label": "Original financial/index membership PIT vintages are available and qualified",
+      "status": "blocked",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v7_b2_asof_lineage_20261014.md"
+      ],
+      "imported_route_state": "B1/B2 strict PIT qualification blocked"
+    },
+    {
+      "id": "96e425aa-f7eb-536e-94f4-c28ba2da5362",
+      "label": "Overseas source is qualified at domestic decision time; H5 positive does not override H20 negative",
+      "status": "proposed",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v7_independent_alpha_20261013.md"
+      ],
+      "imported_route_state": "H5 small positive, H20 negative; no deployable alpha qualification"
+    },
+    {
+      "id": "f47ace10-e743-53db-8ebf-08ebd730d118",
+      "label": "Incremental alpha has qualified paired net action value",
+      "status": "proposed",
+      "and_ids": [
+        "3179629e-9e04-5d91-bf7c-87000b5d4e7c"
+      ],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v8_priority_tree_20261014.md"
+      ],
+      "imported_route_state": "qualification pending"
+    },
+    {
+      "id": "0f7664e2-488a-5f7f-9366-128e7784430c",
+      "label": "Actual opens/spreads/capacity observations qualify execution assumptions",
+      "status": "proposed",
+      "and_ids": [
+        "d67eb26d-f9a1-5d8f-86b0-8f673aa1ea02"
+      ],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v8_priority_tree_20261014.md"
+      ],
+      "imported_route_state": "qualification pending"
+    },
+    {
+      "id": "c559ae2b-1f26-5ede-a94d-b3d33990353c",
+      "label": "Full portfolio attains >=15% CAGR and <=20% MDD on independent prospective evidence",
+      "status": "proposed",
+      "and_ids": [
+        "f47ace10-e743-53db-8ebf-08ebd730d118",
+        "0f7664e2-488a-5f7f-9366-128e7784430c",
+        "b26082c2-7120-582f-9318-2be8286e74c3"
+      ],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v8_priority_tree_20261014.md"
+      ],
+      "imported_route_state": "qualification pending"
+    },
+    {
+      "id": "263c4b2c-82e1-551f-8cb9-a3d1394610fe",
+      "label": "Old risk overlay paused after weak deployable action value; no automatic reactivation",
+      "status": "proposed",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v4_phase_diagram_20261007.md"
+      ],
+      "imported_route_state": "paused after weak action-value results"
+    },
+    {
+      "id": "304d0f92-1425-5026-bd3f-48496a99c347",
+      "label": "Current local public ETF panel matches its recorded integrity manifest",
+      "status": "supported",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:f38e0aaa1c3762a694c64086e0c8d4206d3a1355:docs/v8_priority_tree_20261014.md"
+      ],
+      "imported_route_state": "qualification pending"
+    },
+    {
+      "id": "d67eb26d-f9a1-5d8f-86b0-8f673aa1ea02",
+      "label": "Saved 27-scenario execution report is internally consistent",
+      "status": "supported",
+      "and_ids": [],
+      "or_ids": [],
+      "basis": "2b4388ec-0b55-57dc-bede-56340bba5cba",
+      "source_refs": [
+        "git:e9768f8442dd18eb37876b3cd39e71aea02bce95:docs/epipilot_execution_stress_f2c666cc.md"
+      ],
+      "imported_route_state": "qualification pending"
+    }
+  ],
+  "observations": [
+    {
+      "proposal_id": "journal-availability",
+      "execution": "blocked",
+      "metrics": [
+        {
+          "name": "missing_journal_files",
+          "value": 6.0
+        }
+      ],
+      "samples": 0,
+      "actual_cost": [
+        {
+          "unit": "wall_seconds",
+          "amount": 0.00023804197553545237
+        }
+      ],
+      "artifact": "/Users/lendleblues/.local/share/epipilot/carts/92ae96f9-d99f-53ee-babb-e92d6b6ee02d/a97ebd67-d8ba-590a-9a15-1a03897b9027.json",
+      "summary": "read-only journal-availability; no independent ETF return claim",
+      "recorded_at": "2026-10-18T03:13:04.588664Z"
+    },
+    {
+      "proposal_id": "pit-source-qualification",
+      "execution": "blocked",
+      "metrics": [
+        {
+          "name": "qualified_pit_sources",
+          "value": 0.0
+        }
+      ],
+      "samples": 0,
+      "actual_cost": [
+        {
+          "unit": "wall_seconds",
+          "amount": 0.00023845804389566183
+        }
+      ],
+      "artifact": "/Users/lendleblues/.local/share/epipilot/carts/92ae96f9-d99f-53ee-babb-e92d6b6ee02d/2925e1f4-1f83-5ce1-ad2f-5ac7b445592f.json",
+      "summary": "read-only pit-source-qualification; no independent ETF return claim",
+      "recorded_at": "2026-10-18T03:13:04.842595Z"
+    },
+    {
+      "proposal_id": "stress-consistency",
+      "execution": "succeeded",
+      "metrics": [
+        {
+          "name": "scenarios_checked",
+          "value": 27.0
+        },
+        {
+          "name": "m1_cagr_delta_pp",
+          "value": -0.4581999999999997
+        },
+        {
+          "name": "m2_cagr_delta_pp",
+          "value": -0.4482999999999997
+        }
+      ],
+      "samples": 27,
+      "actual_cost": [
+        {
+          "unit": "wall_seconds",
+          "amount": 0.027101792045868933
+        }
+      ],
+      "artifact": "/Users/lendleblues/.local/share/epipilot/carts/92ae96f9-d99f-53ee-babb-e92d6b6ee02d/d2cc25c7-e03a-50c4-96bb-aa5c417a702b.json",
+      "summary": "read-only stress-consistency; no independent ETF return claim",
+      "recorded_at": "2026-10-18T03:13:05.136405Z"
+    },
+    {
+      "proposal_id": "public-data-integrity",
+      "execution": "succeeded",
+      "metrics": [
+        {
+          "name": "rows_checked",
+          "value": 37712.0
+        },
+        {
+          "name": "symbols_checked",
+          "value": 28.0
+        },
+        {
+          "name": "integrity_failures",
+          "value": 0.0
+        },
+        {
+          "name": "scale_missing_rows",
+          "value": 731.0
+        }
+      ],
+      "samples": 37712,
+      "actual_cost": [
+        {
+          "unit": "wall_seconds",
+          "amount": 0.07223516702651978
+        }
+      ],
+      "artifact": "/Users/lendleblues/.local/share/epipilot/carts/92ae96f9-d99f-53ee-babb-e92d6b6ee02d/bfa60959-28fd-5c76-bac8-bbd124c17fa4.json",
+      "summary": "read-only public-data-integrity; no independent ETF return claim",
+      "recorded_at": "2026-10-18T03:13:05.485132Z"
+    }
+  ],
+  "reviews": [
+    {
+      "assessment": {
+        "proposal_id": "journal-availability",
+        "verified": true,
+        "outcome": "blocked",
+        "reliability": 1.0,
+        "scope": "integrity",
+        "qualified_for_promotion": false,
+        "reasons": [
+          "independent artifact/source recomputation",
+          "integrity evidence only; no OOS/forward alpha qualification"
+        ]
+      },
+      "evidence_id": "9e7c064d-e686-592f-8f9f-1c4e0aad0a20",
+      "verification_cost": [
+        {
+          "unit": "wall_seconds",
+          "amount": 0.00012041698209941387
+        }
+      ]
+    },
+    {
+      "assessment": {
+        "proposal_id": "pit-source-qualification",
+        "verified": true,
+        "outcome": "blocked",
+        "reliability": 1.0,
+        "scope": "integrity",
+        "qualified_for_promotion": false,
+        "reasons": [
+          "independent artifact/source recomputation",
+          "integrity evidence only; no OOS/forward alpha qualification"
+        ]
+      },
+      "evidence_id": "5ea6de04-0940-52c5-9ebd-bade80d900a0",
+      "verification_cost": [
+        {
+          "unit": "wall_seconds",
+          "amount": 0.00020258291624486446
+        }
+      ]
+    },
+    {
+      "assessment": {
+        "proposal_id": "stress-consistency",
+        "verified": true,
+        "outcome": "support",
+        "reliability": 1.0,
+        "scope": "integrity",
+        "qualified_for_promotion": false,
+        "reasons": [
+          "independent artifact/source recomputation",
+          "integrity evidence only; no OOS/forward alpha qualification"
+        ]
+      },
+      "evidence_id": "8d1f6ff9-798f-51ed-b73e-83d296d64562",
+      "verification_cost": [
+        {
+          "unit": "wall_seconds",
+          "amount": 0.02406708395574242
+        }
+      ]
+    },
+    {
+      "assessment": {
+        "proposal_id": "public-data-integrity",
+        "verified": true,
+        "outcome": "support",
+        "reliability": 1.0,
+        "scope": "integrity",
+        "qualified_for_promotion": false,
+        "reasons": [
+          "independent artifact/source recomputation",
+          "integrity evidence only; no OOS/forward alpha qualification"
+        ]
+      },
+      "evidence_id": "18de9cc1-7831-5ad2-a197-d0428b77d0e8",
+      "verification_cost": [
+        {
+          "unit": "wall_seconds",
+          "amount": 0.061054041027091444
+        }
+      ]
+    }
+  ],
+  "ranking": {
+    "strategy": "carts",
+    "at": "2026-10-18T03:13:05.550117Z",
+    "ranked": [],
+    "rejected": [
+      {
+        "proposal_id": "journal-availability",
+        "reason": "already submitted; reuse recorded result or explicitly recover in-flight work"
+      },
+      {
+        "proposal_id": "pit-source-qualification",
+        "reason": "already submitted; reuse recorded result or explicitly recover in-flight work"
+      },
+      {
+        "proposal_id": "stress-consistency",
+        "reason": "already submitted; reuse recorded result or explicitly recover in-flight work"
+      },
+      {
+        "proposal_id": "public-data-integrity",
+        "reason": "already submitted; reuse recorded result or explicitly recover in-flight work"
+      },
+      {
+        "proposal_id": "incremental-action-value",
+        "reason": "data unqualified: original PIT vintages, mature labels, frozen purged/embargo split unavailable"
+      },
+      {
+        "proposal_id": "actual-execution-capacity",
+        "reason": "data unqualified: original orders and contemporaneous opening quotes/spreads unavailable"
+      },
+      {
+        "proposal_id": "overseas-incremental-alpha",
+        "reason": "data unqualified: domestic-cutoff receipt lineage and sufficient nonoverlapping labels unavailable"
+      },
+      {
+        "proposal_id": "full-prospective-portfolio",
+        "reason": "data unqualified: independent mature forward intervals and previous gates unavailable"
+      },
+      {
+        "proposal_id": "legacy-risk-overlay",
+        "reason": "data unqualified: paused; V4 action-value negative, no changed evidence"
+      }
+    ],
+    "stop_reason": "blocked_or_exhausted"
+  },
+  "scheduler": "carts",
+  "legacy_rounds_preserved": 28,
+  "tree_changes": [
+    {
+      "label": "Authentic V25/V3/V5 captured journals and mature intervals are available",
+      "before": "proposed",
+      "after": "blocked"
+    },
+    {
+      "label": "Original financial/index membership PIT vintages are available and qualified",
+      "before": "proposed",
+      "after": "blocked"
+    },
+    {
+      "label": "Current local public ETF panel matches its recorded integrity manifest",
+      "before": "proposed",
+      "after": "supported"
+    },
+    {
+      "label": "Saved 27-scenario execution report is internally consistent",
+      "before": "proposed",
+      "after": "supported"
+    }
+  ],
+  "acceptance": {
+    "legacy_tables_unchanged": true,
+    "legacy_rounds": 28,
+    "legacy_checkpoint_unchanged": true,
+    "v25_config_unchanged": true,
+    "v25_config_sha256": "9bd9312d5e7c712119b70c82fdda1117453b88b27bf1f88c72b132c16b2cbf67",
+    "canonical_event_version": 95,
+    "canonical_replay": "passed",
+    "carts_rounds": 4,
+    "live_scheduler": "carts",
+    "stop_reason": "blocked_or_exhausted"
+  }
+}

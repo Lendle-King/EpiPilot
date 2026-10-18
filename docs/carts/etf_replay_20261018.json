@@ -1,0 +1,3449 @@
+{
+  "protocol": "conservative Git committer availability; dates in returns are not knowledge dates; no claimed counterfactual portfolio returns or measured resource savings",
+  "records": [
+    {
+      "revision": "4659c48d20911817f3056b879ae573e88e560613",
+      "path": "docs/v4_phase_diagram_20261007.md",
+      "available_at": "2026-10-07T13:29:07+08:00",
+      "authored_at": "2026-10-07T13:29:07+08:00",
+      "route": "V4",
+      "source_sha256": "d12cde1ebadc8b980543e93f2c04f02f6bd38c0a2156f18e075c73991b085c34",
+      "summary": "pause overlay training pending deployable action value",
+      "cost": null,
+      "evidence_scope": "development"
+    },
+    {
+      "revision": "ab4f5d49988e7d925f8bfdc4ec09a6218ddb0282",
+      "path": "docs/experiment_v5c_global_low_downside_bond_20261007.md",
+      "available_at": "2026-10-07T16:43:40+08:00",
+      "authored_at": "2026-10-07T16:43:40+08:00",
+      "route": "V5-C",
+      "source_sha256": "f3395931baaaf63646f57205d50d597f6cfb3aeffb10ba207e8a9de56968b8c8",
+      "summary": "freeze and seek forward confirmation",
+      "cost": null,
+      "evidence_scope": "development"
+    },
+    {
+      "revision": "a819225a3f0ed8cff8a7b2df4b965d4cd9c00711",
+      "path": "docs/v7_independent_alpha_20261013.md",
+      "available_at": "2026-10-13T15:50:31+08:00",
+      "authored_at": "2026-10-13T15:50:31+08:00",
+      "route": "V7-A1",
+      "source_sha256": "eff3f116bc327a6613a755efb7e797f2ed73c5c6bf0038a8fd70baa67b67c02c",
+      "summary": "H5 small positive cannot override H20 negative",
+      "cost": null,
+      "evidence_scope": "development"
+    },
+    {
+      "revision": "2cb778dab3e1c9008f0823b68cbeca40ee26a75d",
+      "path": "docs/v7_b2_asof_lineage_20261014.md",
+      "available_at": "2026-10-14T09:20:06+08:00",
+      "authored_at": "2026-10-14T09:20:06+08:00",
+      "route": "V7-B2",
+      "source_sha256": "e3654299c08c65d5ec2a175990a9eac2a4602724bb666ed261c4992d9cbc6086",
+      "summary": "prioritize original PIT lineage before training",
+      "cost": null,
+      "evidence_scope": "development"
+    },
+    {
+      "revision": "f38e0aaa1c3762a694c64086e0c8d4206d3a1355",
+      "path": "docs/v8_priority_tree_20261014.md",
+      "available_at": "2026-10-14T11:12:57+08:00",
+      "authored_at": "2026-10-14T11:12:57+08:00",
+      "route": "V8",
+      "source_sha256": "4cc661c75fee15b670e028666c2054e0f1df3c8e4e5f4e0506a905fb3a6a327d",
+      "summary": "restore authentic forward journals; no backfill",
+      "cost": null,
+      "evidence_scope": "development"
+    },
+    {
+      "revision": "e9768f8442dd18eb37876b3cd39e71aea02bce95",
+      "path": "docs/epipilot_execution_stress_f2c666cc.md",
+      "available_at": "2026-10-17T20:15:42+08:00",
+      "authored_at": "2026-10-17T20:15:42+08:00",
+      "route": "execution",
+      "source_sha256": "75432534778e96b47ab6ff8359edd051c2093dae91bb13a5ab52924e1f366f7e",
+      "summary": "report consistency first; original ledger and opening quote calibration next",
+      "cost": null,
+      "evidence_scope": "development"
+    }
+  ],
+  "decisions": [
+    {
+      "at": "2026-10-07T13:29:07+08:00",
+      "visible_routes": [
+        "V4"
+      ],
+      "new_information": "pause overlay training pending deployable action value",
+      "scheduler_comparisons": [
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-07T13:29:07+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              }
+            ],
+            "stop_reason": null
+          }
+        }
+      ],
+      "decision": "abstain_from_cost_ranking",
+      "reason": "actual historical costs unknown; qualitative gate follows currently revealed sources only"
+    },
+    {
+      "at": "2026-10-07T16:43:40+08:00",
+      "visible_routes": [
+        "V4",
+        "V5-C"
+      ],
+      "new_information": "freeze and seek forward confirmation",
+      "scheduler_comparisons": [
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-07T16:43:40+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        }
+      ],
+      "decision": "abstain_from_cost_ranking",
+      "reason": "actual historical costs unknown; qualitative gate follows currently revealed sources only"
+    },
+    {
+      "at": "2026-10-13T15:50:31+08:00",
+      "visible_routes": [
+        "V4",
+        "V5-C",
+        "V7-A1"
+      ],
+      "new_information": "H5 small positive cannot override H20 negative",
+      "scheduler_comparisons": [
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": -4.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": -4.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-13T15:50:31+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              }
+            ],
+            "stop_reason": null
+          }
+        }
+      ],
+      "decision": "abstain_from_cost_ranking",
+      "reason": "actual historical costs unknown; qualitative gate follows currently revealed sources only"
+    },
+    {
+      "at": "2026-10-14T09:20:06+08:00",
+      "visible_routes": [
+        "V4",
+        "V5-C",
+        "V7-A1",
+        "V7-B2"
+      ],
+      "new_information": "prioritize original PIT lineage before training",
+      "scheduler_comparisons": [
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": -4.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": -5.0,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 2.0986363636363636,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 79.64999522100028,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": -4.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": -5.0,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 0.26232954545454545,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-14T09:20:06+08:00",
+            "ranked": [
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 9.956249925328125,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        }
+      ],
+      "decision": "abstain_from_cost_ranking",
+      "reason": "actual historical costs unknown; qualitative gate follows currently revealed sources only"
+    },
+    {
+      "at": "2026-10-14T11:12:57+08:00",
+      "visible_routes": [
+        "V4",
+        "V5-C",
+        "V7-A1",
+        "V7-B2",
+        "V8"
+      ],
+      "new_information": "restore authentic forward journals; no backfill",
+      "scheduler_comparisons": [
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "reason": "unknown cost or zero-only estimate"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "reason": "unknown cost or zero-only estimate"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "reason": "unknown cost or zero-only estimate"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": -4.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": -5.0,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": -7.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 2.0986363636363636,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": 1.2272727272727275,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 79.64999522100028,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": 67.19999596800024,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": -4.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": -5.0,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": -7.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": 1.2272727272727275,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 0.26232954545454545,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-14T11:12:57+08:00",
+            "ranked": [
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": 67.19999596800024,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 9.956249925328125,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              }
+            ],
+            "stop_reason": null
+          }
+        }
+      ],
+      "decision": "abstain_from_cost_ranking",
+      "reason": "actual historical costs unknown; qualitative gate follows currently revealed sources only"
+    },
+    {
+      "at": "2026-10-17T20:15:42+08:00",
+      "visible_routes": [
+        "V4",
+        "V5-C",
+        "V7-A1",
+        "V7-B2",
+        "V8",
+        "execution"
+      ],
+      "new_information": "report consistency first; original ledger and opening quote calibration next",
+      "scheduler_comparisons": [
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "unknown",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [],
+            "rejected": [
+              {
+                "proposal_id": "paired-action-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "reason": "unknown cost or zero-only estimate"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": "blocked_or_exhausted"
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": -4.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": -5.0,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": -7.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "score": -8.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 2.0986363636363636,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": 1.2272727272727275,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "score": 1.2272727272727275,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_cheaper",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 79.64999522100028,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": 67.19999596800024,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "score": 67.19999596800024,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "fifo",
+          "ranking": {
+            "strategy": "fifo",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": -2.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": -4.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": -5.0,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": -7.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "score": -8.0,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "existing",
+          "ranking": {
+            "strategy": "existing",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": 1.2272727272727275,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "score": 1.2272727272727275,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 0.6136363636363638,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 0.3068181818181819,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 0.26232954545454545,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": null
+          }
+        },
+        {
+          "cost_scenario": "pit_dearer",
+          "costs_are_measured": false,
+          "strategy": "carts",
+          "ranking": {
+            "strategy": "carts",
+            "at": "2026-10-17T20:15:42+08:00",
+            "ranked": [
+              {
+                "proposal_id": "forward-capture-provenance",
+                "score": 67.19999596800024,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "stress-report-audit",
+                "score": 67.19999596800024,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.016666666666666666,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "v5-forward-audit",
+                "score": 33.599998992000025,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.03333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "overseas-cutoff-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "paired-action-audit",
+                "score": 16.799999748,
+                "information": 0.81,
+                "contribution": 0.275,
+                "unlocking": 0.0,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.06666666666666667,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              },
+              {
+                "proposal_id": "primary-pit-source",
+                "score": 9.956249925328125,
+                "information": 0.81,
+                "contribution": 0.05500000000000001,
+                "unlocking": 0.4275,
+                "exploration": 0.135,
+                "risk": 0.1,
+                "normalized_cost": 0.13333333333333333,
+                "source": "labeled sensitivity assumption; NOT historical measured resource/time",
+                "confidence": 0.3,
+                "uncertainty": 0.9,
+                "explanation": "heuristic decision value; budget-share cost; independent verification and prerequisites required"
+              }
+            ],
+            "rejected": [
+              {
+                "proposal_id": "old-overlay-training",
+                "reason": "data unqualified: revealed V4 weak/negative action-value evidence; no changed premise"
+              },
+              {
+                "proposal_id": "v5-retune",
+                "reason": "data unqualified: frozen forward protocol; repeated historical analysis is not new OOS"
+              },
+              {
+                "proposal_id": "financial-alpha",
+                "reason": "data unqualified: B1/B2 revealed no independently qualified historical vintages"
+              },
+              {
+                "proposal_id": "actual-opening-capacity",
+                "reason": "data unqualified: ADV proxy does not establish real opening depth; quotes absent"
+              }
+            ],
+            "stop_reason": null
+          }
+        }
+      ],
+      "decision": "abstain_from_cost_ranking",
+      "reason": "actual historical costs unknown; qualitative gate follows currently revealed sources only"
+    }
+  ],
+  "limitation": "counterfactual ranking uses labeled relative-cost assumptions only; exact historical costs unknown; no measured historical efficiency or investment-return comparison"
+}
