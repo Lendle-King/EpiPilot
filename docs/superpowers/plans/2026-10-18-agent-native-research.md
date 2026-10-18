@@ -34,19 +34,19 @@ Files: runtime event stores; research frontier models/events/reducer/discovery s
 canonical event registry. Interfaces: AtomicEventStore.append_many; DiscoveryBatch;
 ResearchFrontier on ResearchState; apply_discovery(engine, root, batch).
 
-- [ ] Write/run failing atomicity, exact-source, stale version, duplicate/link and replay tests.
-- [ ] Implement strict immutable frontier values and atomic canonical batch composition.
-- [ ] Run targeted tests and commit coherent discovery slice.
+- [x] Write/run failing atomicity, exact-source, stale version, duplicate/link and replay tests.
+- [x] Implement strict immutable frontier values and atomic canonical batch composition.
+- [x] Run targeted tests and commit coherent discovery slice.
 
 ### Task 2: Relevant measurement and revisable knowledge
 
 Files: research measurement adapter, frontier resolver, engine reservation seam.
 Interfaces: MeasurementContract, registered runner/verifier; resolve/reopen services.
 
-- [ ] Test missing artifacts, arbitrary success, failed/inconclusive/irrelevant evidence,
+- [x] Test missing artifacts, arbitrary success, failed/inconclusive/irrelevant evidence,
       sample limits, contradiction, budget overrun and restart.
-- [ ] Implement input-bound deterministic measurements and scoped resolution events.
-- [ ] Run targeted tests, preserve legacy engine behavior and commit.
+- [x] Implement input-bound deterministic measurements and scoped resolution events.
+- [x] Run targeted tests, preserve legacy engine behavior and commit.
 
 ### Task 3: Agent packets, progressive selection and CLI
 
@@ -54,17 +54,21 @@ Files: agent policy/service/CLI; pyproject entry point; portable research skill/
 minimal workspace API dispatch integration.
 Interfaces: iterate packet; discover/start/run/observe/verify/resolve/budget/resume commands.
 
-- [ ] Test phase depends on critical resolution, feasible exploration share, no-cost
+- [x] Test phase depends on critical resolution, feasible exploration share, no-cost
       abstention, no unchanged repeats, CLI roundtrip and legacy compatibility.
-- [ ] Implement bounded packets, purpose-aware ranking, explicit discovery refresh and
+- [x] Implement bounded packets, purpose-aware ranking, explicit discovery refresh and
       thin CLI, keeping existing CARTS entry points intact.
-- [ ] Run targeted checks and commit.
+- [x] Run targeted checks and commit.
 
 ### Task 4: Actual trajectories, integration and delivery
 
-- [ ] Run synthetic agent trajectories and comparative exploration checks; distinguish
+- [x] Run synthetic agent trajectories and comparative exploration checks; distinguish
       scripted semantic fixtures from real agent discoveries and avoid universal claims.
-- [ ] Use actual ETF panel files for a preregistered missingness-boundary experiment,
+- [x] Use actual ETF panel files for a preregistered missingness-boundary experiment,
       independent recomputation, new scoped claims and next-frontier update.
-- [ ] Full gates; independent review; fix findings with tests; local integration; record
+- [x] Full gates; independent review; fix findings with tests; local integration; record
       measured results, source anchors, limitations and reproducible commands.
+
+Validation outcome: docs/carts/AGENT_RESULTS_20261018.md. Synthetic semantic paths were
+regression fixtures; no new universal efficiency benchmark is claimed. All implementation
+slices were committed together after the full gate and independent review.
