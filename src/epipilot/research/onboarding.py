@@ -9,11 +9,30 @@ from pathlib import Path
 from epipilot.research.models import OnboardingSnapshot
 
 _SKIP_DIRS = {
-    ".git", ".epipilot", ".research", ".venv", "venv", "node_modules",
-    "__pycache__", ".pytest_cache", ".mypy_cache", "dist", "build", "artifacts",
+    ".git",
+    ".epipilot",
+    ".research",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    "dist",
+    "build",
+    "artifacts",
 }
 _SUFFIXES = {".py", ".md", ".toml", ".json", ".yaml", ".yml", ".ipynb", ".csv"}
-_RELEVANT = ("readme", "research", "experiment", "claim", "result", "report", "benchmark", "backtest")
+_RELEVANT = (
+    "readme",
+    "research",
+    "experiment",
+    "claim",
+    "result",
+    "report",
+    "benchmark",
+    "backtest",
+)
 
 
 def git_revision(root: Path) -> str:
@@ -21,7 +40,10 @@ def git_revision(root: Path) -> str:
     try:
         result = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
-            capture_output=True, text=True, check=False, timeout=10,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired):
         return "unversioned"

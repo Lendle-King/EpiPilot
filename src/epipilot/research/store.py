@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from epipilot.research.models import (
     Claim,
@@ -90,7 +91,11 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         experiment = state.experiments[evidence.experiment_id]
         proposal = state.proposals[experiment.proposal_id]
         state.proposals[proposal.id] = proposal.model_copy(
-            update={"status": "blocked" if experiment.outcome == "infrastructure_failure" else "completed"}
+            update={
+                "status": "blocked"
+                if experiment.outcome == "infrastructure_failure"
+                else "completed"
+            }
         )
     elif kind == "verification_failed":
         if str(payload["evidence_id"]) not in state.evidence:
@@ -197,5 +202,7 @@ class ResearchStore:
                 os.fsync(handle.fileno())
             return event
 
-    def add(self, kind: str, record: ResearchGoal | Unknown | Claim | Proposal | OnboardingSnapshot) -> ResearchEvent:
+    def add(
+        self, kind: str, record: ResearchGoal | Unknown | Claim | Proposal | OnboardingSnapshot
+    ) -> ResearchEvent:
         return self.append(kind, record.model_dump(mode="json"))

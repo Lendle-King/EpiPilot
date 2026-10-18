@@ -84,7 +84,9 @@ class Proposal(Record):
     novelty: float = Field(ge=0, le=1)
     estimated_cost: float = Field(gt=0)
     risk: float = Field(ge=0, le=1)
-    status: str = Field(default="proposed", pattern=r"^(proposed|awaiting_verification|completed|blocked)$")
+    status: str = Field(
+        default="proposed", pattern=r"^(proposed|awaiting_verification|completed|blocked)$"
+    )
 
     @model_validator(mode="after")
     def no_self_dependency(self) -> Proposal:

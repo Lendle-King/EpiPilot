@@ -7,8 +7,8 @@ import hashlib
 import json
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
 
 from pydantic import ValidationError
 
@@ -156,9 +156,7 @@ def _plan(state: ResearchState, proposal_id: str) -> dict[str, object]:
         "related_unknowns": [
             state.unknowns[uid].model_dump(mode="json") for uid in proposal.unknown_ids
         ],
-        "related_claims": [
-            state.claims[cid].model_dump(mode="json") for cid in proposal.claim_ids
-        ],
+        "related_claims": [state.claims[cid].model_dump(mode="json") for cid in proposal.claim_ids],
         "budget_remaining": state.remaining,
         "agent_instructions": [
             "Inspect relevant repository code, existing evidence, and competing explanations.",
@@ -196,8 +194,12 @@ def _verify_command(root: Path, argv: list[str], timeout: int) -> tuple[bool, st
         raise ValueError("timeout must be between 1 and 3600 seconds")
     try:
         completed = subprocess.run(
-            command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            timeout=timeout, check=False,
+            command,
+            cwd=root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+            check=False,
         )
         content = completed.stdout
         return completed.returncode == 0, hashlib.sha256(content).hexdigest(), completed.returncode
@@ -211,8 +213,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
     cmd: str = args.command
     if cmd == "init":
         goal = ResearchGoal(
-            statement=args.goal, budget=args.budget,
-            success_metrics=args.metric, constraints=args.constraint,
+            statement=args.goal,
+            budget=args.budget,
+            success_metrics=args.metric,
+            constraints=args.constraint,
         )
         store.add("goal_set", goal)
         return {"initialized": True, "goal": goal.model_dump(mode="json")}
@@ -234,8 +238,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
             "claims": [x.model_dump(mode="json") for x in state.claims.values()],
             "top_proposals": [
                 {
-                    "id": x.proposal.id, "title": x.proposal.title,
-                    "score": x.score, "rationale": x.rationale,
+                    "id": x.proposal.id,
+                    "title": x.proposal.title,
+                    "score": x.score,
+                    "rationale": x.rationale,
                 }
                 for x in rank_proposals(state, limit=5)
             ],
@@ -243,8 +249,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
     if cmd == "unknown":
         if args.action == "add":
             item = Unknown(
-                id=args.id or research_id("UNK"), question=args.question,
-                importance=args.importance, decision_sensitivity=args.sensitivity,
+                id=args.id or research_id("UNK"),
+                question=args.question,
+                importance=args.importance,
+                decision_sensitivity=args.sensitivity,
             )
             store.add("unknown_added", item)
             return item.model_dump(mode="json")
@@ -252,29 +260,41 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
         return {"resolved": args.id, "evidence_id": args.evidence}
     if cmd == "claim":
         item = Claim(
-            id=args.id or research_id("CLM"), statement=args.statement,
-            scope=args.scope, assumptions=args.assumption,
+            id=args.id or research_id("CLM"),
+            statement=args.statement,
+            scope=args.scope,
+            assumptions=args.assumption,
         )
         store.add("claim_added", item)
         return item.model_dump(mode="json")
     if cmd == "propose":
         item = Proposal(
-            id=args.id or research_id("ACT"), title=args.title,
-            kind=ProposalKind(args.kind), rationale=args.rationale,
-            acceptance=args.acceptance, unknown_ids=args.unknown,
-            claim_ids=args.claim, depends_on=args.depends_on,
-            information_gain=args.ig, expected_improvement=args.gain,
-            unlock_value=args.unlock, novelty=args.novelty,
-            estimated_cost=args.cost, risk=args.risk,
+            id=args.id or research_id("ACT"),
+            title=args.title,
+            kind=ProposalKind(args.kind),
+            rationale=args.rationale,
+            acceptance=args.acceptance,
+            unknown_ids=args.unknown,
+            claim_ids=args.claim,
+            depends_on=args.depends_on,
+            information_gain=args.ig,
+            expected_improvement=args.gain,
+            unlock_value=args.unlock,
+            novelty=args.novelty,
+            estimated_cost=args.cost,
+            risk=args.risk,
         )
         store.add("proposal_added", item)
         return item.model_dump(mode="json")
     if cmd == "next":
         return [
             {
-                "proposal_id": item.proposal.id, "title": item.proposal.title,
-                "score": item.score, "phase": item.phase,
-                "reason": item.rationale, "cost": item.proposal.estimated_cost,
+                "proposal_id": item.proposal.id,
+                "title": item.proposal.title,
+                "score": item.score,
+                "phase": item.phase,
+                "reason": item.rationale,
+                "cost": item.proposal.estimated_cost,
             }
             for item in rank_proposals(state, limit=args.limit)
         ]
@@ -299,24 +319,38 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
             raise ValueError("a pinned Git revision is mandatory for research experiments")
         experiment_id, evidence_id = research_id("EXP"), research_id("EV")
         experiment = Experiment(
-            id=experiment_id, proposal_id=args.proposal, summary=args.summary,
-            outcome=args.outcome, actual_cost=args.cost, git_revision=revision,
-            config_ref=args.config, dataset_ref=args.dataset, seeds=args.seed,
-            metrics=_parse_metrics(args.metric), artifact_refs=args.artifact,
-            run_command=args.run_command, evidence_id=evidence_id,
+            id=experiment_id,
+            proposal_id=args.proposal,
+            summary=args.summary,
+            outcome=args.outcome,
+            actual_cost=args.cost,
+            git_revision=revision,
+            config_ref=args.config,
+            dataset_ref=args.dataset,
+            seeds=args.seed,
+            metrics=_parse_metrics(args.metric),
+            artifact_refs=args.artifact,
+            run_command=args.run_command,
+            evidence_id=evidence_id,
         )
         evidence = EvidenceRecord(
-            id=evidence_id, experiment_id=experiment_id, summary=args.summary,
+            id=evidence_id,
+            experiment_id=experiment_id,
+            summary=args.summary,
             artifact_refs=args.artifact,
         )
         store.append(
             "experiment_recorded",
-            {"experiment": experiment.model_dump(mode="json"),
-             "evidence": evidence.model_dump(mode="json")},
+            {
+                "experiment": experiment.model_dump(mode="json"),
+                "evidence": evidence.model_dump(mode="json"),
+            },
         )
         return {
-            "experiment_id": experiment_id, "evidence_id": evidence_id,
-            "verified": False, "next": "epi verify --experiment ID --check COMMAND ARGS...",
+            "experiment_id": experiment_id,
+            "evidence_id": evidence_id,
+            "verified": False,
+            "next": "epi verify --experiment ID --check COMMAND ARGS...",
         }
     if cmd == "verify":
         experiment = state.experiments.get(args.experiment)
@@ -330,22 +364,30 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore) -> object:
         if check and check[0] == "--":
             check.pop(0)
         payload = {
-            "evidence_id": evidence.id, "check_argv": check,
-            "check_output_sha256": digest, "exit_code": code,
+            "evidence_id": evidence.id,
+            "check_argv": check,
+            "check_output_sha256": digest,
+            "exit_code": code,
         }
         store.append("verification_recorded" if passed else "verification_failed", payload)
         return {
-            "check_passed": passed, "exit_code": code, "output_sha256": digest,
+            "check_passed": passed,
+            "exit_code": code,
+            "output_sha256": digest,
             "scientific_interpretation": "requires explicit epi reflect and scope review",
         }
     if cmd == "reflect":
         store.append(
             "claim_reviewed",
-            {"claim_id": args.claim, "status": ClaimStatus(args.verdict).value,
-             "evidence_id": args.evidence},
+            {
+                "claim_id": args.claim,
+                "status": ClaimStatus(args.verdict).value,
+                "evidence_id": args.evidence,
+            },
         )
         return {
-            "claim": args.claim, "status": args.verdict,
+            "claim": args.claim,
+            "status": args.verdict,
             "note": "Provisional claim support, not canonical scientific fact.",
         }
     raise ValueError(f"unknown command: {cmd}")

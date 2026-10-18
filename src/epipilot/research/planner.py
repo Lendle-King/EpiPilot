@@ -25,9 +25,7 @@ def research_phase(state: ResearchState) -> str:
     if not state.unknowns:
         return "exploration"
     unresolved = sum(
-        x.importance * x.decision_sensitivity
-        for x in state.unknowns.values()
-        if x.status == "open"
+        x.importance * x.decision_sensitivity for x in state.unknowns.values() if x.status == "open"
     )
     checked = sum(e.independently_verified for e in state.evidence.values())
     uncertainty_share = unresolved / (unresolved + checked + 0.1)
@@ -53,12 +51,8 @@ def _immediate_score(proposal: Proposal, state: ResearchState, phase: str) -> fl
         + unlock * proposal.unlock_value
         + novelty * proposal.novelty
     )
-    unresolved = any(
-        state.unknowns[uid].status == "open" for uid in proposal.unknown_ids
-    )
-    verified_claim = any(
-        state.claims[cid].supporting_evidence_ids for cid in proposal.claim_ids
-    )
+    unresolved = any(state.unknowns[uid].status == "open" for uid in proposal.unknown_ids)
+    verified_claim = any(state.claims[cid].supporting_evidence_ids for cid in proposal.claim_ids)
     if proposal.kind is ProposalKind.EXPLORE and not unresolved:
         value *= 0.7
     if proposal.kind is ProposalKind.OPTIMIZE and not verified_claim:
@@ -84,7 +78,8 @@ def rank_proposals(state: ResearchState, limit: int = 5) -> list[RankedProposal]
     for proposal in eligible:
         immediate = _immediate_score(proposal, state, phase)
         children = [
-            child for child in state.proposals.values()
+            child
+            for child in state.proposals.values()
             if proposal.id in child.depends_on and child.status == "proposed"
         ]
         # Limited-depth lookahead: exploratory actions can unlock valuable

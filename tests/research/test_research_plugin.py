@@ -77,8 +77,10 @@ def submit_observation(store: ResearchStore, cost: float = 0.5) -> None:
     )
     store.append(
         "experiment_recorded",
-        {"experiment": experiment.model_dump(mode="json"),
-         "evidence": evidence.model_dump(mode="json")},
+        {
+            "experiment": experiment.model_dump(mode="json"),
+            "evidence": evidence.model_dump(mode="json"),
+        },
     )
 
 
@@ -112,8 +114,11 @@ def test_verified_evidence_allows_provisional_review(tmp_path: Path) -> None:
     submit_observation(store)
     store.append(
         "verification_recorded",
-        {"evidence_id": "EV-1", "check_argv": [sys.executable, "-m", "pytest"],
-         "check_output_sha256": "deadbeef"},
+        {
+            "evidence_id": "EV-1",
+            "check_argv": [sys.executable, "-m", "pytest"],
+            "check_output_sha256": "deadbeef",
+        },
     )
     store.append(
         "claim_reviewed",
@@ -143,11 +148,18 @@ def test_unknown_links_are_not_guessed(tmp_path: Path) -> None:
         store.add(
             "proposal_added",
             Proposal(
-                id="ACT-BAD", title="Unknown experiment", kind=ProposalKind.EXPLORE,
-                rationale="Reason", acceptance="Check",
+                id="ACT-BAD",
+                title="Unknown experiment",
+                kind=ProposalKind.EXPLORE,
+                rationale="Reason",
+                acceptance="Check",
                 unknown_ids=["UNK-DOES-NOT-EXIST"],
-                information_gain=0.8, expected_improvement=0.1,
-                unlock_value=0, novelty=0.2, estimated_cost=1.0, risk=0,
+                information_gain=0.8,
+                expected_improvement=0.1,
+                unlock_value=0,
+                novelty=0.2,
+                estimated_cost=1.0,
+                risk=0,
             ),
         )
 
@@ -157,11 +169,19 @@ def test_dependencies_are_gated_and_lookahead_is_used(tmp_path: Path) -> None:
     store.add(
         "proposal_added",
         Proposal(
-            id="ACT-2", title="Follow-on optimization", kind=ProposalKind.OPTIMIZE,
-            rationale="Depends on identifying mechanism", acceptance="Validated benchmark",
-            depends_on=["ACT-1"], claim_ids=["CLM-1"],
-            information_gain=0.2, expected_improvement=1.0,
-            unlock_value=0.5, novelty=0.2, estimated_cost=1, risk=0.2,
+            id="ACT-2",
+            title="Follow-on optimization",
+            kind=ProposalKind.OPTIMIZE,
+            rationale="Depends on identifying mechanism",
+            acceptance="Validated benchmark",
+            depends_on=["ACT-1"],
+            claim_ids=["CLM-1"],
+            information_gain=0.2,
+            expected_improvement=1.0,
+            unlock_value=0.5,
+            novelty=0.2,
+            estimated_cost=1,
+            risk=0.2,
         ),
     )
     state, _ = store.load()
@@ -191,38 +211,100 @@ def test_cli_agent_iteration_and_check(tmp_path: Path, capsys: pytest.CaptureFix
     root = ["--root", str(tmp_path)]
     assert main([*root, "init", "--goal", "Investigate", "--budget", "2"]) == 0
     assert main([*root, "unknown", "add", "--id", "U", "--question", "Why?"]) == 0
-    assert main([
-        *root, "propose", "--id", "P", "--title", "Mechanism test",
-        "--kind", "explore", "--rationale", "Controls confounding",
-        "--acceptance", "Independent output check", "--unknown", "U",
-        "--ig", "0.9", "--gain", "0.2", "--cost", "1",
-    ]) == 0
+    assert (
+        main(
+            [
+                *root,
+                "propose",
+                "--id",
+                "P",
+                "--title",
+                "Mechanism test",
+                "--kind",
+                "explore",
+                "--rationale",
+                "Controls confounding",
+                "--acceptance",
+                "Independent output check",
+                "--unknown",
+                "U",
+                "--ig",
+                "0.9",
+                "--gain",
+                "0.2",
+                "--cost",
+                "1",
+            ]
+        )
+        == 0
+    )
     assert main([*root, "iterate"]) == 0
     assert '"status": "ready_for_agent"' in capsys.readouterr().out
-    assert main([
-        *root, "record", "--proposal", "P", "--summary", "Synthetic checked result",
-        "--outcome", "inconclusive", "--cost", "0.4", "--revision", "a" * 40,
-        "--config", "cfg-v1", "--dataset", "split-v1", "--artifact", "result.json",
-    ]) == 0
+    assert (
+        main(
+            [
+                *root,
+                "record",
+                "--proposal",
+                "P",
+                "--summary",
+                "Synthetic checked result",
+                "--outcome",
+                "inconclusive",
+                "--cost",
+                "0.4",
+                "--revision",
+                "a" * 40,
+                "--config",
+                "cfg-v1",
+                "--dataset",
+                "split-v1",
+                "--artifact",
+                "result.json",
+            ]
+        )
+        == 0
+    )
     state, _ = ResearchStore(tmp_path / ".research").load()
     experiment = next(iter(state.experiments.values()))
-    assert main([
-        *root, "verify", "--experiment", experiment.id, "--check",
-        sys.executable, "-c", "print('independent check completed')",
-    ]) == 0
+    assert (
+        main(
+            [
+                *root,
+                "verify",
+                "--experiment",
+                experiment.id,
+                "--check",
+                sys.executable,
+                "-c",
+                "print('independent check completed')",
+            ]
+        )
+        == 0
+    )
     state, _ = ResearchStore(tmp_path / ".research").load()
     assert state.evidence[experiment.evidence_id].independently_verified
-    assert main([*root, "unknown", "resolve", "--id", "U",
-                 "--evidence", experiment.evidence_id]) == 0
+    assert (
+        main([*root, "unknown", "resolve", "--id", "U", "--evidence", experiment.evidence_id]) == 0
+    )
 
 
 def test_cli_failed_check_does_not_advance(tmp_path: Path) -> None:
     store = setup_store(tmp_path)
     submit_observation(store)
-    result = main([
-        "--root", str(tmp_path), "verify", "--experiment", "EXP-1",
-        "--check", sys.executable, "-c", "raise SystemExit(3)",
-    ])
+    result = main(
+        [
+            "--root",
+            str(tmp_path),
+            "verify",
+            "--experiment",
+            "EXP-1",
+            "--check",
+            sys.executable,
+            "-c",
+            "raise SystemExit(3)",
+        ]
+    )
     assert result == 2
     state, version = store.load()
     assert version == 6
