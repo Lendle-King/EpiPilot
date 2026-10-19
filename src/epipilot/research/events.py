@@ -2,6 +2,7 @@
 
 from epipilot.events.payloads import EventPayload
 from epipilot.research.models import (
+    Cost,
     ExperimentProposal,
     Observation,
     ResearchGoal,
@@ -15,6 +16,11 @@ from epipilot.research.models import (
 class ResearchConfigured(EventPayload):
     goal: ResearchGoal
     nodes: tuple[ResearchNode, ...]
+
+
+class ResearchBudgetExtended(EventPayload):
+    basis_ref: str
+    additions: tuple[Cost, ...]
 
 
 class ProposalAdded(EventPayload):

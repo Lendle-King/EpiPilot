@@ -24,6 +24,7 @@ class EventType(StrEnum):
 
     RESEARCH_NODE_ADDED = "research_node_added"
     RESEARCH_CONFIGURED = "research_configured"
+    RESEARCH_BUDGET_EXTENDED = "research_budget_extended"
     PROPOSAL_ADDED = "proposal_added"
     EXPERIMENT_RESERVED = "experiment_reserved"
     EXPERIMENT_OBSERVED = "experiment_observed"

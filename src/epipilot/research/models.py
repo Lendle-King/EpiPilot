@@ -225,6 +225,7 @@ class Settlement(Value):
 
 class ResearchState(Value):
     goal: ResearchGoal
+    budget_additions: tuple[Cost, ...] = ()
     frontier: ResearchFrontier | None = None
     nodes: tuple[ResearchNode, ...] = ()
     proposals: tuple[ExperimentProposal, ...] = ()

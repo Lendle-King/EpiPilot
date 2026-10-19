@@ -102,6 +102,13 @@ rather than clipped; negative remaining budget prevents another launch. Cost cal
 uses median actual/estimated ratios by kind/fidelity/unit, clipped to [.5,4]. Unknown
 estimates or uncovered cost units cause abstention.
 
+An existing research budget can only grow through an appended
+`RESEARCH_BUDGET_EXTENDED` event. The event must reference a canonical decision
+made with user authority, and may add only positive amounts in already-budgeted
+units. The original goal stays unchanged; the effective limit is derived by
+adding the recorded extensions, so replay preserves both the initial budget and
+each later authorization.
+
 `resume` finishes a persisted observation without rerunning the experiment. An uncertain
 run with no persisted observation fails closed. Recover its authentic typed Observation:
 

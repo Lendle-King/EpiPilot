@@ -13,6 +13,7 @@ from epipilot.research.events import (
     ExperimentReserved,
     ExperimentReviewed,
     ProposalAdded,
+    ResearchBudgetExtended,
     ResearchConfigured,
     ResearchNodeAdded,
 )
@@ -47,6 +48,24 @@ def reduce_research(state: ProjectState, payload: EventPayload) -> ProjectState:
         return replace(state, research=ResearchState(goal=payload.goal, nodes=payload.nodes))
     if r is None:
         raise ValueError("research not configured")
+    if isinstance(payload, ResearchBudgetExtended):
+        decision = next(
+            (item for item in state.decisions if str(item.id) == payload.basis_ref), None
+        )
+        if decision is None or decision.authority.value != "user":
+            raise ValueError("budget extension requires a canonical user decision")
+        if not payload.additions or not set(amounts(payload.additions)) <= set(
+            amounts(r.goal.budgets)
+        ):
+            raise ValueError("budget extension must add an existing budget unit")
+        if any(cost.amount <= 0 for cost in payload.additions):
+            raise ValueError("budget extension amounts must be positive")
+        return replace(
+            state,
+            research=r.model_copy(
+                update={"budget_additions": (*r.budget_additions, *payload.additions)}
+            ),
+        )
     if isinstance(payload, ResearchNodeAdded):
         nodes = (payload.node, *payload.companion_nodes)
         if any(

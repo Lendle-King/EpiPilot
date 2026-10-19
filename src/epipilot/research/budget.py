@@ -14,8 +14,14 @@ class BudgetManager:
     state: ResearchState
 
     @property
+    def limits(self) -> dict[str, float]:
+        base = amounts(self.state.goal.budgets)
+        additions = amounts(self.state.budget_additions) if self.state.budget_additions else {}
+        return {unit: limit + additions.get(unit, 0.0) for unit, limit in base.items()}
+
+    @property
     def spent(self) -> dict[str, float]:
-        result = dict.fromkeys(amounts(self.state.goal.budgets), 0.0)
+        result = dict.fromkeys(self.limits, 0.0)
         for settlement in self.state.settlements:
             for unit, value in amounts(settlement.actual_cost).items():
                 result[unit] = result.get(unit, 0.0) + value
@@ -23,7 +29,7 @@ class BudgetManager:
 
     @property
     def remaining(self) -> dict[str, float]:
-        result = {k: v - self.spent[k] for k, v in amounts(self.state.goal.budgets).items()}
+        result = {k: v - self.spent[k] for k, v in self.limits.items()}
         for reservation in self.state.active:
             for unit, value in amounts(reservation.costs).items():
                 result[unit] -= value
@@ -32,7 +38,7 @@ class BudgetManager:
     def normalized(self, costs: tuple[Cost, ...]) -> float:
         if not costs or not any(c.amount > 0 for c in costs):
             raise ValueError("unknown cost or zero-only estimate")
-        limits = amounts(self.state.goal.budgets)
+        limits = self.limits
         if any(c.unit not in limits for c in costs):
             raise ValueError("cost unit has no budget")
         return sum(c.amount / limits[c.unit] for c in costs)
