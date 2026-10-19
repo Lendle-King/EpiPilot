@@ -82,6 +82,12 @@ Before planning the next batch, update a versioned understanding of the whole su
 goal using the cumulative inventory, including older results and counterevidence. Follow
 [the synthesis protocol](../../docs/carts/SYNTHESIS_PROTOCOL.md). Save an explanatory report,
 explicit claim coverage/dispositions, goal gaps, and changes from the previous version.
+At each synthesis, also perform a bounded web search for relevant original research,
+papers, author blogs and news, including counterevidence and alternative mechanisms.
+Save an external-source ledger with queries, URLs, dates, access levels, limitations and
+links to local claims/questions. Explain what the combined evidence changes in the overall
+understanding and next routes. Mark blocked/unread sources and incomplete search honestly;
+external findings do not validate this project's algorithm or replace prospective evidence.
 Preserve provenance, contexts and unresolved contradictions; synthesis cannot promote
 facts or authorize more experiments. A latest-ten-round recap or winner table is insufficient.
 At takeover, create a missing baseline at the actual current time, without backdating.

@@ -54,7 +54,10 @@ operator updates a versioned model of the whole subject, acceptance goal and ope
 Follow [the synthesis protocol](SYNTHESIS_PROTOCOL.md): reconcile all cumulative claims,
 cover every inventoried ID explicitly, preserve evidence scope and contradictions, and
 record how the unified understanding changes the next experiments. A round recap is not
-sufficient. Reports and coverage indexes are derived artifacts; they do not replace canonical
+sufficient. Each synthesis also includes a bounded external literature/news search, an
+auditable source ledger, counterevidence and explicit local/external reconciliation. Distinguish
+what was read from search leads, and external study findings from this project's measurements.
+Reports and coverage indexes are derived artifacts; they do not replace canonical
 claims or automatically change scientific status. This is an operator protocol, not an
 additional backend action or permission to extend a run budget.
 
