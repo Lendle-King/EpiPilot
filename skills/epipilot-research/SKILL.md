@@ -76,6 +76,16 @@ Recovered observation cost and timestamp must come from real run records; the JS
 measurement artifact alone does not establish either. A pinned commit and input hashes
 do not alone prove which external algorithm code executed; domain verification must do so.
 
+## Every ten settled checks: cumulative understanding
+
+Before planning the next batch, update a versioned understanding of the whole subject and
+goal using the cumulative inventory, including older results and counterevidence. Follow
+[the synthesis protocol](../../docs/carts/SYNTHESIS_PROTOCOL.md). Save an explanatory report,
+explicit claim coverage/dispositions, goal gaps, and changes from the previous version.
+Preserve provenance, contexts and unresolved contradictions; synthesis cannot promote
+facts or authorize more experiments. A latest-ten-round recap or winner table is insufficient.
+At takeover, create a missing baseline at the actual current time, without backdating.
+
 After each measured round report: question/algorithm, why chosen, inputs and contract,
 actual result/cost, verification scope, claim changes, remaining blockers and next action.
 Never claim goal_met, profitability or universal efficiency without its acceptance evidence.

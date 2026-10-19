@@ -47,6 +47,17 @@ epoch; repeating empty discovery in the same epoch is rejected. Duplicate measur
 fingerprints, stale versions, unsupported references or invalid source lines reject the
 entire batch. No partially accepted claims or proposals are left behind.
 
+## Cumulative understanding at ten-check boundaries
+
+After every ten settled checks and before planning another batch, the semantic research
+operator updates a versioned model of the whole subject, acceptance goal and open questions.
+Follow [the synthesis protocol](SYNTHESIS_PROTOCOL.md): reconcile all cumulative claims,
+cover every inventoried ID explicitly, preserve evidence scope and contradictions, and
+record how the unified understanding changes the next experiments. A round recap is not
+sufficient. Reports and coverage indexes are derived artifacts; they do not replace canonical
+claims or automatically change scientific status. This is an operator protocol, not an
+additional backend action or permission to extend a run budget.
+
 ## Measurement and extension boundary
 
 Built-in adapters independently reread hashed inputs: `missingness` profiles observed flags
