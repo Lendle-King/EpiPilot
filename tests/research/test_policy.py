@@ -49,6 +49,23 @@ def test_cost_is_budget_share_and_unknown_not_free():
     assert "unknown cost" in rank_candidates(state, NOW).rejected[0].reason
 
 
+def test_budget_manager_sums_repeated_append_only_additions_for_the_same_unit():
+    state, _proposal = fixture()
+    research = state.research.model_copy(
+        update={
+            "budget_additions": (
+                Cost(unit="seconds", amount=25.0),
+                Cost(unit="seconds", amount=40.0),
+            )
+        }
+    )
+
+    manager = BudgetManager(research)
+
+    assert manager.limits == {"seconds": 165.0}
+    assert manager.remaining == {"seconds": 165.0}
+
+
 def test_cycles_and_or_dependencies():
     state, _p = fixture()
     a = state.research.nodes[0]

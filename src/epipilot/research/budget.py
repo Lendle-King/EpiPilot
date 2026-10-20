@@ -16,7 +16,11 @@ class BudgetManager:
     @property
     def limits(self) -> dict[str, float]:
         base = amounts(self.state.goal.budgets)
-        additions = amounts(self.state.budget_additions) if self.state.budget_additions else {}
+        additions: dict[str, float] = {}
+        for item in self.state.budget_additions:
+            if item.unit not in base:
+                raise ValueError("budget addition unit has no base budget")
+            additions[item.unit] = additions.get(item.unit, 0.0) + item.amount
         return {unit: limit + additions.get(unit, 0.0) for unit, limit in base.items()}
 
     @property
