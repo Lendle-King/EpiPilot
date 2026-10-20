@@ -10,15 +10,16 @@ This is a falsifiable research target, not a forecast or a promise of future ret
 
 The user selected historical data, strategy research and strict backtesting as the first
 stage. The project does not submit orders, hold exchange credentials, connect to an
-account, run a live signal service, or depend on EpiPilot at runtime. CARTS integration
-can be considered after the standalone research contract is established.
+account or run a live signal service. The quant_crypto research engine remains standalone;
+a thin EpiPilot CARTS host may orchestrate its experiments without making EpiPilot a
+runtime dependency of the strategy package.
 
 ## Design choices
 
-1. **Independent research repository — recommended and selected.** Own package, CLI,
-   configuration, immutable input snapshots and reports. EpiPilot remains an optional
-   orchestrator. This keeps the strategy and measurement code reproducible without an
-   EpiPilot checkout.
+1. **Independent research repository with EpiPilot CARTS orchestration — recommended.** Own
+   package, CLI, configuration, immutable input snapshots and reports; use EpiPilot for
+   canonical research questions, experiment scheduling, evidence history and recovery.
+   The strategy and measurement package remains reproducible without an EpiPilot checkout.
 2. **Add crypto logic to the ETF research adapter.** This would reduce initial packaging
    work but would couple exchange data, continuous-market calendars and annualization to
    ETF-specific assumptions. It does not meet the user's request for an independent
@@ -26,6 +27,54 @@ can be considered after the standalone research contract is established.
 3. **Build a multi-exchange derivatives platform.** This would cover basis, funding,
    liquidation and venue routing, but expands the first research question substantially.
    Defer it until spot data and baseline evaluation pass their gates.
+
+## EpiPilot CARTS orchestration
+
+Use the installed EpiPilot research skill to advance the research in bounded cycles.
+EpiPilot owns canonical goals, requirements, unknowns, hypotheses, experiment contracts,
+budgets, evidence, rankings, events and recovery in the existing canonical workspace
+database. `quant_crypto` owns exchange snapshots, deterministic research code, backtest
+ledgers and domain-specific independent verification. The EpiPilot project receives a
+new project ID and its own canonical history; do not copy ETF state, create a second event
+store or reset another project's budget.
+
+An explicit `quant_crypto` host entry point connects the two layers through the documented
+Python extension seams. It uses `AgentService.iterate` to obtain the next packet,
+`apply_discovery` to register a reviewed discovery batch, and the existing
+`ResearchEngine.run_next` with a statically registered crypto runner and verifier for an
+approved measurement. It reconciles relevant questions after settlement. Data diagnostics
+use an explicitly named `Computer` mapping. No dynamic imports, shell-provided adapter
+names or arbitrary check commands are allowed. The host must preserve CARTS reservation,
+verification, settlement, event replay and resume behavior. The ordinary
+strategy/backtest CLI still works without the host.
+
+The built-in CARTS `series` adapter is not suitable for this domain: it assumes a single
+chronological return series and annualizes with 252 periods. The crypto verifier must
+recompute from revision-pinned OHLCV, costs, trades and manifest using calendar-time CAGR
+and a separate ledger calculation. The registered measurement contract must bind a
+hash-pinned, role-bearing manifest that names development, validation, walk-forward test
+and final holdout date ranges, then verify those ranges and hashes. Roles must never be
+inferred from filenames or input order. Source code revision, cost schedule and all data
+hashes are part of the experiment basis.
+
+The final experiment may be F4 within the explicitly declared `development` scope: it
+tests whether this frozen method met the numeric target on the pinned historical
+walk-forward and holdout periods. A reviewed `CryptoEvidenceVerifier` may set promotion
+qualification only when its independent recomputation confirms both windows, both
+thresholds, minimum sample counts, data lineage and costs. This records a scoped
+historical research result; it makes no claim about prospective returns. The normal
+built-in `MeasurementAdapter` always leaves promotion qualification false and cannot
+complete this target by itself. If this extra verifier seam is unavailable, CARTS may
+still track measurements and unknowns, but the external `quant_crypto` acceptance report
+remains authoritative and the EpiPilot goal must stay unmet.
+
+Research rounds are agent-driven, not a background daemon. The coding agent calls the
+research skill, follows each bounded packet and performs a cumulative synthesis every ten
+settled checks. If periodic unattended operation is later desired, schedule a separate
+host only after its permissions and resource limits are defined. The initial CARTS budget
+must be explicitly set for this project; it is not inherited from the ETF project.
+Runner/verifier wall time can be metered by CARTS, while semantic coding-agent/API usage
+is not automatically measured and must be reported separately.
 
 ## Scope and assumptions
 
@@ -179,6 +228,8 @@ The first usable release is complete when a clean checkout can:
 - run frozen baselines and a simple daily strategy with next-bar execution and costs;
 - independently reproduce its ledger and metrics from pinned inputs;
 - emit a chronological walk-forward report with a final holdout kept separate;
+- advance a separate EpiPilot project through a statically registered crypto runner and
+  verifier, preserving canonical evidence, budget settlement and resume behavior;
 - keep generated/raw data out of Git by default, with synthetic fixtures in tests.
 
 The 30% CAGR / 20% drawdown goal is a research acceptance target, not an implementation
