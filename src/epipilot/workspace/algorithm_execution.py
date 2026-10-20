@@ -43,6 +43,7 @@ ETF_ALGORITHM_ADAPTERS: dict[str, AlgorithmId] = {
     "quant_etf_dual_momentum_12vol_v1": "dual_momentum_12vol",
     "quant_etf_dual_momentum_126trend_v1": "dual_momentum_126trend",
     "quant_etf_dual_momentum_126trend_15vol_v1": "dual_momentum_126trend_15vol",
+    "quant_etf_dual_momentum_126trend_15vol_v2": "dual_momentum_126trend_15vol",
     "quant_etf_dual_momentum_126trend_135vol_v1": "dual_momentum_126trend_135vol",
     "quant_etf_dual_momentum_252trend_v1": "dual_momentum_252trend",
     "quant_etf_dual_momentum_252trend_15vol_v1": "dual_momentum_252trend_15vol",
