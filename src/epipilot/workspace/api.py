@@ -49,6 +49,12 @@ from epipilot.workspace.iteration_loop import AutoIterationLoop
 from epipilot.workspace.onboarding import WorkspaceStore
 from epipilot.workspace.remote_model import ThirdPartyChatModel, model_configuration
 from epipilot.workspace.research_agent import ResearchOnboardingAgent, experience_digest
+from epipilot.workspace.sse_lifecycle_archive import (
+    ADAPTER_ID as SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID,
+)
+from epipilot.workspace.sse_lifecycle_archive import (
+    SSELifecycleArchiveComputer,
+)
 
 app = FastAPI(title="EpiPilot Research Workspace", version="0.1.0")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
@@ -723,6 +729,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         "missingness": MissingnessComputer(),
         "series": SeriesComputer(),
         "integrity": IntegrityComputer(),
+        SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID: SSELifecycleArchiveComputer(),
     }
     executor = _local_algorithm_executor(repository)
     if executor is not None:

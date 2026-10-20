@@ -54,3 +54,4 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
     assert "series" in service.adapter.computers
     assert "integrity" in service.adapter.computers
     assert "quant_etf_dual_momentum_126trend_135vol_v1" in service.adapter.computers
+    assert "sse_lifecycle_archive_v1" in service.adapter.computers
