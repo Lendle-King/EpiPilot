@@ -72,10 +72,13 @@ checks. It binds each response body to a strict capture manifest, re-fetches onl
 `www.sse.com.cn` announcement URLs over HTTPS (including the official optional `/new/` path)
 without following redirects, and independently
 checks current status, media type, HTTP Date and byte SHA-256. Its quality is MEASUREMENT for
-the narrow live-retrieval property; its scope remains `integrity`. It cannot establish an
-announcement's first-publication time, archive completeness, historical universe membership
-or point-in-time qualification. Network errors and malformed capture contracts fail closed;
-HTTP status or byte changes are measured as negative observations.
+the narrow live-retrieval property; its scope remains `integrity`. It also records valid
+`Last-Modified` values, compares their calendar dates with date segments in PDF archive URLs,
+and records ETag presence. These are current response-header observations only: an archive URL
+date is not a first-publication timestamp, and neither header establishes PIT availability.
+It cannot establish an announcement's first-publication time, archive completeness, historical
+universe membership or point-in-time qualification. Network errors and malformed capture
+contracts fail closed; HTTP status or byte changes are measured as negative observations.
 
 Quality is set by trusted measurement code, not by an observation or model. Scientific
 questions require MEASUREMENT or above. Built-in offline measurements cannot claim

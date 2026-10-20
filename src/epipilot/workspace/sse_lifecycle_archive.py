@@ -7,7 +7,7 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from email.message import Message
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -30,6 +30,9 @@ _CAPTURE_MAX_AGE_SECONDS = 24 * 60 * 60
 _FUND_ARCHIVE_PATH = re.compile(
     r"^/disclosure/fund/announcement/c/(?:new/)?\d{4}-\d{2}-\d{2}/"
     r"\d{6}_\d{8}_[A-Za-z0-9_-]+\.pdf$"
+)
+_FUND_ARCHIVE_DATE_PATH = re.compile(
+    r"^/disclosure/fund/announcement/c/(?:new/)?(?P<date>\d{4}-\d{2}-\d{2})/"
 )
 _LISTING_ARCHIVE_PATH = re.compile(r"^/disclosure/announcement/listing/c/c_\d{8}_\d+\.shtml$")
 
@@ -118,9 +121,12 @@ def _is_allowlisted_url(value: str) -> bool:
     )
 
 
+def _header(headers: Mapping[str, str], name: str) -> str:
+    return next((v.strip() for k, v in headers.items() if k.lower() == name.lower()), "")
+
+
 def _content_type(headers: Mapping[str, str]) -> str:
-    value = next((v for k, v in headers.items() if k.lower() == "content-type"), "")
-    return value.split(";", maxsplit=1)[0].strip().lower()
+    return _header(headers, "content-type").split(";", maxsplit=1)[0].lower()
 
 
 def _valid_http_date(value: str) -> bool:
@@ -166,6 +172,8 @@ class SSELifecycleArchiveComputer(Computer):
 
         now = datetime.now(UTC)
         url_count = status_count = mime_count = digest_count = date_count = 0
+        last_modified_count = path_date_count = path_date_match_count = path_date_after_count = 0
+        etag_count = 0
         total_bytes = 0
         observations: list[str] = []
         for record in records:
@@ -194,10 +202,20 @@ class SSELifecycleArchiveComputer(Computer):
             status_count += int(successful)
             mime_matches = successful and _content_type(response.headers) == record.content_type
             mime_count += int(mime_matches)
-            date_valid = _valid_http_date(
-                next((v for k, v in response.headers.items() if k.lower() == "date"), "")
-            )
+            date_valid = _valid_http_date(_header(response.headers, "date"))
             date_count += int(date_valid)
+            modified_header = _header(response.headers, "last-modified")
+            modified_valid = successful and _valid_http_date(modified_header)
+            modified_at = parsedate_to_datetime(modified_header) if modified_valid else None
+            last_modified_count += int(modified_valid)
+            etag_present = successful and bool(_header(response.headers, "etag"))
+            etag_count += int(etag_present)
+            path_match = _FUND_ARCHIVE_DATE_PATH.match(urlparse(record.url).path)
+            archive_date = date.fromisoformat(path_match.group("date")) if path_match else None
+            if modified_valid and modified_at is not None and archive_date is not None:
+                path_date_count += 1
+                path_date_match_count += int(modified_at.date() == archive_date)
+                path_date_after_count += int(modified_at.date() > archive_date)
             digest_matches = (
                 successful
                 and len(response.body) == record.byte_count
@@ -205,9 +223,17 @@ class SSELifecycleArchiveComputer(Computer):
             )
             digest_count += int(digest_matches)
             total_bytes += len(response.body)
+            modified_display = (
+                modified_at.isoformat()
+                if modified_at is not None
+                else "invalid"
+                if modified_header
+                else "missing"
+            )
             observations.append(
                 f"{record.record_id}:status={response.status},url_match={int(same_url)},"
                 f"mime_match={int(mime_matches)},date_valid={int(date_valid)},"
+                f"last_modified={modified_display},etag_present={int(etag_present)},"
                 f"body_match={int(digest_matches)}"
             )
 
@@ -216,6 +242,11 @@ class SSELifecycleArchiveComputer(Computer):
             Metric(name="reachable_http_200", value=float(status_count)),
             Metric(name="content_type_matches", value=float(mime_count)),
             Metric(name="server_date_headers_valid", value=float(date_count)),
+            Metric(name="last_modified_headers_valid", value=float(last_modified_count)),
+            Metric(name="archive_path_dates_compared", value=float(path_date_count)),
+            Metric(name="last_modified_matches_path_date", value=float(path_date_match_count)),
+            Metric(name="last_modified_after_path_date", value=float(path_date_after_count)),
+            Metric(name="etag_headers_present", value=float(etag_count)),
             Metric(name="body_sha256_matches", value=float(digest_count)),
             Metric(name="response_bytes", value=float(total_bytes)),
         )
@@ -225,7 +256,8 @@ class SSELifecycleArchiveComputer(Computer):
             details=(
                 "scope=integrity; exact SSE archive URL re-fetched over HTTPS; "
                 "current body matched captured bytes; no inference about original release time, "
-                "historical universe completeness or point-in-time qualification",
+                "historical universe completeness or point-in-time qualification; Last-Modified "
+                "is compared only with the URL path date",
                 *observations,
             ),
         )

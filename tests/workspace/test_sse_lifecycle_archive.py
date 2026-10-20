@@ -144,3 +144,47 @@ def test_sse_lifecycle_archive_measures_redirects_and_non_success_status(tmp_pat
         )
     ).measure(tmp_path, contract)
     assert {item.name: item.value for item in missing.metrics}["reachable_http_200"] == 0
+
+
+def test_sse_lifecycle_archive_measures_last_modified_against_url_date_and_etag_presence(
+    tmp_path: Path,
+) -> None:
+    contract = make_contract(tmp_path)
+    headers = {
+        "Content-Type": "application/pdf",
+        "Date": "Tue, 20 Oct 2026 19:00:00 GMT",
+        "Last-Modified": "Fri, 18 Jul 2025 03:54:24 GMT",
+        "ETag": '"6879c570-930bd"',
+    }
+
+    measured = SSELifecycleArchiveComputer(fetcher=lambda _: response(headers=headers)).measure(
+        tmp_path, contract
+    )
+
+    metrics = {item.name: item.value for item in measured.metrics}
+    assert metrics["last_modified_headers_valid"] == 1
+    assert metrics["last_modified_matches_path_date"] == 0
+    assert metrics["last_modified_after_path_date"] == 1
+    assert metrics["etag_headers_present"] == 1
+    assert any("last_modified=2025-07-18T03:54:24+00:00" in item for item in measured.details)
+
+
+def test_sse_lifecycle_archive_counts_invalid_last_modified_and_missing_etag(
+    tmp_path: Path,
+) -> None:
+    contract = make_contract(tmp_path)
+    measured = SSELifecycleArchiveComputer(
+        fetcher=lambda _: response(
+            headers={
+                "Content-Type": "application/pdf",
+                "Date": "Tue, 20 Oct 2026 19:00:00 GMT",
+                "Last-Modified": "not-a-date",
+            }
+        )
+    ).measure(tmp_path, contract)
+
+    metrics = {item.name: item.value for item in measured.metrics}
+    assert metrics["last_modified_headers_valid"] == 0
+    assert metrics["archive_path_dates_compared"] == 0
+    assert metrics["etag_headers_present"] == 0
+    assert any("last_modified=invalid" in item for item in measured.details)
