@@ -1,4 +1,4 @@
-"""Registered offline measurements; raw artifacts and reports cannot self-certify."""
+"""Registered input-bound measurements; raw artifacts and reports cannot self-certify."""
 
 from __future__ import annotations
 
@@ -188,7 +188,7 @@ class MeasurementAdapter:
                 "measurement": measured.model_dump(mode="json"),
             }
             execution = ExecutionStatus.SUCCEEDED
-            summary = "registered input-bound offline measurement"
+            summary = "registered input-bound measurement"
         except (ValueError, OSError, KeyError) as exc:
             measured = Measured(metrics=(), samples=0)
             payload = {

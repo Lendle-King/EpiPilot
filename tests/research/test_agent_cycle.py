@@ -25,6 +25,7 @@ def test_registered_measurement_resolves_and_replays(tmp_path):
     adapter = MeasurementAdapter(engine, root)
     observation = engine.run_next(adapter, adapter)
     assert observation.samples == 2
+    assert observation.summary == "registered input-bound measurement"
     assert engine.state.research.reviews[-1].assessment.quality is Quality.MEASUREMENT
     reconcile_questions(engine)
     assert engine.state.research.frontier.closed(batch.findings[0].unknown.unknown_id)
