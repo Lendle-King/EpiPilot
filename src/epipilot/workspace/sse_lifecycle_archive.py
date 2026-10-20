@@ -134,7 +134,7 @@ def _valid_http_date(value: str) -> bool:
 class SSELifecycleArchiveComputer(Computer):
     """Re-fetch exact SSE archive URLs and verify captured response identity."""
 
-    quality = Quality.INTEGRITY
+    quality = Quality.MEASUREMENT
 
     def __init__(self, fetcher: Callable[[str], SSEArchiveResponse] | None = None) -> None:
         self._fetcher = fetcher or _fetch_sse_archive

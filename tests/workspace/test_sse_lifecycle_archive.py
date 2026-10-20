@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from epipilot.research.frontier import InputFile, MeasurementContract, Purpose, Rule
+from epipilot.research.frontier import InputFile, MeasurementContract, Purpose, Quality, Rule
 from epipilot.workspace.sse_lifecycle_archive import (
     ADAPTER_ID,
     SSEArchiveResponse,
@@ -82,6 +82,7 @@ def test_sse_lifecycle_archive_rechecks_live_bytes_and_returns_integrity_metrics
 
     metrics = {item.name: item.value for item in measured.metrics}
     assert measured.samples == 1
+    assert SSELifecycleArchiveComputer(fetcher=fetch).quality is Quality.MEASUREMENT
     assert metrics["reachable_http_200"] == 1
     assert metrics["body_sha256_matches"] == 1
     assert calls == [URL]

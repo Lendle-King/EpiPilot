@@ -67,6 +67,14 @@ Built-in adapters independently reread hashed inputs: `missingness` profiles obs
 by a preregistered date boundary; `series` computes summary return metrics from one ordered,
 unique daily return series (252-trading-day CAGR only at >=252 observations); `integrity`
 checks input availability. Rule thresholds are preregistered, not selected after results.
+The loopback workspace API also registers `sse_lifecycle_archive_v1` for QUANT_ETF source
+checks. It binds each response body to a strict capture manifest, re-fetches only allowlisted
+`www.sse.com.cn` announcement URLs over HTTPS without following redirects, and independently
+checks current status, media type, HTTP Date and byte SHA-256. Its quality is MEASUREMENT for
+the narrow live-retrieval property; its scope remains `integrity`. It cannot establish an
+announcement's first-publication time, archive completeness, historical universe membership
+or point-in-time qualification. Network errors and malformed capture contracts fail closed;
+HTTP status or byte changes are measured as negative observations.
 
 Quality is set by trusted measurement code, not by an observation or model. Scientific
 questions require MEASUREMENT or above. Built-in offline measurements cannot claim
