@@ -109,6 +109,27 @@ def test_runtime_compatible_algorithm_adapter_has_a_distinct_contract_version(
     assert computers[adapter_id].algorithm_id == "dual_momentum_126trend_15vol"
 
 
+def test_fourteen_percent_algorithm_adapter_is_registered_to_fixed_variant(tmp_path: Path) -> None:
+    import sys
+
+    from epipilot.research.engine import ResearchEngine
+    from epipilot.runtime.event_store import InMemoryEventStore
+    from epipilot.workspace.algorithm_execution import (
+        ETFAlgorithmComputer,
+        LocalAlgorithmExecutor,
+        etf_algorithm_computers,
+    )
+
+    adapter_id = "quant_etf_dual_momentum_126trend_14vol_v1"
+    engine = ResearchEngine(InMemoryEventStore(), "test", tmp_path)
+    executor = LocalAlgorithmExecutor(tmp_path, Path(sys.executable))
+    computers = etf_algorithm_computers(engine, tmp_path, executor)
+
+    assert adapter_id in computers
+    assert isinstance(computers[adapter_id], ETFAlgorithmComputer)
+    assert computers[adapter_id].algorithm_id == "dual_momentum_126trend_14vol"
+
+
 def test_uncommitted_adapter_is_rejected_before_subprocess(tmp_path: Path) -> None:
     import subprocess
     import sys
