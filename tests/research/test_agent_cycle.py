@@ -306,3 +306,117 @@ def test_restart_finishes_pending_knowledge_reconciliation(tmp_path):
     service.verify()
     assert restarted.state.research.frontier.closed(batch.findings[0].unknown.unknown_id)
     assert service.iterate().action is Action.DISCOVER
+
+
+def test_etf_algorithm_computer_uses_bound_receipt_and_contract_metrics(tmp_path):
+    import hashlib
+    from datetime import UTC, datetime
+
+    from epipilot.research.frontier import InputFile, MeasurementContract, Purpose, Rule
+    from epipilot.workspace.algorithm_execution import (
+        ETFAlgorithmComputer,
+        ExecutionMetric,
+        ExecutionReceipt,
+        FileDigest,
+    )
+
+    engine, root, _batch = discovered(tmp_path)
+    input_path = root / "input.csv"
+    input_path.write_text("synthetic input\n", encoding="utf-8")
+    input_digest = hashlib.sha256(input_path.read_bytes()).hexdigest()
+    daily_path = root / "candidate_daily.csv"
+    daily_path.write_text(
+        "date,return,equity,turnover\n2020-01-02,0,100,0\n2020-01-03,0,100,0\n2020-01-06,0,100,0\n",
+        encoding="utf-8",
+    )
+    daily_digest = hashlib.sha256(daily_path.read_bytes()).hexdigest()
+    adapter_id = "quant_etf_dual_momentum_126trend_135vol_v1"
+    calls = []
+
+    class FakeExecutor:
+        def execute(self, request):
+            calls.append(request)
+            receipt_path = root / "receipt.json"
+            now = datetime.now(UTC)
+            receipt = ExecutionReceipt(
+                route_run_id=request.route_run_id,
+                round_index=request.round_index,
+                algorithm_id=request.algorithm_id,
+                started_at_utc=now,
+                finished_at_utc=now,
+                scope="exploratory_public_history",
+                initial_cash=100,
+                input_files=[FileDigest(path="input.csv", sha256=input_digest)],
+                artifacts=[FileDigest(path="candidate_daily.csv", sha256=daily_digest)],
+                metrics=[
+                    ExecutionMetric(
+                        variant=variant,
+                        cost_bps=5,
+                        daily_path="candidate_daily.csv",
+                        cagr=0,
+                        max_drawdown=0,
+                        annualized_turnover=0,
+                    )
+                    for variant in ("baseline", "candidate")
+                ],
+                protocol="synthetic fixed algorithm receipt for unit testing only",
+            )
+            receipt_path.write_text(receipt.model_dump_json(), encoding="utf-8")
+            return receipt_path
+
+    contract = MeasurementContract(
+        proposal_id="synthetic-etf-proposal",
+        purpose=Purpose.OPTIMIZE,
+        adapter=adapter_id,
+        git_revision="a" * 40,
+        inputs=(InputFile(path="input.csv", sha256=input_digest),),
+        rules=(Rule(metric="dual_momentum_126trend_135vol.candidate.5bp.cagr", minimum=0),),
+    )
+    computer = ETFAlgorithmComputer(
+        engine=engine,
+        repository=root,
+        executor=FakeExecutor(),
+        adapter_id=adapter_id,
+        algorithm_id="dual_momentum_126trend_135vol",
+    )
+
+    measured = computer.measure(root, contract)
+
+    assert len(calls) == 1
+    assert calls[0].round_index == len(engine.state.research.reviews) + 1
+    assert calls[0].algorithm_id == "dual_momentum_126trend_135vol"
+    assert measured.samples == 3
+    metrics = {metric.name: metric.value for metric in measured.metrics}
+    assert metrics["dual_momentum_126trend_135vol.candidate.5bp.cagr"] == 0
+    assert metrics["dual_momentum_126trend_135vol.candidate.5bp.mdd_abs"] == 0
+
+
+def test_etf_algorithm_computer_rejects_mismatched_contract_adapter(tmp_path):
+    import pytest
+
+    from epipilot.research.frontier import InputFile, MeasurementContract, Purpose, Rule
+    from epipilot.workspace.algorithm_execution import ETFAlgorithmComputer
+
+    engine, root, _batch = discovered(tmp_path)
+    contract = MeasurementContract(
+        proposal_id="wrong-algorithm",
+        purpose=Purpose.OPTIMIZE,
+        adapter="quant_etf_dual_momentum_126trend_135vol_v1",
+        git_revision="a" * 40,
+        inputs=(InputFile(path="data.csv", sha256="0" * 64),),
+        rules=(Rule(metric="x", minimum=0),),
+    )
+
+    class WrongExecutor:
+        def execute(self, _request):
+            raise AssertionError("adapter mismatch must be rejected before execution")
+
+    computer = ETFAlgorithmComputer(
+        engine=engine,
+        repository=root,
+        executor=WrongExecutor(),
+        adapter_id="quant_etf_dual_momentum_126trend_v1",
+        algorithm_id="dual_momentum_126trend",
+    )
+    with pytest.raises(ValueError, match="adapter does not match"):
+        computer.measure(root, contract)

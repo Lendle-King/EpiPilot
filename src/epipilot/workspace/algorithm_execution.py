@@ -13,15 +13,42 @@ import json
 import math
 import os
 import subprocess
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from epipilot.research.engine import ResearchEngine
+from epipilot.research.frontier import MeasurementContract, Quality
+from epipilot.research.measurement import Computer, Measured
+from epipilot.research.models import Metric
 from epipilot.workspace.onboarding import git
 
-AlgorithmId = Literal["dual_momentum", "trend_risk_parity", "defensive_momentum"]
+AlgorithmId = Literal[
+    "dual_momentum",
+    "dual_momentum_12vol",
+    "dual_momentum_126trend",
+    "dual_momentum_126trend_15vol",
+    "dual_momentum_126trend_135vol",
+    "dual_momentum_252trend",
+    "dual_momentum_252trend_15vol",
+    "trend_risk_parity",
+    "defensive_momentum",
+]
+
+ETF_ALGORITHM_ADAPTERS: dict[str, AlgorithmId] = {
+    "quant_etf_dual_momentum_v1": "dual_momentum",
+    "quant_etf_dual_momentum_12vol_v1": "dual_momentum_12vol",
+    "quant_etf_dual_momentum_126trend_v1": "dual_momentum_126trend",
+    "quant_etf_dual_momentum_126trend_15vol_v1": "dual_momentum_126trend_15vol",
+    "quant_etf_dual_momentum_126trend_135vol_v1": "dual_momentum_126trend_135vol",
+    "quant_etf_dual_momentum_252trend_v1": "dual_momentum_252trend",
+    "quant_etf_dual_momentum_252trend_15vol_v1": "dual_momentum_252trend_15vol",
+    "quant_etf_trend_risk_parity_v1": "trend_risk_parity",
+    "quant_etf_defensive_momentum_v1": "defensive_momentum",
+}
 
 
 class ExecutionRequest(BaseModel):
@@ -171,6 +198,110 @@ class LocalAlgorithmExecutor:
             return repository_file(self.repo, str(relative))
         except (ValueError, KeyError, TypeError) as error:
             raise ValueError("Local adapter returned an invalid receipt path") from error
+
+
+class ETFAlgorithmComputer:
+    """Bridge a fixed ETF algorithm contract to the committed local runner."""
+
+    quality = Quality.MEASUREMENT
+
+    def __init__(
+        self,
+        *,
+        engine: ResearchEngine,
+        repository: Path,
+        executor: AlgorithmExecutorPort,
+        adapter_id: str,
+        algorithm_id: AlgorithmId,
+    ) -> None:
+        if ETF_ALGORITHM_ADAPTERS.get(adapter_id) != algorithm_id:
+            raise ValueError("adapter does not match configured algorithm")
+        self.engine = engine
+        self.repository = repository.resolve()
+        self.executor = executor
+        self.adapter_id = adapter_id
+        self.algorithm_id = algorithm_id
+
+    def measure(self, root: Path, contract: MeasurementContract) -> Measured:
+        if root.resolve() != self.repository:
+            raise ValueError("ETF algorithm repository does not match contract root")
+        if contract.adapter != self.adapter_id:
+            raise ValueError("contract adapter does not match configured algorithm")
+        research = self.engine.state.research
+        if research is None:
+            raise ValueError("ETF algorithm requires configured canonical research")
+        route_digest = hashlib.sha256(
+            f"{self.engine.project_id}:{contract.proposal_id}:{contract.fingerprint()}".encode()
+        ).hexdigest()[:24]
+        round_index = len(research.reviews) + 1
+        request = ExecutionRequest(
+            route_run_id=f"carts-{route_digest}",
+            round_index=round_index,
+            algorithm_id=self.algorithm_id,
+        )
+        manifest = self.executor.execute(request)
+        receipt = verify_execution(self.repository, manifest, request.route_run_id, round_index)
+        if receipt.algorithm_id != self.algorithm_id:
+            raise ValueError("execution receipt algorithm differs from the registered adapter")
+        contracted_inputs = {(item.path, item.sha256) for item in contract.inputs}
+        measured_inputs = {(item.path, item.sha256) for item in receipt.input_files}
+        if contracted_inputs != measured_inputs:
+            raise ValueError("execution receipt inputs differ from the measurement contract")
+        metrics = tuple(
+            Metric(name=name, value=value)
+            for item in receipt.metrics
+            for name, value in (
+                (
+                    f"{self.algorithm_id}.{item.variant}.{item.cost_bps:g}bp.cagr",
+                    item.cagr,
+                ),
+                (
+                    f"{self.algorithm_id}.{item.variant}.{item.cost_bps:g}bp.mdd_abs",
+                    abs(item.max_drawdown),
+                ),
+                (
+                    f"{self.algorithm_id}.{item.variant}.{item.cost_bps:g}bp.annualized_turnover",
+                    item.annualized_turnover,
+                ),
+            )
+        )
+        primary = [
+            item for item in receipt.metrics if item.variant == "candidate" and item.cost_bps == 5.0
+        ]
+        if len(primary) != 1:
+            raise ValueError("execution receipt requires one candidate 5bp path")
+        daily_path = repository_file(self.repository, primary[0].daily_path)
+        with daily_path.open(newline="", encoding="utf-8") as handle:
+            samples = sum(1 for _ in csv.DictReader(handle))
+        if samples < 2:
+            raise ValueError("candidate 5bp path requires at least two daily samples")
+        return Measured(
+            metrics=metrics,
+            samples=samples,
+            details=(
+                f"algorithm_id={self.algorithm_id}",
+                f"route_run_id={request.route_run_id}",
+                f"receipt_sha256={hashlib.sha256(manifest.read_bytes()).hexdigest()}",
+            ),
+        )
+
+
+def etf_algorithm_computers(
+    engine: ResearchEngine,
+    repository: Path,
+    executor: AlgorithmExecutorPort,
+) -> Mapping[str, Computer]:
+    """Explicit registry for the fixed adapters implemented by the ETF runner."""
+    return {
+        adapter_id: ETFAlgorithmComputer(
+            engine=engine,
+            repository=repository,
+            executor=executor,
+            adapter_id=adapter_id,
+            algorithm_id=algorithm_id,
+        )
+        for adapter_id, algorithm_id in ETF_ALGORITHM_ADAPTERS.items()
+    }
 
 
 def execution_summary(receipt: ExecutionReceipt) -> str:

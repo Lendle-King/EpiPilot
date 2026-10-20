@@ -23,9 +23,18 @@ from pydantic import BaseModel, Field
 from epipilot.research.agent_service import AgentService
 from epipilot.research.engine import ResearchEngine
 from epipilot.research.etf import ETFAdapter
+from epipilot.research.measurement import (
+    Computer,
+    IntegrityComputer,
+    MissingnessComputer,
+    SeriesComputer,
+)
 from epipilot.research.reporting import report as carts_report
 from epipilot.runtime.sqlite_event_store import SqliteEventStore
-from epipilot.workspace.algorithm_execution import LocalAlgorithmExecutor
+from epipilot.workspace.algorithm_execution import (
+    LocalAlgorithmExecutor,
+    etf_algorithm_computers,
+)
 from epipilot.workspace.browser_bridge import (
     ExtensionBridgeHub,
     ExtensionChatGPTDriver,
@@ -706,11 +715,19 @@ def _carts_adapter(project_id: str) -> ETFAdapter:
 
 
 def _agent_service(engine: ResearchEngine) -> AgentService:
-
     r = engine.state.research
     if r is None or r.frontier is None:
         raise ValueError("agent frontier not configured")
-    return AgentService(engine, Path(r.frontier.repository))
+    repository = Path(r.frontier.repository)
+    computers: dict[str, Computer] = {
+        "missingness": MissingnessComputer(),
+        "series": SeriesComputer(),
+        "integrity": IntegrityComputer(),
+    }
+    executor = _local_algorithm_executor(repository)
+    if executor is not None:
+        computers.update(etf_algorithm_computers(engine, repository, executor))
+    return AgentService(engine, repository, computers=computers)
 
 
 def _research_status(engine: ResearchEngine) -> dict[str, object]:

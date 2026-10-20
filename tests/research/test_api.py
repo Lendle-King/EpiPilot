@@ -40,3 +40,17 @@ def test_agent_frontier_dispatches_registered_adapter_and_requires_discovery(tmp
     assert client.get("/api/projects/agent/research-agent/loop").json()["agent"]["questions"][0][
         "closed"
     ]
+
+
+def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, monkeypatch):
+    from test_agent_cycle import discovered
+
+    engine, _root, _batch = discovered(tmp_path)
+    monkeypatch.setattr(api, "_local_algorithm_executor", lambda repository: object())
+
+    service = api._agent_service(engine)
+
+    assert "missingness" in service.adapter.computers
+    assert "series" in service.adapter.computers
+    assert "integrity" in service.adapter.computers
+    assert "quant_etf_dual_momentum_126trend_135vol_v1" in service.adapter.computers

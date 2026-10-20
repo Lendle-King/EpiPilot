@@ -86,6 +86,13 @@ fields and validation before that adapter can be registered. For costly/non-dete
 `ExperimentRunner` / `EvidenceVerifier` ports with an independently specified artifact
 verifier; these are Python extension seams, not a dynamic arbitrary `--check` command.
 A domain host must supply its registered binding before the generic CLI can execute it.
+The local workspace API supplies an explicit QUANT_ETF binding when the adopted
+repository contains `scripts/run_epipilot_algorithm_round.py` and
+`EPIPILOT_ALGORITHM_PYTHON` is configured. Adapter IDs are allowlisted one-to-one to
+fixed algorithms; the runner receipt must match the proposal's adapter, canonical review
+number, and exact input digest set. Verification rechecks the receipt and recomputes
+metrics from the daily artifacts. These measurements remain development evidence and do
+not qualify PIT membership or prospective performance.
 
 The built-in runner meters wall_seconds. Unknown units are rejected instead of treated as
 free. Existing generic ports support typed multi-unit cost vectors and real overrun
