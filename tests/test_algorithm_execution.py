@@ -69,6 +69,23 @@ def test_receipt_recomputes_metrics_from_real_daily_artifact(tmp_path: Path) -> 
     assert receipt.metrics[0].max_drawdown == pytest.approx(-0.1)
 
 
+def test_receipt_accepts_typed_runtime_metadata_from_algorithm_runner(tmp_path: Path) -> None:
+    path = receipt_fixture(tmp_path)
+    payload = json.loads(path.read_text())
+    payload["runtime"] = {
+        "python_executable": "/opt/python/bin/python",
+        "python_version": "3.12.7",
+        "numpy_version": "1.26.4",
+        "pandas_version": "3.0.2",
+    }
+    path.write_text(json.dumps(payload))
+
+    receipt = verify_execution(tmp_path, path, "route26", 26)
+
+    assert receipt.runtime is not None
+    assert receipt.runtime.python_version == "3.12.7"
+
+
 def test_uncommitted_adapter_is_rejected_before_subprocess(tmp_path: Path) -> None:
     import subprocess
     import sys

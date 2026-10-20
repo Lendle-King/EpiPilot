@@ -74,10 +74,19 @@ class ExecutionMetric(BaseModel):
     annualized_turnover: float = Field(ge=0)
 
 
+class ExecutionRuntime(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    python_executable: str = Field(min_length=1)
+    python_version: str = Field(min_length=1)
+    numpy_version: str = Field(min_length=1)
+    pandas_version: str = Field(min_length=1)
+
+
 class ExecutionReceipt(ExecutionRequest):
     started_at_utc: datetime
     finished_at_utc: datetime
     scope: Literal["exploratory_public_history"]
+    runtime: ExecutionRuntime | None = None
     initial_cash: float = Field(gt=0, allow_inf_nan=False)
     input_files: list[FileDigest] = Field(min_length=1)
     artifacts: list[FileDigest] = Field(min_length=1)
