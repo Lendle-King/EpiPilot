@@ -101,6 +101,20 @@ def test_sse_lifecycle_archive_rejects_non_sse_urls_before_network_access(tmp_pa
         SSELifecycleArchiveComputer(fetcher=fetch).measure(tmp_path, contract)
 
 
+def test_sse_lifecycle_archive_accepts_official_new_announcement_path(tmp_path: Path) -> None:
+    url = (
+        "https://www.sse.com.cn/disclosure/fund/announcement/c/new/2022-09-01/"
+        "512100_20220901_1_3EvmduvU.pdf"
+    )
+    contract = make_contract(tmp_path, url=url)
+
+    measured = SSELifecycleArchiveComputer(fetcher=lambda _: response(final_url=url)).measure(
+        tmp_path, contract
+    )
+
+    assert {item.name: item.value for item in measured.metrics}["reachable_http_200"] == 1
+
+
 def test_sse_lifecycle_archive_measures_changed_live_archive_bytes(tmp_path: Path) -> None:
     contract = make_contract(tmp_path)
 

@@ -69,7 +69,8 @@ unique daily return series (252-trading-day CAGR only at >=252 observations); `i
 checks input availability. Rule thresholds are preregistered, not selected after results.
 The loopback workspace API also registers `sse_lifecycle_archive_v1` for QUANT_ETF source
 checks. It binds each response body to a strict capture manifest, re-fetches only allowlisted
-`www.sse.com.cn` announcement URLs over HTTPS without following redirects, and independently
+`www.sse.com.cn` announcement URLs over HTTPS (including the official optional `/new/` path)
+without following redirects, and independently
 checks current status, media type, HTTP Date and byte SHA-256. Its quality is MEASUREMENT for
 the narrow live-retrieval property; its scope remains `integrity`. It cannot establish an
 announcement's first-publication time, archive completeness, historical universe membership

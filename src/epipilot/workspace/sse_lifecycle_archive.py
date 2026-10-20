@@ -28,7 +28,7 @@ _SCHEMA = "sse-lifecycle-archive-capture/v1"
 _MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 _CAPTURE_MAX_AGE_SECONDS = 24 * 60 * 60
 _FUND_ARCHIVE_PATH = re.compile(
-    r"^/disclosure/fund/announcement/c/\d{4}-\d{2}-\d{2}/"
+    r"^/disclosure/fund/announcement/c/(?:new/)?\d{4}-\d{2}-\d{2}/"
     r"\d{6}_\d{8}_[A-Za-z0-9_-]+\.pdf$"
 )
 _LISTING_ARCHIVE_PATH = re.compile(r"^/disclosure/announcement/listing/c/c_\d{8}_\d+\.shtml$")
