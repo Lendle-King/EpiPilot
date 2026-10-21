@@ -54,6 +54,10 @@ from epipilot.workspace.commoncrawl_sse_notice import (
     ADAPTER_ID as COMMONCRAWL_SSE_NOTICE_ADAPTER_ID,
 )
 from epipilot.workspace.commoncrawl_sse_notice import CommonCrawlSseNoticeComputer
+from epipilot.workspace.commoncrawl_sse_pcf_archive import (
+    ADAPTER_ID as COMMONCRAWL_SSE_PCF_ADAPTER_ID,
+)
+from epipilot.workspace.commoncrawl_sse_pcf_archive import CommonCrawlSSEPCFArchiveComputer
 from epipilot.workspace.commoncrawl_szse_pcf import (
     ADAPTER_ID as COMMONCRAWL_SZSE_PCF_ADAPTER_ID,
 )
@@ -796,6 +800,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
         WAYBACK_SSE_PDF_ATTACHMENT_ADAPTER_ID: WaybackSsePDFAttachmentComputer(),
         WAYBACK_SSE_PCF_ARCHIVE_ADAPTER_ID: WaybackSSEPCFArchiveComputer(),
+        COMMONCRAWL_SSE_PCF_ADAPTER_ID: CommonCrawlSSEPCFArchiveComputer(),
         WAYBACK_SZSE_PCF_ADAPTER_ID: WaybackSZSEPCFComputer(),
         ARQUIVO_SZSE_PCF_ADAPTER_ID: ArquivoSZSEPCFComputer(),
         HUAAN_PCF_ARCHIVE_ADAPTER_ID: HuaanPCFArchiveComputer(),

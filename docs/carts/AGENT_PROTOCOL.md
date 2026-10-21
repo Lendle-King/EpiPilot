@@ -175,6 +175,18 @@ historical universe membership, PIT qualification or prospective strategy perfor
 adapter is registered by the local workspace API and uses `MEASUREMENT` quality with
 `integrity` scope.
 
+The QUANT_ETF host also registers `commoncrawl_sse_pcf_v1` for exact official SSE code-addressed
+PCF download URLs. A pinned target binds the fund code, trading day, Common Crawl collection and
+published window, and 09:15 Asia/Shanghai cutoff. The adapter queries only the collection's exact
+URL index, requests at most two eligible pre-cutoff WARC byte ranges, and verifies the complete
+range, exact WARC target URI, collection timestamp, CDX/WARC/payload digest and internal PCF
+fund-code/trading-day identity. It rejects other hosts, malformed ranges, oversized records,
+redirects, future/mismatched timestamps and invalid identities. Empty index rows and the exact
+HTTP 404 JSON `No Captures found for: <target URL>` are bounded zero-capture observations; they
+do not prove archive-wide absence, first-publication time, complete PIT universe membership or
+strategy performance. Requests are anonymous HTTPS GETs without cookies, use an eight-second
+timeout and do not follow redirects. This is a `MEASUREMENT`-quality `integrity` check.
+
 The QUANT_ETF host also registers `commoncrawl_szse_pcf_v1` for the four pinned SZSE PCF
 targets. Full and one-target manifests are bound to fixed URLs, collection windows and
 09:15 Asia/Shanghai cutoffs; the response-only probe records index response semantics
