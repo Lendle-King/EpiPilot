@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+
 from epipilot.research.frontier import InputFile, MeasurementContract, Purpose, Rule
 from epipilot.workspace.wayback_szse_pcf import (
     ADAPTER_ID,
@@ -153,6 +155,54 @@ def test_replay_must_match_cdx_sha1_length_and_gbk_identity(tmp_path: Path) -> N
     assert values["raw_replays_fetched"] == 1
     assert values["raw_sha1_length_matches_cdx"] == 0
     assert values["gbk_identity_matches"] == 0
+
+
+@pytest.mark.parametrize(
+    ("wrong_identity_body", "wrong_identity_digest"),
+    [
+        (
+            "申购赎回清单 159949 2019-01-11\r\n".encode("gbk"),
+            "ZWUM5EJHXG26PRVXPXQ5LZJFH63NXN5V",
+        ),
+        (
+            "申购赎回清单 159915 2019-01-12\r\n".encode("gbk"),
+            "46OQN7YRIUKE7OPOR7N64PQTLL3OM3JW",
+        ),
+    ],
+    ids=("wrong-code", "wrong-date"),
+)
+def test_matching_replay_bytes_with_wrong_gbk_identity_are_not_a_witness(
+    tmp_path: Path, wrong_identity_body: bytes, wrong_identity_digest: str
+) -> None:
+    contract = _contract(tmp_path)
+
+    def fetch(url: str) -> WaybackResponse:
+        if urlparse(url).path == "/cdx/search/cdx":
+            target = parse_qs(urlparse(url).query)["url"][0]
+            rows = (
+                [
+                    [
+                        TARGET_TIME,
+                        TARGET_URL,
+                        "text/plain",
+                        "200",
+                        wrong_identity_digest,
+                        str(len(wrong_identity_body)),
+                    ]
+                ]
+                if target == TARGET_URL
+                else []
+            )
+            return _response(url, _cdx_body(rows))
+        return _response(url, wrong_identity_body)
+
+    measured = WaybackSZSEPCFComputer(fetcher=fetch).measure(tmp_path, contract)
+    values = _values(measured)
+
+    assert values["raw_replays_fetched"] == 1
+    assert values["raw_sha1_length_matches_cdx"] == 1
+    assert values["gbk_identity_matches"] == 0
+    assert values["verified_pre_cutoff_targets"] == 0
 
 
 def test_v2_manifest_replays_only_the_latest_candidate_per_target(tmp_path: Path) -> None:
