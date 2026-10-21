@@ -63,6 +63,10 @@ from epipilot.workspace.sse_lifecycle_archive import (
 from epipilot.workspace.sse_lifecycle_archive import (
     SSELifecycleArchiveComputer,
 )
+from epipilot.workspace.szse_pcf_archive import (
+    SZSE_PCF_ARCHIVE_ADAPTER_ID,
+    SZSEPCFArchiveComputer,
+)
 from epipilot.workspace.wayback_sse_notice import (
     ADAPTER_ID as WAYBACK_SSE_NOTICE_V2_ADAPTER_ID,
 )
@@ -744,6 +748,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         "series": SeriesComputer(),
         "integrity": IntegrityComputer(),
         SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID: SSELifecycleArchiveComputer(),
+        SZSE_PCF_ARCHIVE_ADAPTER_ID: SZSEPCFArchiveComputer(),
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
         COMMONCRAWL_SSE_NOTICE_ADAPTER_ID: CommonCrawlSseNoticeComputer(),
     }
