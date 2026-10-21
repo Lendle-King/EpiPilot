@@ -273,6 +273,11 @@ does not infer the strategy identity of the supplied base targets. A proposal mu
 bind and explain the base-path provenance; this adapter alone cannot qualify PIT membership,
 prospective performance, or the project's goal.
 
+The QUANT_ETF host also registers `quant_etf_exposure_sensitivity_v2` through the same isolated
+runner. It measures only the fixed 21/22/23% scales (multipliers 21/18, 22/18, and 23/18) of the
+supplied GoldVol18 lag-1 target path, capped at 100% gross, over the same 0/5/10/20 bp cost grid.
+As with v1, the proposal must pin the base-path provenance, and the result is development-only.
+
 The built-in runner meters wall_seconds. Unknown units are rejected instead of treated as
 free. Existing generic ports support typed multi-unit cost vectors and real overrun
 settlement. Cost of semantic coding-agent reasoning/API use is NOT metered automatically;

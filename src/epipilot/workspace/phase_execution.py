@@ -13,6 +13,7 @@ from epipilot.research.measurement import Computer, Measured
 PHASE_COMPARISON_ADAPTER_ID = "quant_etf_phase_comparison_v1"
 PHASE_COMPARISON_ADAPTER_V2_ID = "quant_etf_phase_comparison_v2"
 EXPOSURE_SENSITIVITY_ADAPTER_ID = "quant_etf_exposure_sensitivity_v1"
+EXPOSURE_SENSITIVITY_ADAPTER_V2_ID = "quant_etf_exposure_sensitivity_v2"
 TRADE_BAND_COMPARISON_ADAPTER_ID = "quant_etf_trade_band_comparison_v1"
 PHASE_COMPARISON_CODE_PATHS = (
     "src/quant_etf/allocation.py",
@@ -43,6 +44,17 @@ from quant_etf.carts_phase_computer import ExposureSensitivityComputer
 
 contract = MeasurementContract.model_validate_json(sys.stdin.read())
 measurement = ExposureSensitivityComputer().measure(Path.cwd(), contract)
+sys.stdout.write(measurement.model_dump_json())
+"""
+
+_EXPOSURE_ABOVE21_RUNNER = """
+import sys
+from pathlib import Path
+from epipilot.research.frontier import MeasurementContract
+from quant_etf.carts_phase_computer import ExposureSensitivityAbove21Computer
+
+contract = MeasurementContract.model_validate_json(sys.stdin.read())
+measurement = ExposureSensitivityAbove21Computer().measure(Path.cwd(), contract)
 sys.stdout.write(measurement.model_dump_json())
 """
 
@@ -213,14 +225,75 @@ class SubprocessExposureSensitivityComputer:
         )
 
 
+class SubprocessExposureSensitivityAbove21Computer(SubprocessExposureSensitivityComputer):
+    """Run the versioned 21-23% exposure grid in the isolated QUANT interpreter."""
+
+    def measure(self, root: Path, contract: MeasurementContract) -> Measured:
+        if contract.adapter != EXPOSURE_SENSITIVITY_ADAPTER_V2_ID:
+            raise ValueError("contract uses another exposure-sensitivity v2 adapter")
+        if len(contract.inputs) != 2:
+            raise ValueError("exposure sensitivity v2 requires the phase panel and event inputs")
+        repository = root.resolve()
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repository),
+                "diff",
+                "--quiet",
+                contract.git_revision,
+                "--",
+                *PHASE_COMPARISON_CODE_PATHS,
+            ],
+            check=False,
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            raise ValueError("exposure-sensitivity v2 code differs from its pinned revision")
+
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key in {"PATH", "LANG", "LC_ALL", "TMPDIR", "SYSTEMROOT"}
+        }
+        env["PYTHONPATH"] = os.pathsep.join((str(repository / "src"), str(self.epipilot_source)))
+        process = subprocess.run(
+            [str(self.python_executable), "-c", _EXPOSURE_ABOVE21_RUNNER],
+            input=contract.model_dump_json(),
+            cwd=repository,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=PHASE_COMPARISON_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if process.returncode != 0:
+            raise ValueError(f"exposure-sensitivity v2 process failed (exit {process.returncode})")
+        try:
+            measured = Measured.model_validate_json(process.stdout)
+        except ValueError:
+            raise ValueError(
+                "exposure-sensitivity v2 process returned invalid measurement JSON"
+            ) from None
+        adapter_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        return Measured(
+            metrics=measured.metrics,
+            samples=measured.samples,
+            details=(*measured.details, f"epipilot_adapter_sha256={adapter_digest}"),
+        )
+
+
 def exposure_sensitivity_computers(
     python_executable: Path, epipilot_source: Path
 ) -> dict[str, Computer]:
-    """Register the one fixed role-labelled portfolio exposure sensitivity adapter."""
+    """Register fixed role-labelled exposure adapters for the 18-20 and 21-23 grids."""
     return {
         EXPOSURE_SENSITIVITY_ADAPTER_ID: SubprocessExposureSensitivityComputer(
             python_executable, epipilot_source
-        )
+        ),
+        EXPOSURE_SENSITIVITY_ADAPTER_V2_ID: SubprocessExposureSensitivityAbove21Computer(
+            python_executable, epipilot_source
+        ),
     }
 
 

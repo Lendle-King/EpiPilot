@@ -15,8 +15,10 @@ from epipilot.research.measurement import Measured
 from epipilot.research.models import Metric
 from epipilot.workspace.phase_execution import (
     EXPOSURE_SENSITIVITY_ADAPTER_ID,
+    EXPOSURE_SENSITIVITY_ADAPTER_V2_ID,
     PHASE_COMPARISON_ADAPTER_ID,
     TRADE_BAND_COMPARISON_ADAPTER_ID,
+    SubprocessExposureSensitivityAbove21Computer,
     SubprocessExposureSensitivityComputer,
     SubprocessPhaseComparisonComputer,
     SubprocessTradeBandComparisonComputer,
@@ -220,6 +222,45 @@ def test_exposure_sensitivity_computer_is_registered_and_runs_in_isolation(
     assert kwargs["timeout"] == 7200
     assert "PYTHONPATH" in kwargs["env"]  # type: ignore[operator]
     assert "EPIPILOT_ALGORITHM_PYTHON" not in kwargs["env"]  # type: ignore[operator]
+
+
+def test_exposure_sensitivity_v2_computer_is_registered_and_runs_in_isolation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = _contract(tmp_path).model_copy(
+        update={"adapter": EXPOSURE_SENSITIVITY_ADAPTER_V2_ID}
+    )
+    result = Measured(metrics=(Metric(name="exposure22_fee10_cagr", value=0.153),), samples=1879)
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    real_run = subprocess.run
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "git":
+            return real_run(args, **kwargs)  # type: ignore[arg-type]
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, stdout=result.model_dump_json(), stderr="")
+
+    monkeypatch.setattr("epipilot.workspace.phase_execution.subprocess.run", run)
+    computers = exposure_sensitivity_computers(
+        Path(sys.executable), Path(__file__).parents[1] / "src"
+    )
+
+    measured = computers[EXPOSURE_SENSITIVITY_ADAPTER_V2_ID].measure(tmp_path, contract)
+
+    assert isinstance(
+        computers[EXPOSURE_SENSITIVITY_ADAPTER_V2_ID],
+        SubprocessExposureSensitivityAbove21Computer,
+    )
+    assert measured.metrics == result.metrics
+    assert measured.samples == result.samples
+    assert measured.details[0].startswith("epipilot_adapter_sha256=")
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args[:2] == [str(Path(sys.executable).absolute()), "-c"]
+    assert json.loads(kwargs["input"])["adapter"] == EXPOSURE_SENSITIVITY_ADAPTER_V2_ID
+    assert kwargs["cwd"] == tmp_path
+    assert kwargs["timeout"] == 7200
+    assert "PYTHONPATH" in kwargs["env"]  # type: ignore[operator]
 
 
 def test_trade_band_computer_is_registered_and_runs_in_isolation(
