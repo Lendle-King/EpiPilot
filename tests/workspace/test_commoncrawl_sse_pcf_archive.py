@@ -14,10 +14,13 @@ import pytest
 
 from epipilot.research.frontier import InputFile, MeasurementContract, Purpose, Rule
 from epipilot.research.measurement import Measured
+from epipilot.workspace import commoncrawl_sse_pcf_archive as archive
 from epipilot.workspace.commoncrawl_sse_pcf_archive import (
     ADAPTER_ID,
+    ADAPTER_ID_LONG_INDEX_TIMEOUT,
     CommonCrawlResponse,
     CommonCrawlSSEPCFArchiveComputer,
+    CommonCrawlSSEPCFLongIndexTimeoutComputer,
 )
 
 PCF_URL = "https://query.sse.com.cn/etfDownload/downloadETF2Bulletin.do?fundCode=510300"
@@ -201,3 +204,34 @@ def test_commoncrawl_sse_pcf_rejects_non_sse_pcfs_before_network(tmp_path: Path)
 
     with pytest.raises(ValueError, match="exact SSE PCF download URL"):
         CommonCrawlSSEPCFArchiveComputer(fetcher=fetch).measure(tmp_path, contract)
+
+
+def test_long_index_timeout_adapter_uses_longer_index_and_bounded_warc_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = make_contract(tmp_path).model_copy(update={"adapter": ADAPTER_ID_LONG_INDEX_TIMEOUT})
+    compressed = warc_record()
+    observed: list[tuple[str, float]] = []
+
+    def fetch(url: str, headers: Mapping[str, str], timeout_seconds: float) -> CommonCrawlResponse:
+        parsed = urlparse(url)
+        if parsed.hostname == "index.commoncrawl.org":
+            observed.append(("index", timeout_seconds))
+            return response(body=index_body(warc_length=len(compressed)), final_url=url)
+        observed.append(("warc", timeout_seconds))
+        start = OFFSET
+        end = start + len(compressed) - 1
+        assert headers["Range"] == f"bytes={start}-{end}"
+        return response(
+            body=compressed,
+            final_url=url,
+            headers={"Content-Range": f"bytes {start}-{end}/999999"},
+            status=206,
+        )
+
+    monkeypatch.setattr(archive, "_fetch_commoncrawl", fetch)
+    measured = CommonCrawlSSEPCFLongIndexTimeoutComputer().measure(tmp_path, contract)
+
+    assert metrics_for(measured)["verified_pre_cutoff_pcf_captures"] == 1
+    assert observed == [("index", 16), ("warc", 8)]

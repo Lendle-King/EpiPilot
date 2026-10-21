@@ -7,6 +7,7 @@ import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import urlencode, urlparse
 from zoneinfo import ZoneInfo
 
@@ -26,11 +27,13 @@ from epipilot.workspace.commoncrawl_szse_pcf import _fetch_commoncrawl
 from epipilot.workspace.wayback_sse_pcf_archive import _parse_pcf_identity
 
 ADAPTER_ID = "commoncrawl_sse_pcf_v1"
+ADAPTER_ID_LONG_INDEX_TIMEOUT = "commoncrawl_sse_pcf_v2"
 _SCHEMA = "commoncrawl-sse-pcf-targets/v1"
 _INDEX_HOST = "index.commoncrawl.org"
 _DATA_HOST = "data.commoncrawl.org"
 _OFFICIAL_ENDPOINT = "https://query.sse.com.cn/etfDownload/downloadETF2Bulletin.do"
 _REQUEST_TIMEOUT_SECONDS = 8
+_LONG_INDEX_TIMEOUT_SECONDS = 16
 _MAX_TARGETS = 20
 _MAX_REPLAY_CANDIDATES = 2
 _MAX_WARC_RANGE_BYTES = 2 * 1024 * 1024
@@ -124,6 +127,9 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
     """Verify an exact pre-open SSE PCF capture from Common Crawl index and WARC bytes."""
 
     quality = Quality.MEASUREMENT
+    adapter_id: ClassVar[str] = ADAPTER_ID
+    index_timeout_seconds: ClassVar[int] = _REQUEST_TIMEOUT_SECONDS
+    warc_timeout_seconds: ClassVar[int] = _REQUEST_TIMEOUT_SECONDS
 
     def __init__(
         self,
@@ -134,10 +140,15 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
     def _fetch(self, url: str, headers: Mapping[str, str]) -> CommonCrawlResponse:
         if self._fetcher is not None:
             return self._fetcher(url, headers)
-        return _fetch_commoncrawl(url, headers, _REQUEST_TIMEOUT_SECONDS)
+        timeout = (
+            self.index_timeout_seconds
+            if urlparse(url).hostname == _INDEX_HOST
+            else self.warc_timeout_seconds
+        )
+        return _fetch_commoncrawl(url, headers, timeout)
 
     def measure(self, root: Path, contract: MeasurementContract) -> Measured:
-        if contract.adapter != ADAPTER_ID:
+        if contract.adapter != self.adapter_id:
             raise ValueError("contract uses another Common Crawl SSE PCF adapter")
         if len(contract.inputs) != 1:
             raise ValueError("contract must bind exactly one Common Crawl SSE PCF target manifest")
@@ -359,3 +370,10 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
             samples=len(targets),
             details=tuple(details),
         )
+
+
+class CommonCrawlSSEPCFLongIndexTimeoutComputer(CommonCrawlSSEPCFArchiveComputer):
+    """Allow more time for CDX index lookups while keeping WARC requests bounded."""
+
+    adapter_id: ClassVar[str] = ADAPTER_ID_LONG_INDEX_TIMEOUT
+    index_timeout_seconds: ClassVar[int] = _LONG_INDEX_TIMEOUT_SECONDS

@@ -187,6 +187,12 @@ do not prove archive-wide absence, first-publication time, complete PIT universe
 strategy performance. Requests are anonymous HTTPS GETs without cookies, use an eight-second
 timeout and do not follow redirects. This is a `MEASUREMENT`-quality `integrity` check.
 
+After an observed exact-index timeout, the host also registers `commoncrawl_sse_pcf_v2`. It
+preserves the same pinned-target, WARC-range, digest, timestamp and internal PCF identity checks,
+but allows up to 16 seconds for the exact CDX index request while keeping WARC range requests at
+eight seconds. It does not retry requests or treat a timeout as a missing capture; an unavailable
+index remains an inconclusive integrity observation.
+
 The QUANT_ETF host also registers `commoncrawl_szse_pcf_v1` for the four pinned SZSE PCF
 targets. Full and one-target manifests are bound to fixed URLs, collection windows and
 09:15 Asia/Shanghai cutoffs; the response-only probe records index response semantics
