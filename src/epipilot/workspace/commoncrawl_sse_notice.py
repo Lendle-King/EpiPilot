@@ -25,11 +25,11 @@ from epipilot.research.frontier import MeasurementContract, Quality
 from epipilot.research.measurement import Computer, Measured
 from epipilot.research.models import Metric
 
-ADAPTER_ID = "commoncrawl_sse_index_notice_v1"
+ADAPTER_ID = "commoncrawl_sse_index_notice_v2"
 _SCHEMA = "commoncrawl-sse-notice-targets/v1"
 _INDEX_HOST = "index.commoncrawl.org"
 _DATA_HOST = "data.commoncrawl.org"
-_REQUEST_TIMEOUT_SECONDS = 4
+_REQUEST_TIMEOUT_SECONDS = 8
 _MAX_TARGETS = 20
 _MAX_INDEX_BYTES = 1024 * 1024
 _MAX_WARC_BYTES = 10 * 1024 * 1024
@@ -160,6 +160,19 @@ def _parse_index(body: bytes) -> tuple[dict[str, object], ...]:
         if len(rows) > _MAX_CDX_ROWS:
             raise ValueError("Common Crawl index result limit reached")
     return tuple(rows)
+
+
+def _is_exact_no_captures(response: CommonCrawlResponse, target_url: str) -> bool:
+    if response.status != 404:
+        return False
+    try:
+        payload = json.loads(response.body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict) or set(payload) != {"message"}:
+        return False
+    message = payload["message"]
+    return isinstance(message, str) and message == f"No Captures found for: {target_url}"
 
 
 def _headers(raw: bytes) -> tuple[str, dict[str, str]]:
@@ -325,7 +338,8 @@ class CommonCrawlSseNoticeComputer(Computer):
         if len({item.url for item in targets}) != len(targets):
             raise ValueError("Common Crawl target manifest repeats an original URL")
 
-        index_200 = index_empty = index_rows = pre_cutoff = post_cutoff = 0
+        index_200 = index_empty = index_no_captures = index_rows = 0
+        pre_cutoff = post_cutoff = 0
         warc_requests = warc_failed = payload_digest_matches = target_matches = 0
         timestamp_matches = notice_dates_match = witnesses = index_failed = index_incomplete = 0
         index_bytes = 0
@@ -358,16 +372,29 @@ class CommonCrawlSseNoticeComputer(Computer):
                     f"{target.record_id}:index=unavailable,error={type(error).__name__}"
                 )
                 continue
-            if response.status != 200 or response.final_url != index_url:
+            if response.final_url != index_url:
+                index_failed += 1
+                observations.append(
+                    f"{target.record_id}:index=unavailable,status={response.status},redirected=1"
+                )
+                continue
+            index_bytes += len(response.body)
+            response_sha256 = hashlib.sha256(response.body).hexdigest()
+            if _is_exact_no_captures(response, target.url):
+                index_no_captures += 1
+                observations.append(
+                    f"{target.record_id}:index_status=404,index_no_captures=1,"
+                    f"index_bytes={len(response.body)},index_sha256={response_sha256}"
+                )
+                continue
+            if response.status != 200:
                 index_failed += 1
                 observations.append(
                     f"{target.record_id}:index=unavailable,status={response.status},"
-                    f"redirected={int(response.final_url != index_url)}"
+                    f"index_bytes={len(response.body)},index_sha256={response_sha256}"
                 )
                 continue
             index_200 += 1
-            index_bytes += len(response.body)
-            response_sha256 = hashlib.sha256(response.body).hexdigest()
             try:
                 rows = _parse_index(response.body)
             except ValueError:
@@ -513,6 +540,7 @@ class CommonCrawlSseNoticeComputer(Computer):
             metrics=(
                 Metric(name="index_http_200_responses", value=float(index_200)),
                 Metric(name="index_empty_responses", value=float(index_empty)),
+                Metric(name="index_no_captures_responses", value=float(index_no_captures)),
                 Metric(name="index_response_bytes", value=float(index_bytes)),
                 Metric(name="index_rows", value=float(index_rows)),
                 Metric(name="pre_cutoff_rows", value=float(pre_cutoff)),

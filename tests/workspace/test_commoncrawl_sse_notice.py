@@ -165,6 +165,41 @@ def test_commoncrawl_sse_notice_accepts_valid_empty_index_response(tmp_path: Pat
     assert metrics["index_queries_incomplete"] == 0
 
 
+def test_commoncrawl_sse_notice_records_exact_no_captures_404_as_zero_rows(
+    tmp_path: Path,
+) -> None:
+    contract = make_contract(tmp_path)
+    body = json.dumps({"message": f"No Captures found for: {NOTICE_URL}"}).encode()
+
+    def fetch(url: str, _: Mapping[str, str]) -> CommonCrawlResponse:
+        return response(body=body, final_url=url, status=404)
+
+    measured = CommonCrawlSseNoticeComputer(fetcher=fetch).measure(tmp_path, contract)
+    metrics = {metric.name: metric.value for metric in measured.metrics}
+
+    assert metrics["index_no_captures_responses"] == 1
+    assert metrics["index_requests_failed"] == 0
+    assert metrics["index_queries_incomplete"] == 0
+    assert metrics["index_rows"] == 0
+    assert metrics["verified_pre_cutoff_snapshots"] == 0
+
+
+def test_commoncrawl_sse_notice_does_not_treat_other_404_as_no_captures(
+    tmp_path: Path,
+) -> None:
+    contract = make_contract(tmp_path)
+    body = json.dumps({"message": "Not found"}).encode()
+
+    def fetch(url: str, _: Mapping[str, str]) -> CommonCrawlResponse:
+        return response(body=body, final_url=url, status=404)
+
+    measured = CommonCrawlSseNoticeComputer(fetcher=fetch).measure(tmp_path, contract)
+    metrics = {metric.name: metric.value for metric in measured.metrics}
+
+    assert metrics["index_no_captures_responses"] == 0
+    assert metrics["index_requests_failed"] == 1
+
+
 def test_commoncrawl_sse_notice_rejects_warc_payload_digest_mismatch(tmp_path: Path) -> None:
     contract = make_contract(tmp_path)
 
