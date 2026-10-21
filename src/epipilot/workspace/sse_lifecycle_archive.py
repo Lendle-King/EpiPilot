@@ -35,6 +35,7 @@ _FUND_ARCHIVE_DATE_PATH = re.compile(
     r"^/disclosure/fund/announcement/c/(?:new/)?(?P<date>\d{4}-\d{2}-\d{2})/"
 )
 _LISTING_ARCHIVE_PATH = re.compile(r"^/disclosure/announcement/listing/c/c_\d{8}_\d+\.shtml$")
+_INDEX_SAMPLE_NOTICE_PATH = re.compile(r"^/market/sseindex/diclosure/c/c_\d{8}_\d+\.shtml$")
 
 
 class ArchiveRecord(BaseModel):
@@ -117,6 +118,7 @@ def _is_allowlisted_url(value: str) -> bool:
         and (
             _FUND_ARCHIVE_PATH.fullmatch(parsed.path) is not None
             or _LISTING_ARCHIVE_PATH.fullmatch(parsed.path) is not None
+            or _INDEX_SAMPLE_NOTICE_PATH.fullmatch(parsed.path) is not None
         )
     )
 

@@ -21,14 +21,20 @@ URL = "https://www.sse.com.cn/disclosure/fund/announcement/c/2014-03-06/510520_2
 BODY = b"%PDF-1.4\nsynthetic SSE archived record\n%%EOF"
 
 
-def make_contract(root: Path, *, url: str = URL, body: bytes = BODY) -> MeasurementContract:
+def make_contract(
+    root: Path,
+    *,
+    url: str = URL,
+    body: bytes = BODY,
+    content_type: str = "application/pdf",
+) -> MeasurementContract:
     captured_at = datetime.now(UTC).isoformat()
     record = {
         "record_id": "510520-listing",
         "url": url,
         "body_path": "captures/listing.pdf",
         "status": 200,
-        "content_type": "application/pdf",
+        "content_type": content_type,
         "server_date": "Tue, 20 Oct 2026 19:00:00 GMT",
         "captured_at_utc": captured_at,
         "byte_count": len(body),
@@ -113,6 +119,22 @@ def test_sse_lifecycle_archive_accepts_official_new_announcement_path(tmp_path: 
     )
 
     assert {item.name: item.value for item in measured.metrics}["reachable_http_200"] == 1
+
+
+def test_sse_lifecycle_archive_accepts_official_index_sample_notice(tmp_path: Path) -> None:
+    url = "https://www.sse.com.cn/market/sseindex/diclosure/c/c_20210528_5476669.shtml"
+    body = b"<html><body>2021-05-28 2021-06-11</body></html>"
+    contract = make_contract(tmp_path, url=url, body=body, content_type="text/html")
+    headers = {"Content-Type": "text/html", "Date": "Tue, 20 Oct 2026 19:00:00 GMT"}
+
+    measured = SSELifecycleArchiveComputer(
+        fetcher=lambda _: response(body=body, final_url=url, headers=headers)
+    ).measure(tmp_path, contract)
+
+    metrics = {item.name: item.value for item in measured.metrics}
+    assert metrics["reachable_http_200"] == 1
+    assert metrics["content_type_matches"] == 1
+    assert metrics["body_sha256_matches"] == 1
 
 
 def test_sse_lifecycle_archive_measures_changed_live_archive_bytes(tmp_path: Path) -> None:
