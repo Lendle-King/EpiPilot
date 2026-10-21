@@ -31,9 +31,11 @@ def _url(code: str, day: str) -> str:
     return f"https://reportdocs.static.szse.cn/files/text/etf/ETF{code}{day.replace('-', '')}.txt"
 
 
-def _contract(root: Path) -> MeasurementContract:
+def _contract(root: Path, *, bounded_replay: bool = False) -> MeasurementContract:
     manifest = {
-        "schema": "szse-pcf-wayback-targets/v1",
+        "schema": (
+            "szse-pcf-wayback-targets/v2" if bounded_replay else "szse-pcf-wayback-targets/v1"
+        ),
         "targets": [
             {
                 "record_id": f"{code}-{day}",
@@ -45,6 +47,8 @@ def _contract(root: Path) -> MeasurementContract:
             for code, day in PINNED
         ],
     }
+    if bounded_replay:
+        manifest["replay_candidate_limit"] = 1
     path = root / "targets.json"
     content = json.dumps(manifest, separators=(",", ":")).encode()
     path.write_bytes(content)
@@ -149,6 +153,37 @@ def test_replay_must_match_cdx_sha1_length_and_gbk_identity(tmp_path: Path) -> N
     assert values["raw_replays_fetched"] == 1
     assert values["raw_sha1_length_matches_cdx"] == 0
     assert values["gbk_identity_matches"] == 0
+
+
+def test_v2_manifest_replays_only_the_latest_candidate_per_target(tmp_path: Path) -> None:
+    contract = _contract(tmp_path, bounded_replay=True)
+    latest = "20190111011459"
+    earlier = "20190111011458"
+    changed = "申购赎回清单 159915 2019-01-12\r\n".encode("gbk")
+    replayed: list[str] = []
+
+    def fetch(url: str) -> WaybackResponse:
+        if urlparse(url).path == "/cdx/search/cdx":
+            target = parse_qs(urlparse(url).query)["url"][0]
+            rows = (
+                [
+                    [latest, TARGET_URL, "text/plain", "200", TARGET_DIGEST, str(len(BODY))],
+                    [earlier, TARGET_URL, "text/plain", "200", TARGET_DIGEST, str(len(BODY))],
+                ]
+                if target == TARGET_URL
+                else []
+            )
+            return _response(url, _cdx_body(rows))
+        replayed.append(url)
+        return _response(url, changed if latest in url else BODY)
+
+    measured = WaybackSZSEPCFComputer(fetcher=fetch).measure(tmp_path, contract)
+
+    values = _values(measured)
+    assert values["raw_replays_fetched"] == 1
+    assert values["verified_pre_cutoff_targets"] == 0
+    assert len(replayed) == 1
+    assert latest in replayed[0]
 
 
 def test_independent_refetch_reproduces_the_same_verified_measurement(tmp_path: Path) -> None:

@@ -104,7 +104,9 @@ the Internet Archive CDX exact-URL endpoint, replays at most the two latest cand
 target, and counts a witness only when its capture time is strictly before the cutoff, raw
 replay SHA-1 and byte length match CDX, and strict GBK decoding contains the target ETF code
 and date. Empty indexes, unavailable replays and mismatches do not prove historical absence or
-source first-publication time. Requests are anonymous HTTPS GETs without cookies or redirects;
+source first-publication time. Manifest v1 checks up to two latest candidates; v2 pins one
+candidate per target to bound the R254 measurement and independent re-fetch cost. Requests are
+anonymous HTTPS GETs without cookies or redirects;
 this adapter is `MEASUREMENT` quality and `integrity` scope, not PIT qualification or strategy
 performance evidence.
 

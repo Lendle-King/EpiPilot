@@ -23,7 +23,8 @@ _SCHEMA = "szse-pcf-wayback-targets/v1"
 _CDX_ENDPOINT = "https://web.archive.org/cdx/search/cdx"
 _MAX_TARGETS = 4
 _MAX_CDX_ROWS = 1000
-_REPLAY_CANDIDATE_LIMIT = 2
+_V1_REPLAY_CANDIDATE_LIMIT = 2
+_V2_REPLAY_CANDIDATE_LIMIT = 1
 _PINNED_TARGETS = (
     (
         "159915",
@@ -59,14 +60,28 @@ class _Target:
     cutoff_utc: datetime
 
 
-def _read_targets(path: Path) -> tuple[_Target, ...]:
+def _read_targets(path: Path) -> tuple[tuple[_Target, ...], int]:
     try:
         payload = json.loads(path.read_bytes())
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("SZSE Wayback target manifest is not valid UTF-8 JSON") from error
-    if not isinstance(payload, dict) or set(payload) != {"schema", "targets"}:
+    if not isinstance(payload, dict):
         raise ValueError("SZSE Wayback manifest fields differ from the registered schema")
-    if payload["schema"] != _SCHEMA:
+    schema = payload.get("schema")
+    if schema == _SCHEMA:
+        if set(payload) != {"schema", "targets"}:
+            raise ValueError("SZSE Wayback v1 manifest fields differ from the registered schema")
+        replay_candidate_limit = _V1_REPLAY_CANDIDATE_LIMIT
+    elif schema == "szse-pcf-wayback-targets/v2":
+        if set(payload) != {"schema", "targets", "replay_candidate_limit"}:
+            raise ValueError("SZSE Wayback v2 manifest fields differ from the registered schema")
+        if (
+            type(payload["replay_candidate_limit"]) is not int
+            or payload["replay_candidate_limit"] != _V2_REPLAY_CANDIDATE_LIMIT
+        ):
+            raise ValueError("SZSE Wayback v2 candidate limit must be exactly one")
+        replay_candidate_limit = _V2_REPLAY_CANDIDATE_LIMIT
+    else:
         raise ValueError("unsupported SZSE Wayback target manifest")
     raw_targets = payload["targets"]
     if not isinstance(raw_targets, list) or len(raw_targets) != _MAX_TARGETS:
@@ -111,7 +126,7 @@ def _read_targets(path: Path) -> tuple[_Target, ...]:
         )
     if seen != set(pinned):
         raise ValueError("SZSE Wayback manifest does not contain every fixed target exactly once")
-    return tuple(targets)
+    return tuple(targets), replay_candidate_limit
 
 
 def _cdx_url(target: _Target) -> str:
@@ -177,7 +192,7 @@ class WaybackSZSEPCFComputer(Computer):
         if contract.adapter != ADAPTER_ID or len(contract.inputs) != 1:
             raise ValueError("SZSE Wayback requires its adapter and one fixed target manifest")
         target_path = safe_input(root, contract.inputs[0].path)
-        targets = _read_targets(target_path)
+        targets, replay_candidate_limit = _read_targets(target_path)
         counts = {
             "cdx_exact_rows": 0,
             "raw_replays_fetched": 0,
@@ -223,6 +238,7 @@ class WaybackSZSEPCFComputer(Computer):
             counts["candidate_limit_reached"] += int(candidate_limit_reached)
             details.append(
                 f"{target.record_id}:cdx_rows={len(rows)},cdx_sha256={cdx_sha256},"
+                f"candidate_limit={replay_candidate_limit},"
                 f"candidate_limit_reached={int(candidate_limit_reached)}"
             )
 
@@ -248,7 +264,7 @@ class WaybackSZSEPCFComputer(Computer):
                 eligible.append((timestamp, digest, length))
 
             witnessed = False
-            candidates = sorted(eligible, reverse=True)[:_REPLAY_CANDIDATE_LIMIT]
+            candidates = sorted(eligible, reverse=True)[:replay_candidate_limit]
             for timestamp, expected_digest, expected_length in candidates:
                 replay_url = f"https://web.archive.org/web/{timestamp}id_/{target.url}"
                 try:
