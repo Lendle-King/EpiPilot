@@ -61,8 +61,12 @@ from epipilot.workspace.commoncrawl_sse_pcf_archive import (
     ADAPTER_ID_LONG_INDEX_TIMEOUT as COMMONCRAWL_SSE_PCF_ADAPTER_ID_V2,
 )
 from epipilot.workspace.commoncrawl_sse_pcf_archive import (
+    ADAPTER_ID_STABLE_LONG_INDEX_TIMEOUT as COMMONCRAWL_SSE_PCF_ADAPTER_ID_V3,
+)
+from epipilot.workspace.commoncrawl_sse_pcf_archive import (
     CommonCrawlSSEPCFArchiveComputer,
     CommonCrawlSSEPCFLongIndexTimeoutComputer,
+    CommonCrawlSSEPCFStableLongIndexTimeoutComputer,
 )
 from epipilot.workspace.commoncrawl_szse_pcf import (
     ADAPTER_ID as COMMONCRAWL_SZSE_PCF_ADAPTER_ID,
@@ -808,6 +812,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         WAYBACK_SSE_PCF_ARCHIVE_ADAPTER_ID: WaybackSSEPCFArchiveComputer(),
         COMMONCRAWL_SSE_PCF_ADAPTER_ID: CommonCrawlSSEPCFArchiveComputer(),
         COMMONCRAWL_SSE_PCF_ADAPTER_ID_V2: CommonCrawlSSEPCFLongIndexTimeoutComputer(),
+        COMMONCRAWL_SSE_PCF_ADAPTER_ID_V3: CommonCrawlSSEPCFStableLongIndexTimeoutComputer(),
         WAYBACK_SZSE_PCF_ADAPTER_ID: WaybackSZSEPCFComputer(),
         ARQUIVO_SZSE_PCF_ADAPTER_ID: ArquivoSZSEPCFComputer(),
         HUAAN_PCF_ARCHIVE_ADAPTER_ID: HuaanPCFArchiveComputer(),

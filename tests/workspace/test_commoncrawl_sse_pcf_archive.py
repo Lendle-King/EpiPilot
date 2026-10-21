@@ -18,9 +18,11 @@ from epipilot.workspace import commoncrawl_sse_pcf_archive as archive
 from epipilot.workspace.commoncrawl_sse_pcf_archive import (
     ADAPTER_ID,
     ADAPTER_ID_LONG_INDEX_TIMEOUT,
+    ADAPTER_ID_STABLE_LONG_INDEX_TIMEOUT,
     CommonCrawlResponse,
     CommonCrawlSSEPCFArchiveComputer,
     CommonCrawlSSEPCFLongIndexTimeoutComputer,
+    CommonCrawlSSEPCFStableLongIndexTimeoutComputer,
 )
 
 PCF_URL = "https://query.sse.com.cn/etfDownload/downloadETF2Bulletin.do?fundCode=510300"
@@ -235,3 +237,57 @@ def test_long_index_timeout_adapter_uses_longer_index_and_bounded_warc_timeout(
 
     assert metrics_for(measured)["verified_pre_cutoff_pcf_captures"] == 1
     assert observed == [("index", 16), ("warc", 8)]
+
+
+def test_stable_timeout_adapter_normalizes_transient_index_unavailability(
+    tmp_path: Path,
+) -> None:
+    contract = make_contract(tmp_path).model_copy(
+        update={"adapter": ADAPTER_ID_STABLE_LONG_INDEX_TIMEOUT}
+    )
+
+    def gateway_error(url: str, _: Mapping[str, str]) -> CommonCrawlResponse:
+        return response(body=b"gateway timeout", final_url=url, status=504)
+
+    def request_timeout(_: str, __: Mapping[str, str]) -> CommonCrawlResponse:
+        raise TimeoutError
+
+    gateway_measurement = CommonCrawlSSEPCFStableLongIndexTimeoutComputer(
+        fetcher=gateway_error
+    ).measure(tmp_path, contract)
+    timeout_measurement = CommonCrawlSSEPCFStableLongIndexTimeoutComputer(
+        fetcher=request_timeout
+    ).measure(tmp_path, contract)
+
+    assert gateway_measurement.model_dump(mode="json") == timeout_measurement.model_dump(
+        mode="json"
+    )
+
+
+def test_stable_timeout_adapter_normalizes_transient_warc_unavailability(
+    tmp_path: Path,
+) -> None:
+    contract = make_contract(tmp_path).model_copy(
+        update={"adapter": ADAPTER_ID_STABLE_LONG_INDEX_TIMEOUT}
+    )
+    compressed = warc_record()
+
+    def measurement(warc_failure: str) -> Measured:
+        def fetch(url: str, headers: Mapping[str, str]) -> CommonCrawlResponse:
+            parsed = urlparse(url)
+            if parsed.hostname == "index.commoncrawl.org":
+                return response(body=index_body(warc_length=len(compressed)), final_url=url)
+            if warc_failure == "timeout":
+                raise TimeoutError
+            return response(body=b"gateway timeout", final_url=url, status=503)
+
+        return CommonCrawlSSEPCFStableLongIndexTimeoutComputer(fetcher=fetch).measure(
+            tmp_path, contract
+        )
+
+    gateway_measurement = measurement("gateway")
+    timeout_measurement = measurement("timeout")
+
+    assert gateway_measurement.model_dump(mode="json") == timeout_measurement.model_dump(
+        mode="json"
+    )

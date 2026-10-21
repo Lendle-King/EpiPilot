@@ -76,6 +76,7 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
     assert "wayback_sse_pcf_archive_v1" in service.adapter.computers
     assert "commoncrawl_sse_pcf_v1" in service.adapter.computers
     assert "commoncrawl_sse_pcf_v2" in service.adapter.computers
+    assert "commoncrawl_sse_pcf_v3" in service.adapter.computers
     assert "szse_pcf_wayback_archive_v1" in service.adapter.computers
     assert "arquivo_szse_pcf_v1" in service.adapter.computers
     from epipilot.workspace.arquivo_szse_pcf import ArquivoSZSEPCFComputer
@@ -102,6 +103,14 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
     assert isinstance(
         service.adapter.computers["commoncrawl_sse_pcf_v2"],
         CommonCrawlSSEPCFLongIndexTimeoutComputer,
+    )
+    from epipilot.workspace.commoncrawl_sse_pcf_archive import (
+        CommonCrawlSSEPCFStableLongIndexTimeoutComputer,
+    )
+
+    assert isinstance(
+        service.adapter.computers["commoncrawl_sse_pcf_v3"],
+        CommonCrawlSSEPCFStableLongIndexTimeoutComputer,
     )
     assert "commoncrawl_szse_pcf_v1" in service.adapter.computers
     assert "commoncrawl_szse_pcf_v2" in service.adapter.computers

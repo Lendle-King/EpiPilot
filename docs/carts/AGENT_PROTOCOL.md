@@ -193,6 +193,12 @@ but allows up to 16 seconds for the exact CDX index request while keeping WARC r
 eight seconds. It does not retry requests or treat a timeout as a missing capture; an unavailable
 index remains an inconclusive integrity observation.
 
+The version `commoncrawl_sse_pcf_v3` retains the v2 timeout bounds and canonicalizes changing
+transport errors and non-capture HTTP failures to stable `unavailable` observations. Exact
+`No Captures found` responses remain a separate, specific zero-capture observation. This keeps
+independent recomputation meaningful when the archive service alternates between a gateway error
+and a request timeout; it does not treat an unavailable response as a successful query.
+
 The QUANT_ETF host also registers `commoncrawl_szse_pcf_v1` for the four pinned SZSE PCF
 targets. Full and one-target manifests are bound to fixed URLs, collection windows and
 09:15 Asia/Shanghai cutoffs; the response-only probe records index response semantics

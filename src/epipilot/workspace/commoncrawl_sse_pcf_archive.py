@@ -28,6 +28,7 @@ from epipilot.workspace.wayback_sse_pcf_archive import _parse_pcf_identity
 
 ADAPTER_ID = "commoncrawl_sse_pcf_v1"
 ADAPTER_ID_LONG_INDEX_TIMEOUT = "commoncrawl_sse_pcf_v2"
+ADAPTER_ID_STABLE_LONG_INDEX_TIMEOUT = "commoncrawl_sse_pcf_v3"
 _SCHEMA = "commoncrawl-sse-pcf-targets/v1"
 _INDEX_HOST = "index.commoncrawl.org"
 _DATA_HOST = "data.commoncrawl.org"
@@ -130,6 +131,7 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
     adapter_id: ClassVar[str] = ADAPTER_ID
     index_timeout_seconds: ClassVar[int] = _REQUEST_TIMEOUT_SECONDS
     warc_timeout_seconds: ClassVar[int] = _REQUEST_TIMEOUT_SECONDS
+    canonicalize_unavailable: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -146,6 +148,11 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
             else self.warc_timeout_seconds
         )
         return _fetch_commoncrawl(url, headers, timeout)
+
+    def _unavailable_detail(self, record_id: str, stage: str, reason: str) -> str:
+        if self.canonicalize_unavailable:
+            return f"{record_id}:{stage}=unavailable"
+        return f"{record_id}:{stage}=unavailable,{reason}"
 
     def measure(self, root: Path, contract: MeasurementContract) -> Measured:
         if contract.adapter != self.adapter_id:
@@ -194,12 +201,20 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
                 response = self._fetch(index_url, {})
             except (OSError, TimeoutError, ValueError) as error:
                 counts["index_requests_failed"] += 1
-                details.append(f"{target.record_id}:index=unavailable,error={type(error).__name__}")
+                details.append(
+                    self._unavailable_detail(
+                        target.record_id, "index", f"error={type(error).__name__}"
+                    )
+                )
                 continue
             if response.final_url != index_url:
                 counts["index_requests_failed"] += 1
                 details.append(
-                    f"{target.record_id}:index=unavailable,status={response.status},redirected=1"
+                    self._unavailable_detail(
+                        target.record_id,
+                        "index",
+                        f"status={response.status},redirected=1",
+                    )
                 )
                 continue
             if _is_exact_no_captures(response, target.url):
@@ -213,7 +228,11 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
             if response.status != 200:
                 counts["index_requests_failed"] += 1
                 details.append(
-                    f"{target.record_id}:index=unavailable,status={response.status},redirected=0"
+                    self._unavailable_detail(
+                        target.record_id,
+                        "index",
+                        f"status={response.status},redirected=0",
+                    )
                 )
                 continue
             counts["index_http_200_responses"] += 1
@@ -294,13 +313,18 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
                     continue
                 range_url = f"https://{_DATA_HOST}/{filename}"
                 end = offset + length - 1
+                if self.canonicalize_unavailable:
+                    counts["warc_range_requests"] += 1
                 try:
                     warc = self._fetch(range_url, {"Range": f"bytes={offset}-{end}"})
                 except (OSError, TimeoutError, ValueError) as error:
                     counts["warc_requests_failed"] += 1
                     details.append(
-                        f"{target.record_id}:capture={timestamp},warc=unavailable,"
-                        f"error={type(error).__name__}"
+                        self._unavailable_detail(
+                            f"{target.record_id}:capture={timestamp}",
+                            "warc",
+                            f"error={type(error).__name__}",
+                        )
                     )
                     continue
                 content_range = next(
@@ -312,7 +336,8 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
                     "",
                 )
                 range_match = _CONTENT_RANGE.fullmatch(content_range)
-                counts["warc_range_requests"] += 1
+                if not self.canonicalize_unavailable:
+                    counts["warc_range_requests"] += 1
                 if (
                     warc.status != 206
                     or warc.final_url != range_url
@@ -323,7 +348,15 @@ class CommonCrawlSSEPCFArchiveComputer(Computer):
                     or int(range_match.group("total")) <= end
                 ):
                     counts["warc_requests_failed"] += 1
-                    details.append(f"{target.record_id}:capture={timestamp},warc=invalid_range")
+                    details.append(
+                        self._unavailable_detail(
+                            f"{target.record_id}:capture={timestamp}",
+                            "warc",
+                            "invalid_range",
+                        )
+                        if self.canonicalize_unavailable
+                        else f"{target.record_id}:capture={timestamp},warc=invalid_range"
+                    )
                     continue
                 try:
                     status_ok, timestamp_ok, digest_ok, target_ok, payload = _parse_warc(
@@ -377,3 +410,10 @@ class CommonCrawlSSEPCFLongIndexTimeoutComputer(CommonCrawlSSEPCFArchiveComputer
 
     adapter_id: ClassVar[str] = ADAPTER_ID_LONG_INDEX_TIMEOUT
     index_timeout_seconds: ClassVar[int] = _LONG_INDEX_TIMEOUT_SECONDS
+
+
+class CommonCrawlSSEPCFStableLongIndexTimeoutComputer(CommonCrawlSSEPCFLongIndexTimeoutComputer):
+    """Canonicalize transient unavailable outcomes for stable independent replay."""
+
+    adapter_id: ClassVar[str] = ADAPTER_ID_STABLE_LONG_INDEX_TIMEOUT
+    canonicalize_unavailable: ClassVar[bool] = True
