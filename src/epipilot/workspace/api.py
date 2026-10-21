@@ -35,6 +35,12 @@ from epipilot.workspace.algorithm_execution import (
     LocalAlgorithmExecutor,
     etf_algorithm_computers,
 )
+from epipilot.workspace.arquivo_szse_pcf import (
+    ADAPTER_ID as ARQUIVO_SZSE_PCF_ADAPTER_ID,
+)
+from epipilot.workspace.arquivo_szse_pcf import (
+    ArquivoSZSEPCFComputer,
+)
 from epipilot.workspace.browser_bridge import (
     ExtensionBridgeHub,
     ExtensionChatGPTDriver,
@@ -771,6 +777,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         SZSE_PCF_ARCHIVE_ADAPTER_ID: SZSEPCFArchiveComputer(),
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
         WAYBACK_SZSE_PCF_ADAPTER_ID: WaybackSZSEPCFComputer(),
+        ARQUIVO_SZSE_PCF_ADAPTER_ID: ArquivoSZSEPCFComputer(),
         COMMONCRAWL_SSE_NOTICE_ADAPTER_ID: CommonCrawlSseNoticeComputer(),
         COMMONCRAWL_SZSE_PCF_ADAPTER_ID: CommonCrawlSZSEPCFComputer(),
         COMMONCRAWL_SZSE_PCF_ADAPTER_ID_V2: CommonCrawlSZSEPCFLongTimeoutComputer(),

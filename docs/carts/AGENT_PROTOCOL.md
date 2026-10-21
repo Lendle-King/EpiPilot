@@ -110,6 +110,21 @@ anonymous HTTPS GETs without cookies or redirects;
 this adapter is `MEASUREMENT` quality and `integrity` scope, not PIT qualification or strategy
 performance evidence.
 
+The QUANT_ETF host also registers `arquivo_szse_pcf_v1` for the same four fixed SZSE PCF
+targets and cutoffs. It queries Arquivo.pt's exact-URL CDX endpoint with a bounded result limit,
+then replays at most the newest strict pre-cutoff candidate through the archive's raw `noFrame`
+endpoint. A witness requires an exact target URL, a valid CDX capture timestamp before 09:15
+Asia/Shanghai, replay SHA-1 matching the CDX payload digest, and strict GBK text containing the
+target ETF code and date. Arquivo.pt's CDX `length` is the compressed WARC/ARC record length;
+the adapter records it separately and does not compare it with the raw replay payload length.
+Empty CDX bodies are valid zero-row observations; timeouts, malformed rows, failed replay, and
+digest or identity mismatches do not establish historical absence. This independent archive
+witness can establish only that matching bytes were captured by Arquivo.pt no later than the
+capture timestamp. It does not establish first publication, complete archive coverage, historical
+ETF membership, full PIT qualification or prospective strategy performance. The adapter is
+`MEASUREMENT` quality with `integrity` scope, uses anonymous HTTPS GETs without cookies, rejects
+redirects, and caps each request at eight seconds.
+
 The QUANT_ETF host also registers `commoncrawl_sse_index_notice_v2`. A preregistered target
 binds an exact official SSE notice URL, a named Common Crawl collection and its published
 window, a UTC decision cutoff, and the page/effective dates already observed in the notice.
