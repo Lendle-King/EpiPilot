@@ -110,6 +110,17 @@ digest, length or format mismatches are not evidence that the source was unavail
 are anonymous HTTPS GETs without cookies or redirects, capped at four seconds, and this is a
 `MEASUREMENT`-quality `integrity` check.
 
+The QUANT_ETF host also registers `wayback_sse_pcf_archive_v1` for exact official SSE PCF
+download URLs of the form `downloadETF2Bulletin.do?fundCode=NNNNNN`. Each pinned target includes
+the fund code, PCF trading day, and 09:15 Asia/Shanghai cutoff. The adapter queries exact-URL CDX
+rows and replays at most the two latest pre-cutoff candidates; a witness requires exact URL,
+HTTP success, CDX SHA-1 and byte-length agreement, and a matching fund code/trading day parsed
+from either SSE XML or text PCF content. It proves only that the exact file response was archived
+by the pinned cutoff; it does not prove first publication time, complete historical universe
+coverage, or strategy performance. Empty or unavailable archive results remain inconclusive.
+Requests are anonymous HTTPS GETs without cookies or redirects and are byte/time bounded; this
+is a `MEASUREMENT`-quality `integrity` check.
+
 The QUANT_ETF host also registers `szse_pcf_wayback_archive_v1`. Its hashed target manifest
 must contain exactly the four pinned SZSE PCF URLs for 159915 (2019-01-11, 2020-11-30) and
 159949 (2023-01-03, 2026-10-16), each with a fixed 09:15 Asia/Shanghai cutoff. It queries only
