@@ -24,7 +24,7 @@ from epipilot.research.frontier import MeasurementContract, Quality
 from epipilot.research.measurement import Computer, Measured
 from epipilot.research.models import Metric
 
-ADAPTER_ID = "wayback_sse_index_notice_v1"
+ADAPTER_ID = "wayback_sse_index_notice_v2"
 _SCHEMA = "wayback-sse-notice-targets/v1"
 _CDX_ENDPOINT = "https://web.archive.org/cdx/search/cdx"
 _MAX_TARGETS = 20
@@ -151,8 +151,10 @@ def _parse_cdx(body: bytes) -> tuple[tuple[str, str, str, str, str, str], ...]:
         payload = json.loads(body)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("Wayback CDX response is not valid JSON") from error
-    if not isinstance(payload, list) or not payload:
-        raise ValueError("Wayback CDX response is missing its format header")
+    if not isinstance(payload, list):
+        raise ValueError("Wayback CDX response is not a row array")
+    if not payload:
+        return ()
     header = payload[0]
     required = ("timestamp", "original", "mimetype", "statuscode", "digest", "length")
     if not isinstance(header, list) or not all(name in header for name in required):
@@ -259,6 +261,7 @@ class WaybackSseNoticeComputer(Computer):
             raise ValueError("Wayback target manifest repeats an original URL")
 
         cdx_count = snapshots_accessed = digest_matches = page_matches = effective_matches = 0
+        cdx_http_200 = empty_cdx = cdx_bytes = 0
         witnesses = post_cutoff = 0
         cdx_requests_failed = replay_requests_failed = cdx_queries_incomplete = 0
         observations: list[str] = []
@@ -288,13 +291,24 @@ class WaybackSseNoticeComputer(Computer):
                     f"redirected={int(cdx_response.final_url != cdx_request)}"
                 )
                 continue
+            cdx_http_200 += 1
+            cdx_bytes += len(cdx_response.body)
+            response_digest = hashlib.sha256(cdx_response.body).hexdigest()
             try:
                 rows = _parse_cdx(cdx_response.body)
             except ValueError:
                 cdx_queries_incomplete += 1
-                observations.append(f"{target.record_id}:cdx=invalid_or_incomplete")
+                observations.append(
+                    f"{target.record_id}:cdx=invalid_or_incomplete,status=200,"
+                    f"bytes={len(cdx_response.body)},sha256={response_digest}"
+                )
                 continue
             cdx_count += len(rows)
+            empty_cdx += int(not rows)
+            observations.append(
+                f"{target.record_id}:cdx_status=200,cdx_bytes={len(cdx_response.body)},"
+                f"cdx_sha256={response_digest},cdx_rows={len(rows)}"
+            )
             eligible: list[tuple[str, str, str]] = []
             for timestamp, original, mimetype, status, digest, length in rows:
                 if (
@@ -369,6 +383,9 @@ class WaybackSseNoticeComputer(Computer):
                 Metric(name="snapshot_effective_dates_match", value=float(effective_matches)),
                 Metric(name="verified_pre_cutoff_snapshots", value=float(witnesses)),
                 Metric(name="post_cutoff_rows_ignored", value=float(post_cutoff)),
+                Metric(name="cdx_http_200_responses", value=float(cdx_http_200)),
+                Metric(name="empty_cdx_responses", value=float(empty_cdx)),
+                Metric(name="cdx_response_bytes", value=float(cdx_bytes)),
                 Metric(name="cdx_requests_failed", value=float(cdx_requests_failed)),
                 Metric(name="replay_requests_failed", value=float(replay_requests_failed)),
                 Metric(name="cdx_queries_incomplete", value=float(cdx_queries_incomplete)),

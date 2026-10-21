@@ -164,3 +164,23 @@ def test_wayback_sse_notice_records_unavailable_cdx_without_aborting_measurement
     assert metrics["cdx_requests_failed"] == 1
     assert metrics["verified_pre_cutoff_snapshots"] == 0
     assert any("cdx=unavailable" in detail for detail in measured.details)
+
+
+def test_wayback_sse_notice_accepts_empty_json_array_as_zero_cdx_rows(tmp_path: Path) -> None:
+    contract = make_contract(tmp_path)
+    cdx_url = ""
+
+    def fetch(url: str) -> WaybackResponse:
+        nonlocal cdx_url
+        cdx_url = url
+        return response(body=b"[]\n", final_url=url)
+
+    measured = WaybackSseNoticeComputer(fetcher=fetch).measure(tmp_path, contract)
+    metrics = {metric.name: metric.value for metric in measured.metrics}
+
+    assert cdx_url.startswith("https://web.archive.org/cdx/search/cdx?")
+    assert metrics["cdx_http_200_responses"] == 1
+    assert metrics["empty_cdx_responses"] == 1
+    assert metrics["exact_cdx_rows"] == 0
+    assert metrics["cdx_queries_incomplete"] == 0
+    assert any("cdx_rows=0" in detail and "cdx_sha256=" in detail for detail in measured.details)
