@@ -97,6 +97,19 @@ URLs, and cap each request at four seconds. Valid empty JSON arrays are recorded
 rows with response hashes; network failures and malformed responses remain inconclusive
 observations. The adapter remains `MEASUREMENT` quality and `integrity` scope.
 
+The QUANT_ETF host also registers `wayback_sse_pdf_attachment_v1` for exact official SSE
+index-notice PDF attachment URLs paired with their notice page, displayed date, effective date
+and UTC cutoff. It queries exact-URL CDX rows for `application/pdf` and replays at most the two
+latest eligible captures; a witness requires the capture timestamp to be no later than the
+cutoff, byte length and SHA-1 to match CDX, and a PDF signature/EOF marker. The URL pair must
+use an allowlisted SSE notice path and attachment path with the same notice ID. This verifies
+archived bytes for the pinned attachment URL only; it does not parse PDF text, verify a link
+inside a historical page capture, establish first-publication time or archive completeness, or
+qualify historical ETF membership, PIT eligibility or strategy performance. Empty indexes and
+digest, length or format mismatches are not evidence that the source was unavailable. Requests
+are anonymous HTTPS GETs without cookies or redirects, capped at four seconds, and this is a
+`MEASUREMENT`-quality `integrity` check.
+
 The QUANT_ETF host also registers `szse_pcf_wayback_archive_v1`. Its hashed target manifest
 must contain exactly the four pinned SZSE PCF URLs for 159915 (2019-01-11, 2020-11-30) and
 159949 (2023-01-03, 2026-10-16), each with a fixed 09:15 Asia/Shanghai cutoff. It queries only
