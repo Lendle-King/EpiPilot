@@ -13,6 +13,7 @@ from epipilot.research.measurement import Computer, Measured
 PHASE_COMPARISON_ADAPTER_ID = "quant_etf_phase_comparison_v1"
 PHASE_COMPARISON_ADAPTER_V2_ID = "quant_etf_phase_comparison_v2"
 EXPOSURE_SENSITIVITY_ADAPTER_ID = "quant_etf_exposure_sensitivity_v1"
+TRADE_BAND_COMPARISON_ADAPTER_ID = "quant_etf_trade_band_comparison_v1"
 PHASE_COMPARISON_CODE_PATHS = (
     "src/quant_etf/allocation.py",
     "src/quant_etf/carts_phase_computer.py",
@@ -42,6 +43,17 @@ from quant_etf.carts_phase_computer import ExposureSensitivityComputer
 
 contract = MeasurementContract.model_validate_json(sys.stdin.read())
 measurement = ExposureSensitivityComputer().measure(Path.cwd(), contract)
+sys.stdout.write(measurement.model_dump_json())
+"""
+
+_TRADE_BAND_RUNNER = """
+import sys
+from pathlib import Path
+from epipilot.research.frontier import MeasurementContract
+from quant_etf.carts_phase_computer import TradeBandComparisonComputer
+
+contract = MeasurementContract.model_validate_json(sys.stdin.read())
+measurement = TradeBandComparisonComputer().measure(Path.cwd(), contract)
 sys.stdout.write(measurement.model_dump_json())
 """
 
@@ -207,6 +219,79 @@ def exposure_sensitivity_computers(
     """Register the one fixed role-labelled portfolio exposure sensitivity adapter."""
     return {
         EXPOSURE_SENSITIVITY_ADAPTER_ID: SubprocessExposureSensitivityComputer(
+            python_executable, epipilot_source
+        )
+    }
+
+
+class SubprocessTradeBandComparisonComputer:
+    """Run the fixed trade-band comparison with a pinned code and clean environment."""
+
+    quality = Quality.MEASUREMENT
+
+    def __init__(self, python_executable: Path, epipilot_source: Path) -> None:
+        self.python_executable = python_executable.absolute()
+        self.epipilot_source = epipilot_source.resolve()
+
+    def measure(self, root: Path, contract: MeasurementContract) -> Measured:
+        if contract.adapter != TRADE_BAND_COMPARISON_ADAPTER_ID:
+            raise ValueError("contract uses another trade-band adapter")
+        if len(contract.inputs) != 2:
+            raise ValueError("trade-band comparison requires the phase panel and event inputs")
+        repository = root.resolve()
+        code_check = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repository),
+                "diff",
+                "--quiet",
+                contract.git_revision,
+                "--",
+                *PHASE_COMPARISON_CODE_PATHS,
+            ],
+            check=False,
+            capture_output=True,
+        )
+        if code_check.returncode != 0:
+            raise ValueError("trade-band code differs from its pinned revision")
+
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key in {"PATH", "LANG", "LC_ALL", "TMPDIR", "SYSTEMROOT"}
+        }
+        env["PYTHONPATH"] = os.pathsep.join((str(repository / "src"), str(self.epipilot_source)))
+        process = subprocess.run(
+            [str(self.python_executable), "-c", _TRADE_BAND_RUNNER],
+            input=contract.model_dump_json(),
+            cwd=repository,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=PHASE_COMPARISON_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if process.returncode != 0:
+            raise ValueError(f"trade-band process failed (exit {process.returncode})")
+        try:
+            measured = Measured.model_validate_json(process.stdout)
+        except ValueError:
+            raise ValueError("trade-band process returned invalid measurement JSON") from None
+        adapter_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        return Measured(
+            metrics=measured.metrics,
+            samples=measured.samples,
+            details=(*measured.details, f"epipilot_adapter_sha256={adapter_digest}"),
+        )
+
+
+def trade_band_comparison_computers(
+    python_executable: Path, epipilot_source: Path
+) -> dict[str, Computer]:
+    """Register only the fixed 5pp actual-position trade-band adapter."""
+    return {
+        TRADE_BAND_COMPARISON_ADAPTER_ID: SubprocessTradeBandComparisonComputer(
             python_executable, epipilot_source
         )
     }

@@ -16,10 +16,13 @@ from epipilot.research.models import Metric
 from epipilot.workspace.phase_execution import (
     EXPOSURE_SENSITIVITY_ADAPTER_ID,
     PHASE_COMPARISON_ADAPTER_ID,
+    TRADE_BAND_COMPARISON_ADAPTER_ID,
     SubprocessExposureSensitivityComputer,
     SubprocessPhaseComparisonComputer,
+    SubprocessTradeBandComparisonComputer,
     exposure_sensitivity_computers,
     phase_comparison_computers,
+    trade_band_comparison_computers,
 )
 
 PHASE_COMPARISON_ADAPTER_V2_ID = "quant_etf_phase_comparison_v2"
@@ -217,3 +220,50 @@ def test_exposure_sensitivity_computer_is_registered_and_runs_in_isolation(
     assert kwargs["timeout"] == 7200
     assert "PYTHONPATH" in kwargs["env"]  # type: ignore[operator]
     assert "EPIPILOT_ALGORITHM_PYTHON" not in kwargs["env"]  # type: ignore[operator]
+
+
+def test_trade_band_computer_is_registered_and_runs_in_isolation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = _contract(tmp_path).model_copy(update={"adapter": TRADE_BAND_COMPARISON_ADAPTER_ID})
+    result = Measured(
+        metrics=(Metric(name="period_full_band5_fee10_cagr", value=0.151),), samples=1878
+    )
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    real_run = subprocess.run
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "git":
+            return real_run(args, **kwargs)  # type: ignore[arg-type]
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, stdout=result.model_dump_json(), stderr="")
+
+    monkeypatch.setattr("epipilot.workspace.phase_execution.subprocess.run", run)
+    computer = trade_band_comparison_computers(
+        Path(sys.executable), Path(__file__).parents[1] / "src"
+    )[TRADE_BAND_COMPARISON_ADAPTER_ID]
+
+    measured = computer.measure(tmp_path, contract)
+
+    assert isinstance(computer, SubprocessTradeBandComparisonComputer)
+    assert measured.metrics == result.metrics
+    assert measured.samples == result.samples
+    assert measured.details[0].startswith("epipilot_adapter_sha256=")
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args[:2] == [str(Path(sys.executable).absolute()), "-c"]
+    assert json.loads(kwargs["input"])["adapter"] == TRADE_BAND_COMPARISON_ADAPTER_ID
+    assert kwargs["cwd"] == tmp_path
+    assert kwargs["timeout"] == 7200
+    assert "PYTHONPATH" in kwargs["env"]  # type: ignore[operator]
+    assert "EPIPILOT_ALGORITHM_PYTHON" not in kwargs["env"]  # type: ignore[operator]
+
+
+def test_trade_band_computer_rejects_another_adapter(tmp_path: Path) -> None:
+    contract = _contract(tmp_path).model_copy(update={"adapter": "unregistered"})
+    computer = trade_band_comparison_computers(
+        Path(sys.executable), Path(__file__).parents[1] / "src"
+    )[TRADE_BAND_COMPARISON_ADAPTER_ID]
+
+    with pytest.raises(ValueError, match="another trade-band adapter"):
+        computer.measure(tmp_path, contract)

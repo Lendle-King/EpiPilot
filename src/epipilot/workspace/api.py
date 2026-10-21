@@ -94,6 +94,7 @@ from epipilot.workspace.onboarding import WorkspaceStore
 from epipilot.workspace.phase_execution import (
     exposure_sensitivity_computers,
     phase_comparison_computers,
+    trade_band_comparison_computers,
 )
 from epipilot.workspace.remote_model import ThirdPartyChatModel, model_configuration
 from epipilot.workspace.research_agent import ResearchOnboardingAgent, experience_digest
@@ -832,6 +833,12 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         )
         computers.update(
             exposure_sensitivity_computers(
+                executor.python_executable,
+                Path(__file__).resolve().parents[2],
+            )
+        )
+        computers.update(
+            trade_band_comparison_computers(
                 executor.python_executable,
                 Path(__file__).resolve().parents[2],
             )
