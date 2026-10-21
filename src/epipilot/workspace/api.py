@@ -44,6 +44,10 @@ from epipilot.workspace.chatgpt_web import (
     PlaywrightChatGPTDriver,
     resolve_attach_cdp_url,
 )
+from epipilot.workspace.commoncrawl_sse_notice import (
+    ADAPTER_ID as COMMONCRAWL_SSE_NOTICE_ADAPTER_ID,
+)
+from epipilot.workspace.commoncrawl_sse_notice import CommonCrawlSseNoticeComputer
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
 from epipilot.workspace.iteration_loop import AutoIterationLoop
 from epipilot.workspace.onboarding import WorkspaceStore
@@ -737,6 +741,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         "integrity": IntegrityComputer(),
         SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID: SSELifecycleArchiveComputer(),
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
+        COMMONCRAWL_SSE_NOTICE_ADAPTER_ID: CommonCrawlSseNoticeComputer(),
     }
     executor = _local_algorithm_executor(repository)
     if executor is not None:

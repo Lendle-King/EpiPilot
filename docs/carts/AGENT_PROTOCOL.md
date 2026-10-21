@@ -95,6 +95,19 @@ URLs, and cap each request at four seconds. Valid empty JSON arrays are recorded
 rows with response hashes; network failures and malformed responses remain inconclusive
 observations. The adapter remains `MEASUREMENT` quality and `integrity` scope.
 
+The QUANT_ETF host also registers `commoncrawl_sse_index_notice_v1`. A preregistered target
+binds an exact official SSE notice URL, a named Common Crawl collection and its published
+window, a UTC decision cutoff, and the page/effective dates already observed in the notice.
+The adapter queries only that collection's exact-URL CDX index, limits candidate WARC replays,
+requests the indexed byte range, and verifies the WARC target URI, capture timestamp, HTTP
+200 status, CDX/WARC/raw-payload SHA-1 and notice dates. It rejects non-allowlisted URLs,
+redirects, malformed ranges, oversized records and invalid capture timestamps. Empty index
+responses, missing pre-cutoff rows, unavailable ranges or digest/date mismatches do not prove
+that the source was unavailable or that the crawl is complete. This is an archive integrity
+witness only; it cannot establish first publication, full historical universe membership, PIT
+qualification or prospective strategy performance. The adapter is registered by the local
+workspace API and uses `MEASUREMENT` quality with `integrity` scope.
+
 Quality is set by trusted measurement code, not by an observation or model. Scientific
 questions require MEASUREMENT or above. Built-in offline measurements cannot claim
 independent/prospective evidence; their recomputation does not establish market causality,
