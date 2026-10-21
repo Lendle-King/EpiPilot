@@ -141,3 +141,71 @@ def test_unaffordable_child_cannot_add_lookahead_value(tmp_path):
     ranking = rank_agent(engine.state, frozenset({"missingness"}))
     assert ranking.ranked[0].proposal_id == "profile"
     assert ranking.ranked[0].unlocking == 0
+
+
+def test_changed_input_verify_can_recheck_a_closed_refuted_question(tmp_path):
+    import hashlib
+    from uuid import uuid4
+
+    from test_agent_discovery import batch_for, make_agent
+
+    from epipilot.research.agent_service import Action, AgentService
+    from epipilot.research.discovery import AgentProposal, DiscoveryBatch, apply_discovery
+    from epipilot.research.frontier import InputFile, Purpose
+    from epipilot.research.models import Outcome
+
+    engine, root, revision = make_agent(tmp_path)
+    (root / "data.csv").write_text(
+        "date,scale_observed\n2020-01-01,0\n2021-01-01,1\n", encoding="utf8"
+    )
+    batch = batch_for(engine, root, revision)
+    apply_discovery(engine, root, batch)
+    service = AgentService(engine, root)
+
+    service.run_next()
+    uid = batch.findings[0].unknown.unknown_id
+    assert engine.state.research.reviews[-1].assessment.outcome is Outcome.REFUTE
+    assert engine.state.research.frontier.closed(uid)
+
+    (root / "counterevidence.csv").write_text(
+        "date,scale_observed\n2018-01-01,0\n2020-01-01,1\n", encoding="utf8"
+    )
+    original = batch.proposals[0]
+    contract = original.contract.model_copy(
+        update={
+            "proposal_id": "verify-refuted-question",
+            "purpose": Purpose.VERIFY,
+            "inputs": (
+                InputFile(
+                    path="counterevidence.csv",
+                    sha256=hashlib.sha256((root / "counterevidence.csv").read_bytes()).hexdigest(),
+                ),
+            ),
+        }
+    )
+    proposal = original.proposal.model_copy(
+        update={
+            "id": contract.proposal_id,
+            "input_revision": contract.fingerprint(),
+        }
+    )
+    apply_discovery(
+        engine,
+        root,
+        DiscoveryBatch(
+            id=uuid4(),
+            based_on_version=engine.state.event_version,
+            basis_ref=batch.basis_ref,
+            summary="New input verifies counterevidence against a previously refuted route",
+            proposals=(AgentProposal(proposal=proposal, contract=contract),),
+            no_new_findings_reason="Recheck the same registered unknown using changed input.",
+        ),
+    )
+
+    packet = service.iterate()
+
+    assert packet.action is Action.EXECUTE
+    assert packet.proposal_id == contract.proposal_id
+    service.run_next()
+    assert engine.state.research.reviews[-1].assessment.outcome is Outcome.SUPPORT
+    assert not engine.state.research.frontier.closed(uid)

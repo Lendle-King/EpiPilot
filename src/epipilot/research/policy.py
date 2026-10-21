@@ -104,9 +104,7 @@ def _infeasible(state: ProjectState, p: ExperimentProposal, at: datetime) -> str
             contract is not None
             and contract.purpose is Purpose.VERIFY
             and any(
-                not r.frontier.closed(uid)
-                and any(x.unknown_id == uid for x in r.frontier.resolutions)
-                for uid in p.unknown_ids
+                any(x.unknown_id == uid for x in r.frontier.resolutions) for uid in p.unknown_ids
             )
         )
     if statuses[p.hypothesis_id] is HypothesisStatus.SUPERSEDED or (
