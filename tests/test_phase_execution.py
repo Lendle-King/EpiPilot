@@ -14,8 +14,11 @@ from epipilot.research.frontier import InputFile, MeasurementContract, Purpose, 
 from epipilot.research.measurement import Measured
 from epipilot.research.models import Metric
 from epipilot.workspace.phase_execution import (
+    EXPOSURE_SENSITIVITY_ADAPTER_ID,
     PHASE_COMPARISON_ADAPTER_ID,
+    SubprocessExposureSensitivityComputer,
     SubprocessPhaseComparisonComputer,
+    exposure_sensitivity_computers,
     phase_comparison_computers,
 )
 
@@ -179,3 +182,38 @@ def test_phase_computer_is_registered_under_its_exact_contract_id() -> None:
 
     assert set(computers) == {PHASE_COMPARISON_ADAPTER_ID, PHASE_COMPARISON_ADAPTER_V2_ID}
     assert isinstance(computers[PHASE_COMPARISON_ADAPTER_ID], SubprocessPhaseComparisonComputer)
+
+
+def test_exposure_sensitivity_computer_is_registered_and_runs_in_isolation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = _contract(tmp_path).model_copy(update={"adapter": EXPOSURE_SENSITIVITY_ADAPTER_ID})
+    result = Measured(metrics=(Metric(name="exposure19_fee5_cagr", value=0.15),), samples=1879)
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    real_run = subprocess.run
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "git":
+            return real_run(args, **kwargs)  # type: ignore[arg-type]
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, stdout=result.model_dump_json(), stderr="")
+
+    monkeypatch.setattr("epipilot.workspace.phase_execution.subprocess.run", run)
+    computer = exposure_sensitivity_computers(
+        Path(sys.executable), Path(__file__).parents[1] / "src"
+    )[EXPOSURE_SENSITIVITY_ADAPTER_ID]
+
+    measured = computer.measure(tmp_path, contract)
+
+    assert isinstance(computer, SubprocessExposureSensitivityComputer)
+    assert measured.metrics == result.metrics
+    assert measured.samples == result.samples
+    assert measured.details[0].startswith("epipilot_adapter_sha256=")
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args[:2] == [str(Path(sys.executable).absolute()), "-c"]
+    assert json.loads(kwargs["input"])["adapter"] == EXPOSURE_SENSITIVITY_ADAPTER_ID
+    assert kwargs["cwd"] == tmp_path
+    assert kwargs["timeout"] == 7200
+    assert "PYTHONPATH" in kwargs["env"]  # type: ignore[operator]
+    assert "EPIPILOT_ALGORITHM_PYTHON" not in kwargs["env"]  # type: ignore[operator]

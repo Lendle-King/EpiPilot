@@ -139,6 +139,14 @@ number, and exact input digest set. Verification rechecks the receipt and recomp
 metrics from the daily artifacts. These measurements remain development evidence and do
 not qualify PIT membership or prospective performance.
 
+The QUANT_ETF host also registers `quant_etf_exposure_sensitivity_v1` through an isolated
+subprocess. It requires one role-labelled phase panel and one market-event manifest, then
+measures 18%, 19%, and 20% linear scales of the supplied lag-1 target path at 0/5/10/20 bp.
+The adapter pins the ETF code paths that implement the exposure transform and backtest, but
+does not infer the strategy identity of the supplied base targets. A proposal must therefore
+bind and explain the base-path provenance; this adapter alone cannot qualify PIT membership,
+prospective performance, or the project's goal.
+
 The built-in runner meters wall_seconds. Unknown units are rejected instead of treated as
 free. Existing generic ports support typed multi-unit cost vectors and real overrun
 settlement. Cost of semantic coding-agent reasoning/API use is NOT metered automatically;

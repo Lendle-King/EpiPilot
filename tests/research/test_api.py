@@ -51,7 +51,9 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
 
     from epipilot.workspace.algorithm_execution import LocalAlgorithmExecutor
     from epipilot.workspace.phase_execution import (
+        EXPOSURE_SENSITIVITY_ADAPTER_ID,
         PHASE_COMPARISON_ADAPTER_ID,
+        SubprocessExposureSensitivityComputer,
         SubprocessPhaseComparisonComputer,
     )
 
@@ -74,4 +76,8 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
     assert isinstance(
         service.adapter.computers[PHASE_COMPARISON_ADAPTER_ID],
         SubprocessPhaseComparisonComputer,
+    )
+    assert isinstance(
+        service.adapter.computers[EXPOSURE_SENSITIVITY_ADAPTER_ID],
+        SubprocessExposureSensitivityComputer,
     )
