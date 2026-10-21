@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,8 @@ from epipilot.workspace.phase_execution import (
     SubprocessPhaseComparisonComputer,
     phase_comparison_computers,
 )
+
+PHASE_COMPARISON_ADAPTER_V2_ID = "quant_etf_phase_comparison_v2"
 
 
 def _git(root: Path, *args: str) -> str:
@@ -85,7 +88,7 @@ def test_phase_computer_runs_only_the_registered_adapter_and_parses_typed_output
     assert measured.details[0].startswith("epipilot_adapter_sha256=")
     assert len(calls) == 1
     args, kwargs = calls[0]
-    assert args[:2] == [str(Path(sys.executable).resolve()), "-c"]
+    assert args[:2] == [str(Path(sys.executable).absolute()), "-c"]
     assert kwargs["input"] == contract.model_dump_json()
     assert kwargs["cwd"] == tmp_path
     assert kwargs["timeout"] == 7200
@@ -102,6 +105,47 @@ def test_phase_computer_rejects_contract_for_another_adapter(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match="another phase adapter"):
         computer.measure(tmp_path, contract)
+
+
+def test_phase_computer_preserves_virtualenv_interpreter_symlink(tmp_path: Path) -> None:
+    base_interpreter = tmp_path / "python3.11"
+    base_interpreter.write_text("base interpreter target\n", encoding="utf-8")
+    virtualenv_python = tmp_path / ".venv/bin/python"
+    virtualenv_python.parent.mkdir(parents=True)
+    virtualenv_python.symlink_to(base_interpreter)
+
+    computer = SubprocessPhaseComparisonComputer(
+        virtualenv_python, Path(__file__).parents[1] / "src"
+    )
+
+    assert computer.python_executable == virtualenv_python.absolute()
+    assert computer.python_executable.is_symlink()
+
+
+def test_phase_computer_v2_contract_runs_the_pinned_domain_adapter_v1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = _contract(tmp_path).model_copy(update={"adapter": PHASE_COMPARISON_ADAPTER_V2_ID})
+    result = Measured(metrics=(Metric(name="lag1_minus_lag0_fee5_cagr", value=0.01),), samples=1800)
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    real_run = subprocess.run
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "git":
+            return real_run(args, **kwargs)  # type: ignore[arg-type]
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, stdout=result.model_dump_json(), stderr="")
+
+    monkeypatch.setattr("epipilot.workspace.phase_execution.subprocess.run", run)
+    computer = phase_comparison_computers(Path(sys.executable), Path(__file__).parents[1] / "src")[
+        PHASE_COMPARISON_ADAPTER_V2_ID
+    ]
+
+    measured = computer.measure(tmp_path, contract)
+
+    assert measured.metrics == result.metrics
+    assert len(calls) == 1
+    assert json.loads(calls[0][1]["input"])["adapter"] == PHASE_COMPARISON_ADAPTER_ID
 
 
 def test_phase_computer_rejects_modified_pinned_measurement_code(
@@ -133,5 +177,5 @@ def test_phase_computer_rejects_modified_pinned_measurement_code(
 def test_phase_computer_is_registered_under_its_exact_contract_id() -> None:
     computers = phase_comparison_computers(Path(sys.executable), Path(__file__).parents[1] / "src")
 
-    assert set(computers) == {PHASE_COMPARISON_ADAPTER_ID}
+    assert set(computers) == {PHASE_COMPARISON_ADAPTER_ID, PHASE_COMPARISON_ADAPTER_V2_ID}
     assert isinstance(computers[PHASE_COMPARISON_ADAPTER_ID], SubprocessPhaseComparisonComputer)

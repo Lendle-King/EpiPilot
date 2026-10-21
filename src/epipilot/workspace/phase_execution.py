@@ -11,6 +11,7 @@ from epipilot.research.frontier import MeasurementContract, Quality
 from epipilot.research.measurement import Computer, Measured
 
 PHASE_COMPARISON_ADAPTER_ID = "quant_etf_phase_comparison_v1"
+PHASE_COMPARISON_ADAPTER_V2_ID = "quant_etf_phase_comparison_v2"
 PHASE_COMPARISON_CODE_PATHS = (
     "src/quant_etf/allocation.py",
     "src/quant_etf/carts_phase_computer.py",
@@ -38,9 +39,16 @@ class SubprocessPhaseComparisonComputer:
 
     quality = Quality.MEASUREMENT
 
-    def __init__(self, python_executable: Path, epipilot_source: Path) -> None:
-        self.python_executable = python_executable.resolve()
+    def __init__(
+        self,
+        python_executable: Path,
+        epipilot_source: Path,
+        contract_adapter: str = PHASE_COMPARISON_ADAPTER_ID,
+    ) -> None:
+        # Virtualenv Python entry points are symlinks whose path selects site-packages.
+        self.python_executable = python_executable.absolute()
         self.epipilot_source = epipilot_source.resolve()
+        self.contract_adapter = contract_adapter
 
     def _validate_code(self, root: Path, revision: str) -> None:
         result = subprocess.run(
@@ -61,7 +69,7 @@ class SubprocessPhaseComparisonComputer:
             raise ValueError("phase-comparison code differs from its pinned revision")
 
     def measure(self, root: Path, contract: MeasurementContract) -> Measured:
-        if contract.adapter != PHASE_COMPARISON_ADAPTER_ID:
+        if contract.adapter != self.contract_adapter:
             raise ValueError("contract uses another phase adapter")
         if len(contract.inputs) != 2:
             raise ValueError("phase comparison requires the phase panel and event inputs")
@@ -74,9 +82,14 @@ class SubprocessPhaseComparisonComputer:
             if key in {"PATH", "LANG", "LC_ALL", "TMPDIR", "SYSTEMROOT"}
         }
         env["PYTHONPATH"] = os.pathsep.join((str(repository / "src"), str(self.epipilot_source)))
+        runner_contract = (
+            contract.model_copy(update={"adapter": PHASE_COMPARISON_ADAPTER_ID})
+            if contract.adapter == PHASE_COMPARISON_ADAPTER_V2_ID
+            else contract
+        )
         process = subprocess.run(
             [str(self.python_executable), "-c", _RUNNER],
-            input=contract.model_dump_json(),
+            input=runner_contract.model_dump_json(),
             cwd=repository,
             env=env,
             text=True,
@@ -105,5 +118,8 @@ def phase_comparison_computers(
     return {
         PHASE_COMPARISON_ADAPTER_ID: SubprocessPhaseComparisonComputer(
             python_executable, epipilot_source
-        )
+        ),
+        PHASE_COMPARISON_ADAPTER_V2_ID: SubprocessPhaseComparisonComputer(
+            python_executable, epipilot_source, PHASE_COMPARISON_ADAPTER_V2_ID
+        ),
     }
