@@ -66,11 +66,13 @@ def response(
     )
 
 
-def cdx_body(*, timestamp: str = CAPTURE_UTC, digest: str = CDX_DIGEST) -> bytes:
+def cdx_body(
+    *, timestamp: str = CAPTURE_UTC, digest: str = CDX_DIGEST, url: str = NOTICE_URL
+) -> bytes:
     return json.dumps(
         [
             ["timestamp", "original", "mimetype", "statuscode", "digest", "length"],
-            [timestamp, NOTICE_URL, "text/html", "200", digest, str(len(BODY))],
+            [timestamp, url, "text/html", "200", digest, str(len(BODY))],
         ]
     ).encode("utf-8")
 
@@ -129,6 +131,25 @@ def test_wayback_sse_notice_rejects_non_sse_url_before_network_access(tmp_path: 
 
     with pytest.raises(ValueError, match="allowlisted SSE index notice URL"):
         WaybackSseNoticeComputer(fetcher=fetch).measure(tmp_path, contract)
+
+
+def test_wayback_sse_notice_v3_accepts_registered_scheme_and_host_aliases(
+    tmp_path: Path,
+) -> None:
+    alias = "http://www.sse.com.cn/market/sseindex/diclosure/c/c_20191129_4956862.shtml"
+    contract = make_contract(tmp_path, url=alias)
+
+    def fetch(url: str) -> WaybackResponse:
+        if urlparse(url).path == "/cdx/search/cdx":
+            assert parse_qs(urlparse(url).query)["url"] == [alias]
+            return response(body=cdx_body(url=alias), final_url=url)
+        assert url == f"https://web.archive.org/web/{CAPTURE_UTC}id_/{alias}"
+        return response(body=BODY, final_url=url, headers={"Content-Type": "text/plain"})
+
+    measured = WaybackSseNoticeComputer(fetcher=fetch).measure(tmp_path, contract)
+    metrics = {metric.name: metric.value for metric in measured.metrics}
+
+    assert metrics["verified_pre_cutoff_snapshots"] == 1
 
 
 def test_wayback_sse_notice_rejects_replay_body_that_disagrees_with_cdx_digest(

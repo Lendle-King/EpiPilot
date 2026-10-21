@@ -24,7 +24,7 @@ from epipilot.research.frontier import MeasurementContract, Quality
 from epipilot.research.measurement import Computer, Measured
 from epipilot.research.models import Metric
 
-ADAPTER_ID = "wayback_sse_index_notice_v2"
+ADAPTER_ID = "wayback_sse_index_notice_v3"
 _SCHEMA = "wayback-sse-notice-targets/v1"
 _CDX_ENDPOINT = "https://web.archive.org/cdx/search/cdx"
 _MAX_TARGETS = 20
@@ -106,8 +106,8 @@ def _fetch_wayback(url: str) -> WaybackResponse:
 def _allowlisted_notice(value: str) -> bool:
     parsed = urlparse(value)
     return (
-        parsed.scheme == "https"
-        and parsed.hostname == "www.sse.com.cn"
+        parsed.scheme in {"http", "https"}
+        and parsed.hostname in {"www.sse.com.cn", "sse.com.cn"}
         and parsed.username is None
         and parsed.password is None
         and parsed.port is None

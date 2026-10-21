@@ -81,11 +81,13 @@ It cannot establish an announcement's first-publication time, archive completene
 ETF universe membership, or point-in-time qualification. Network errors and malformed capture
 contracts fail closed; HTTP status or byte changes are measured as negative observations.
 
-The QUANT_ETF host also registers `wayback_sse_index_notice_v2`. It accepts a bounded,
-hashed target manifest of exact `www.sse.com.cn/market/sseindex/diclosure/...` notice URLs,
-UTC cutoffs and expected notice dates. It queries only the Internet Archive CDX exact-URL
-endpoint, fetches at most two latest pre-cutoff raw replay candidates per URL, and requires
-the replay SHA-1/length to match CDX plus the page/effective dates to match the pinned target.
+The QUANT_ETF host also registers `wayback_sse_index_notice_v3`. It accepts a bounded,
+hashed target manifest of exact SSE notice URLs on only `www.sse.com.cn` or `sse.com.cn`,
+using `http` or `https`, with UTC cutoffs and expected notice dates. The host/scheme aliases
+are queried as separate exact URLs; a capture for one alias does not imply coverage of another.
+It queries only the Internet Archive CDX exact-URL endpoint, fetches at most two latest
+pre-cutoff raw replay candidates per URL, and requires the replay SHA-1/length to match CDX
+plus the page/effective dates to match the pinned target.
 This can establish a third-party archive witness that matching content was captured no later
 than the cutoff; missing results do not prove contemporaneous non-availability or archive
 completeness. It does not establish source first-publication time, index membership
