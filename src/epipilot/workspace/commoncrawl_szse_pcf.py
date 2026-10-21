@@ -30,6 +30,7 @@ from epipilot.workspace.commoncrawl_sse_notice import (
 ADAPTER_ID = "commoncrawl_szse_pcf_v1"
 _SCHEMA = "szse-pcf-commoncrawl-targets/v1"
 _PROBE_SCHEMA = "szse-pcf-commoncrawl-probe/v1"
+_RESPONSE_PROBE_SCHEMA = "szse-pcf-commoncrawl-response-probe/v1"
 _INDEX_HOST = "index.commoncrawl.org"
 _DATA_HOST = "data.commoncrawl.org"
 _REQUEST_TIMEOUT_SECONDS = 8
@@ -97,7 +98,11 @@ class _TargetFile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_name: str = Field(
-        alias="schema", pattern=f"^({re.escape(_SCHEMA)}|{re.escape(_PROBE_SCHEMA)})$"
+        alias="schema",
+        pattern=(
+            f"^({re.escape(_SCHEMA)}|{re.escape(_PROBE_SCHEMA)}|"
+            f"{re.escape(_RESPONSE_PROBE_SCHEMA)})$"
+        ),
     )
     targets: tuple[_TargetInput, ...] = Field(min_length=1, max_length=_MAX_TARGETS)
 
@@ -162,13 +167,15 @@ def _fetch_commoncrawl(url: str, request_headers: Mapping[str, str]) -> CommonCr
     return CommonCrawlResponse(status=status, final_url=final_url, headers=headers, body=body)
 
 
-def _read_targets(path: Path) -> tuple[_Target, ...]:
+def _read_targets(path: Path) -> tuple[tuple[_Target, ...], str]:
     try:
         raw = json.loads(path.read_bytes())
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("Common Crawl SZSE target manifest is not valid UTF-8 JSON") from error
     manifest = _TargetFile.model_validate(raw)
-    expected_count = 1 if manifest.schema_name == _PROBE_SCHEMA else _MAX_TARGETS
+    expected_count = (
+        1 if manifest.schema_name in {_PROBE_SCHEMA, _RESPONSE_PROBE_SCHEMA} else _MAX_TARGETS
+    )
     if len(manifest.targets) != expected_count:
         raise ValueError("full manifests need four targets and bounded probes need one")
     pinned = {
@@ -217,7 +224,7 @@ def _read_targets(path: Path) -> tuple[_Target, ...]:
         )
     if manifest.schema_name == _SCHEMA and seen != set(pinned):
         raise ValueError("manifest must contain all four pinned SZSE PCF URLs")
-    return tuple(targets)
+    return tuple(targets), manifest.schema_name
 
 
 def _index_url(target: _Target) -> str:
@@ -271,7 +278,7 @@ class CommonCrawlSZSEPCFComputer(Computer):
     def measure(self, root: Path, contract: MeasurementContract) -> Measured:
         if contract.adapter != ADAPTER_ID or len(contract.inputs) != 1:
             raise ValueError("Common Crawl SZSE requires one fixed target manifest")
-        targets = _read_targets(safe_input(root, contract.inputs[0].path))
+        targets, manifest_schema = _read_targets(safe_input(root, contract.inputs[0].path))
         counts = {
             "index_http_200_responses": 0,
             "index_empty_responses": 0,
@@ -291,8 +298,11 @@ class CommonCrawlSZSEPCFComputer(Computer):
             "index_queries_incomplete": 0,
         }
         details: list[str] = []
+        response_probe = manifest_schema == _RESPONSE_PROBE_SCHEMA
         details.append(
-            f"registered_targets={len(targets)},request_timeout_seconds={_REQUEST_TIMEOUT_SECONDS}"
+            f"manifest_schema={manifest_schema},registered_targets={len(targets)},"
+            f"request_timeout_seconds={_REQUEST_TIMEOUT_SECONDS},"
+            f"response_only={int(response_probe)}"
         )
         for target in targets:
             index_url = _index_url(target)
@@ -310,11 +320,19 @@ class CommonCrawlSZSEPCFComputer(Computer):
                 continue
             if _is_exact_no_captures(response, target.url):
                 counts["index_no_captures_responses"] += 1
-                response_sha256 = hashlib.sha256(response.body).hexdigest()
-                details.append(
-                    f"{target.record_id}:index_status=404,no_captures=1,"
-                    f"bytes={len(response.body)},sha256={response_sha256}"
-                )
+                if response_probe:
+                    semantic_message = f"No Captures found for: {target.url}"
+                    semantic_sha256 = hashlib.sha256(semantic_message.encode("utf-8")).hexdigest()
+                    details.append(
+                        f"{target.record_id}:index_status=404,no_captures=1,"
+                        f"semantic_message_sha256={semantic_sha256}"
+                    )
+                else:
+                    response_sha256 = hashlib.sha256(response.body).hexdigest()
+                    details.append(
+                        f"{target.record_id}:index_status=404,no_captures=1,"
+                        f"bytes={len(response.body)},sha256={response_sha256}"
+                    )
                 continue
             if response.status != 200:
                 counts["index_requests_failed"] += 1
@@ -367,7 +385,7 @@ class CommonCrawlSZSEPCFComputer(Computer):
                 f"sha256={index_sha256},exact_rows={len(exact_rows)},"
                 f"pre_cutoff={len(eligible)}"
             )
-            if not eligible:
+            if response_probe or not eligible:
                 continue
             row = max(eligible, key=lambda item: str(item.get("timestamp", "")))
             timestamp = str(row.get("timestamp", ""))
@@ -449,12 +467,19 @@ class CommonCrawlSZSEPCFComputer(Computer):
         details.extend(
             (
                 f"adapter_sha256={hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}",
-                "scope=integrity; only four fixed SZSE PCF URLs were queried through pinned "
-                "Common Crawl collection indexes and at most one latest pre-cutoff WARC range "
-                "per URL; a witness requires exact CDX target, HTTP 200, WARC timestamp and "
-                "payload digest agreement, complete byte range, and GBK code/date identity; "
-                "empty or unavailable indexes do not prove historical absence, source "
-                "publication time, PIT universe membership or strategy performance",
+                (
+                    "scope=integrity; response-only probe queried one pinned Common Crawl "
+                    "index and did not replay WARC bytes; this can test response semantics but "
+                    "cannot verify a historical PCF witness"
+                    if response_probe
+                    else "scope=integrity; only pinned SZSE PCF URLs were queried through "
+                    "Common Crawl collection indexes and at most one latest pre-cutoff WARC "
+                    "range per target; a witness requires exact CDX target, HTTP 200, WARC "
+                    "timestamp and payload digest agreement, complete byte range, and GBK "
+                    "code/date identity; empty or unavailable indexes do not prove historical "
+                    "absence, source publication time, PIT universe membership or strategy "
+                    "performance"
+                ),
             )
         )
         return Measured(

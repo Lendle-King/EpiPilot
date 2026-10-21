@@ -4,8 +4,10 @@
 SZSE ETF PCF URLs. A `szse-pcf-commoncrawl-targets/v1` manifest must contain all
 four URL, collection-window and 09:15 China-time cutoff tuples. A bounded
 `szse-pcf-commoncrawl-probe/v1` manifest contains exactly one of those same
-predefined tuples. The probe schema permits a narrow follow-up within the
-registered target set; it does not permit caller-supplied URLs, collection IDs,
+predefined tuples. A `szse-pcf-commoncrawl-response-probe/v1` manifest also
+contains exactly one predefined tuple, but measures only the index response and
+never replays WARC bytes. These schemas permit narrow follow-ups within the
+registered target set; they do not permit caller-supplied URLs, collection IDs,
 or cutoff times.
 
 The adapter sends sequential HTTPS requests only to `index.commoncrawl.org`
@@ -16,7 +18,10 @@ byte range matching the index offset and length, a valid response WARC record,
 an exact target URI and timestamp match, the payload digest matching the CDX
 digest, and strict GBK decoding with the expected ETF code and date. The CARTS
 measurement adapter independently repeats the same input-bound measurement
-before it can verify the recorded observation.
+before it can verify the recorded observation. Response-only probes
+canonicalize the exact `No Captures found for: <fixed URL>` message so harmless
+JSON whitespace changes do not invalidate semantic rechecks; they do not
+qualify a PCF capture.
 
 An empty HTTP 200 index, Common Crawl's exact no-captures response, timeout,
 incomplete result, or failed byte/identity check does not establish that a

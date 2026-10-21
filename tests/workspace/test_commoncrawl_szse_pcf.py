@@ -70,6 +70,21 @@ def _contract(root: Path) -> MeasurementContract:
     )
 
 
+def _single_target_contract(root: Path, schema: str) -> MeasurementContract:
+    contract = _contract(root)
+    manifest_path = root / "targets.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["schema"] = schema
+    manifest["targets"] = [manifest["targets"][-1]]
+    content = json.dumps(manifest, separators=(",", ":")).encode()
+    manifest_path.write_bytes(content)
+    return contract.model_copy(
+        update={
+            "inputs": (InputFile(path="targets.json", sha256=hashlib.sha256(content).hexdigest()),)
+        }
+    )
+
+
 def _response(
     url: str,
     body: bytes,
@@ -330,18 +345,7 @@ def test_commoncrawl_szse_pcf_rejects_non_pinned_target_before_network(tmp_path:
 
 
 def test_commoncrawl_probe_accepts_one_fixed_target_only(tmp_path: Path) -> None:
-    contract = _contract(tmp_path)
-    manifest_path = tmp_path / "targets.json"
-    manifest = json.loads(manifest_path.read_bytes())
-    manifest["schema"] = "szse-pcf-commoncrawl-probe/v1"
-    manifest["targets"] = [manifest["targets"][-1]]
-    content = json.dumps(manifest, separators=(",", ":")).encode()
-    manifest_path.write_bytes(content)
-    contract = contract.model_copy(
-        update={
-            "inputs": (InputFile(path="targets.json", sha256=hashlib.sha256(content).hexdigest()),)
-        }
-    )
+    contract = _single_target_contract(tmp_path, "szse-pcf-commoncrawl-probe/v1")
     calls: list[str] = []
 
     def fetch(url: str, _: Mapping[str, str]) -> CommonCrawlResponse:
@@ -353,6 +357,55 @@ def test_commoncrawl_probe_accepts_one_fixed_target_only(tmp_path: Path) -> None
     assert measured.samples == 1
     assert len(calls) == 1
     assert "ETF15994920261016.txt" in calls[0]
+
+
+def test_response_probe_uses_stable_semantics_for_no_capture_json(tmp_path: Path) -> None:
+    contract = _single_target_contract(tmp_path, "szse-pcf-commoncrawl-response-probe/v1")
+    target_url = _url("159949", "2026-10-16")
+    message = {"message": f"No Captures found for: {target_url}"}
+    bodies = [
+        json.dumps(message, separators=(",", ":")).encode(),
+        json.dumps(message, indent=2).encode(),
+    ]
+    call_count = 0
+
+    def fetch(url: str, _: Mapping[str, str]) -> CommonCrawlResponse:
+        nonlocal call_count
+        body = bodies[min(call_count, len(bodies) - 1)]
+        call_count += 1
+        return _response(url, body, status=404)
+
+    computer = CommonCrawlSZSEPCFComputer(fetcher=fetch)
+    first = computer.measure(tmp_path, contract)
+    second = computer.measure(tmp_path, contract)
+
+    assert first == second
+    assert first.metrics[2].name == "index_no_captures_responses"
+    assert first.metrics[2].value == 1
+    assert "semantic_message_sha256=" in first.details[1]
+    assert "bytes=" not in first.details[1]
+    assert "sha256=" not in first.details[1].replace("semantic_message_sha256=", "")
+
+
+def test_response_probe_never_replays_warc_ranges(tmp_path: Path) -> None:
+    contract = _single_target_contract(tmp_path, "szse-pcf-commoncrawl-response-probe/v1")
+    calls: list[str] = []
+
+    def fetch(url: str, headers: Mapping[str, str]) -> CommonCrawlResponse:
+        calls.append(url)
+        if headers:
+            pytest.fail("response-only probe must not request WARC bytes")
+        target_url = parse_qs(urlparse(url).query)["url"][0]
+        return _response(
+            url,
+            json.dumps({"message": f"No Captures found for: {target_url}"}).encode(),
+            status=404,
+        )
+
+    measured = CommonCrawlSZSEPCFComputer(fetcher=fetch).measure(tmp_path, contract)
+
+    assert len(calls) == 1
+    assert measured.metrics[7].value == 0
 
 
 def test_full_schema_does_not_silently_accept_a_target_subset(tmp_path: Path) -> None:
