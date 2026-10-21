@@ -29,9 +29,10 @@ from epipilot.workspace.commoncrawl_sse_notice import (
 
 ADAPTER_ID = "commoncrawl_szse_pcf_v1"
 _SCHEMA = "szse-pcf-commoncrawl-targets/v1"
+_PROBE_SCHEMA = "szse-pcf-commoncrawl-probe/v1"
 _INDEX_HOST = "index.commoncrawl.org"
 _DATA_HOST = "data.commoncrawl.org"
-_REQUEST_TIMEOUT_SECONDS = 4
+_REQUEST_TIMEOUT_SECONDS = 8
 _MAX_TARGETS = 4
 _MAX_INDEX_BYTES = 1024 * 1024
 _MAX_WARC_BYTES = 2 * 1024 * 1024
@@ -95,8 +96,10 @@ class _TargetInput(BaseModel):
 class _TargetFile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_name: str = Field(alias="schema", pattern=f"^{re.escape(_SCHEMA)}$")
-    targets: tuple[_TargetInput, ...] = Field(min_length=_MAX_TARGETS, max_length=_MAX_TARGETS)
+    schema_name: str = Field(
+        alias="schema", pattern=f"^({re.escape(_SCHEMA)}|{re.escape(_PROBE_SCHEMA)})$"
+    )
+    targets: tuple[_TargetInput, ...] = Field(min_length=1, max_length=_MAX_TARGETS)
 
 
 @dataclass(frozen=True)
@@ -165,6 +168,9 @@ def _read_targets(path: Path) -> tuple[_Target, ...]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("Common Crawl SZSE target manifest is not valid UTF-8 JSON") from error
     manifest = _TargetFile.model_validate(raw)
+    expected_count = 1 if manifest.schema_name == _PROBE_SCHEMA else _MAX_TARGETS
+    if len(manifest.targets) != expected_count:
+        raise ValueError("full manifests need four targets and bounded probes need one")
     pinned = {
         (code, day): (url, crawl_id, start, end)
         for code, day, url, crawl_id, start, end in _PINNED_TARGETS
@@ -209,7 +215,7 @@ def _read_targets(path: Path) -> tuple[_Target, ...]:
                 cutoff_utc=cutoff.astimezone(UTC),
             )
         )
-    if seen != set(pinned):
+    if manifest.schema_name == _SCHEMA and seen != set(pinned):
         raise ValueError("manifest must contain all four pinned SZSE PCF URLs")
     return tuple(targets)
 
@@ -285,6 +291,9 @@ class CommonCrawlSZSEPCFComputer(Computer):
             "index_queries_incomplete": 0,
         }
         details: list[str] = []
+        details.append(
+            f"registered_targets={len(targets)},request_timeout_seconds={_REQUEST_TIMEOUT_SECONDS}"
+        )
         for target in targets:
             index_url = _index_url(target)
             try:

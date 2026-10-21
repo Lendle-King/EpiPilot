@@ -329,6 +329,52 @@ def test_commoncrawl_szse_pcf_rejects_non_pinned_target_before_network(tmp_path:
         CommonCrawlSZSEPCFComputer(fetcher=forbidden_fetch).measure(tmp_path, contract)
 
 
+def test_commoncrawl_probe_accepts_one_fixed_target_only(tmp_path: Path) -> None:
+    contract = _contract(tmp_path)
+    manifest_path = tmp_path / "targets.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["schema"] = "szse-pcf-commoncrawl-probe/v1"
+    manifest["targets"] = [manifest["targets"][-1]]
+    content = json.dumps(manifest, separators=(",", ":")).encode()
+    manifest_path.write_bytes(content)
+    contract = contract.model_copy(
+        update={
+            "inputs": (InputFile(path="targets.json", sha256=hashlib.sha256(content).hexdigest()),)
+        }
+    )
+    calls: list[str] = []
+
+    def fetch(url: str, _: Mapping[str, str]) -> CommonCrawlResponse:
+        calls.append(url)
+        return _response(url, b"[]\n")
+
+    measured = CommonCrawlSZSEPCFComputer(fetcher=fetch).measure(tmp_path, contract)
+
+    assert measured.samples == 1
+    assert len(calls) == 1
+    assert "ETF15994920261016.txt" in calls[0]
+
+
+def test_full_schema_does_not_silently_accept_a_target_subset(tmp_path: Path) -> None:
+    contract = _contract(tmp_path)
+    manifest_path = tmp_path / "targets.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["targets"] = [manifest["targets"][-1]]
+    content = json.dumps(manifest, separators=(",", ":")).encode()
+    manifest_path.write_bytes(content)
+    contract = contract.model_copy(
+        update={
+            "inputs": (InputFile(path="targets.json", sha256=hashlib.sha256(content).hexdigest()),)
+        }
+    )
+
+    def forbidden_fetch(_: str, __: Mapping[str, str]) -> CommonCrawlResponse:
+        pytest.fail("invalid probe schema must be rejected before network access")
+
+    with pytest.raises(ValueError, match="full manifests need four targets"):
+        CommonCrawlSZSEPCFComputer(fetcher=forbidden_fetch).measure(tmp_path, contract)
+
+
 def test_commoncrawl_replays_only_the_latest_pre_cutoff_candidate_per_target(
     tmp_path: Path,
 ) -> None:
