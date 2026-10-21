@@ -23,6 +23,7 @@ from epipilot.research.measurement import Computer, Measured
 from epipilot.research.models import Metric
 from epipilot.workspace.commoncrawl_sse_notice import (
     CommonCrawlResponse,
+    _is_exact_no_captures,
     _parse_warc,
 )
 
@@ -268,6 +269,7 @@ class CommonCrawlSZSEPCFComputer(Computer):
         counts = {
             "index_http_200_responses": 0,
             "index_empty_responses": 0,
+            "index_no_captures_responses": 0,
             "index_response_bytes": 0,
             "index_rows": 0,
             "pre_cutoff_rows": 0,
@@ -291,11 +293,24 @@ class CommonCrawlSZSEPCFComputer(Computer):
                 counts["index_requests_failed"] += 1
                 details.append(f"{target.record_id}:index=unavailable,error={type(error).__name__}")
                 continue
-            if response.status != 200 or response.final_url != index_url:
+            if response.final_url != index_url:
                 counts["index_requests_failed"] += 1
                 details.append(
-                    f"{target.record_id}:index=unavailable,status={response.status},"
-                    f"redirected={int(response.final_url != index_url)}"
+                    f"{target.record_id}:index=unavailable,status={response.status},redirected=1"
+                )
+                continue
+            if _is_exact_no_captures(response, target.url):
+                counts["index_no_captures_responses"] += 1
+                response_sha256 = hashlib.sha256(response.body).hexdigest()
+                details.append(
+                    f"{target.record_id}:index_status=404,no_captures=1,"
+                    f"bytes={len(response.body)},sha256={response_sha256}"
+                )
+                continue
+            if response.status != 200:
+                counts["index_requests_failed"] += 1
+                details.append(
+                    f"{target.record_id}:index=unavailable,status={response.status},redirected=0"
                 )
                 continue
             counts["index_http_200_responses"] += 1

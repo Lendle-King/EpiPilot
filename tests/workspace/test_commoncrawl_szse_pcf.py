@@ -181,6 +181,24 @@ def test_commoncrawl_empty_indexes_are_recorded_without_claiming_absence(tmp_pat
     assert metrics["index_requests_failed"] == 0
 
 
+def test_commoncrawl_exact_no_capture_response_is_not_an_error_or_proof_of_absence(
+    tmp_path: Path,
+) -> None:
+    contract = _contract(tmp_path)
+
+    def fetch(url: str, _: Mapping[str, str]) -> CommonCrawlResponse:
+        target_url = parse_qs(urlparse(url).query)["url"][0]
+        body = json.dumps({"message": f"No Captures found for: {target_url}"}).encode()
+        return _response(url, body, status=404)
+
+    measured = CommonCrawlSZSEPCFComputer(fetcher=fetch).measure(tmp_path, contract)
+    metrics = _metrics(measured)
+
+    assert metrics["index_no_captures_responses"] == 4
+    assert metrics["index_requests_failed"] == 0
+    assert metrics["verified_pre_cutoff_targets"] == 0
+
+
 def test_commoncrawl_szse_pcf_never_replays_at_or_after_cutoff(tmp_path: Path) -> None:
     contract = _contract(tmp_path)
     cutoff = "20190111011500"
