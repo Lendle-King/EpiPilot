@@ -148,3 +148,19 @@ def test_wayback_sse_notice_rejects_replay_body_that_disagrees_with_cdx_digest(
     assert metrics["verified_pre_cutoff_snapshots"] == 0
     assert metrics["snapshot_sha1_matches_cdx"] == 0
     assert metrics["snapshot_page_dates_match"] == 0
+
+
+def test_wayback_sse_notice_records_unavailable_cdx_without_aborting_measurement(
+    tmp_path: Path,
+) -> None:
+    contract = make_contract(tmp_path)
+
+    def fetch(url: str) -> WaybackResponse:
+        return response(body=b"rate limited", final_url=url, status=429)
+
+    measured = WaybackSseNoticeComputer(fetcher=fetch).measure(tmp_path, contract)
+    metrics = {metric.name: metric.value for metric in measured.metrics}
+
+    assert metrics["cdx_requests_failed"] == 1
+    assert metrics["verified_pre_cutoff_snapshots"] == 0
+    assert any("cdx=unavailable" in detail for detail in measured.details)

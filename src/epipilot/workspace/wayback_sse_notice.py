@@ -28,10 +28,11 @@ ADAPTER_ID = "wayback_sse_index_notice_v1"
 _SCHEMA = "wayback-sse-notice-targets/v1"
 _CDX_ENDPOINT = "https://web.archive.org/cdx/search/cdx"
 _MAX_TARGETS = 20
+_REQUEST_TIMEOUT_SECONDS = 4
 _MAX_CDX_BYTES = 2 * 1024 * 1024
 _MAX_REPLAY_BYTES = 10 * 1024 * 1024
 _CDX_ROW_LIMIT = 1000
-_REPLAY_CANDIDATE_LIMIT = 3
+_REPLAY_CANDIDATE_LIMIT = 2
 _NOTICE_PATH = re.compile(r"^/market/sseindex/diclosure/c/c_\d{8}_\d+\.shtml$")
 _PAGE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _EFFECTIVE_DATE = re.compile(
@@ -86,7 +87,7 @@ def _fetch_wayback(url: str) -> WaybackResponse:
     )
     opener = build_opener(_NoRedirect())
     try:
-        with opener.open(request, timeout=12) as response:
+        with opener.open(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
             status = response.status
             final_url = response.geturl()
             headers = {str(k).lower(): str(v).strip() for k, v in response.headers.items()}
@@ -259,6 +260,7 @@ class WaybackSseNoticeComputer(Computer):
 
         cdx_count = snapshots_accessed = digest_matches = page_matches = effective_matches = 0
         witnesses = post_cutoff = 0
+        cdx_requests_failed = replay_requests_failed = cdx_queries_incomplete = 0
         observations: list[str] = []
         for target in targets:
             if not _allowlisted_notice(target.url):
@@ -271,10 +273,27 @@ class WaybackSseNoticeComputer(Computer):
                 raise ValueError("notice dates must be valid calendar dates") from error
 
             cdx_request = _cdx_url(target, cutoff)
-            cdx_response = self._fetcher(cdx_request)
+            try:
+                cdx_response = self._fetcher(cdx_request)
+            except (OSError, TimeoutError, ValueError) as error:
+                cdx_requests_failed += 1
+                observations.append(
+                    f"{target.record_id}:cdx=unavailable,error={type(error).__name__}"
+                )
+                continue
             if cdx_response.status != 200 or cdx_response.final_url != cdx_request:
-                raise ValueError("Wayback CDX request failed or redirected")
-            rows = _parse_cdx(cdx_response.body)
+                cdx_requests_failed += 1
+                observations.append(
+                    f"{target.record_id}:cdx=unavailable,status={cdx_response.status},"
+                    f"redirected={int(cdx_response.final_url != cdx_request)}"
+                )
+                continue
+            try:
+                rows = _parse_cdx(cdx_response.body)
+            except ValueError:
+                cdx_queries_incomplete += 1
+                observations.append(f"{target.record_id}:cdx=invalid_or_incomplete")
+                continue
             cdx_count += len(rows)
             eligible: list[tuple[str, str, str]] = []
             for timestamp, original, mimetype, status, digest, length in rows:
@@ -287,7 +306,11 @@ class WaybackSseNoticeComputer(Computer):
                     or not length.isdigit()
                 ):
                     continue
-                capture_time = datetime.strptime(timestamp, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+                try:
+                    capture_time = datetime.strptime(timestamp, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+                except ValueError:
+                    cdx_queries_incomplete += 1
+                    continue
                 if capture_time > cutoff:
                     post_cutoff += 1
                     continue
@@ -298,8 +321,17 @@ class WaybackSseNoticeComputer(Computer):
                 :_REPLAY_CANDIDATE_LIMIT
             ]:
                 replay_url = f"https://web.archive.org/web/{timestamp}id_/{target.url}"
-                replay = self._fetcher(replay_url)
+                try:
+                    replay = self._fetcher(replay_url)
+                except (OSError, TimeoutError, ValueError) as error:
+                    replay_requests_failed += 1
+                    observations.append(
+                        f"{target.record_id}:capture={timestamp},replay=unavailable,"
+                        f"error={type(error).__name__}"
+                    )
+                    continue
                 if replay.status != 200 or replay.final_url != replay_url:
+                    replay_requests_failed += 1
                     observations.append(
                         f"{target.record_id}:capture={timestamp},replay=unavailable"
                     )
@@ -337,6 +369,9 @@ class WaybackSseNoticeComputer(Computer):
                 Metric(name="snapshot_effective_dates_match", value=float(effective_matches)),
                 Metric(name="verified_pre_cutoff_snapshots", value=float(witnesses)),
                 Metric(name="post_cutoff_rows_ignored", value=float(post_cutoff)),
+                Metric(name="cdx_requests_failed", value=float(cdx_requests_failed)),
+                Metric(name="replay_requests_failed", value=float(replay_requests_failed)),
+                Metric(name="cdx_queries_incomplete", value=float(cdx_queries_incomplete)),
             ),
             samples=len(targets),
             details=(
