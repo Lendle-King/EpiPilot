@@ -6,22 +6,26 @@ four URL, collection-window and 09:15 China-time cutoff tuples. A bounded
 `szse-pcf-commoncrawl-probe/v1` manifest contains exactly one of those same
 predefined tuples. A `szse-pcf-commoncrawl-response-probe/v1` manifest also
 contains exactly one predefined tuple, but measures only the index response and
-never replays WARC bytes. These schemas permit narrow follow-ups within the
-registered target set; they do not permit caller-supplied URLs, collection IDs,
-or cutoff times.
+never replays WARC bytes. These schemas do not permit caller-supplied URLs,
+collection IDs or cutoff times.
 
-The adapter sends sequential HTTPS requests only to `index.commoncrawl.org`
-and `data.commoncrawl.org`, with an eight-second per-request timeout. For each
-target it accepts no more than the latest candidate whose capture timestamp is
-strictly before the preregistered cutoff. A witness requires a complete HTTP
-byte range matching the index offset and length, a valid response WARC record,
-an exact target URI and timestamp match, the payload digest matching the CDX
-digest, and strict GBK decoding with the expected ETF code and date. The CARTS
-measurement adapter independently repeats the same input-bound measurement
-before it can verify the recorded observation. Response-only probes
-canonicalize the exact `No Captures found for: <fixed URL>` message so harmless
-JSON whitespace changes do not invalidate semantic rechecks; they do not
-qualify a PCF capture.
+`commoncrawl_szse_pcf_v2` is a separate one-target raw-byte probe for a
+previously inconclusive pinned target. It accepts only the
+`szse-pcf-commoncrawl-probe/v2` schema, with exactly one pinned target and
+`request_timeout_seconds: 12`. This timeout is part of the hashed input manifest;
+there is no runtime timeout override. The v1 adapter retains its eight-second
+per-request timeout.
+
+Both adapters send sequential HTTPS requests only to `index.commoncrawl.org`
+and `data.commoncrawl.org`. They accept no more than the latest candidate whose
+capture timestamp is strictly before the preregistered cutoff. A witness requires
+a complete HTTP byte range matching the index offset and length, a valid response
+WARC record, an exact target URI and timestamp match, the payload digest matching
+the CDX digest, and strict GBK decoding with the expected ETF code and date. CARTS
+independently repeats the same input-bound measurement before it can verify the
+recorded observation. Response-only probes canonicalize the exact
+`No Captures found for: <fixed URL>` message so harmless JSON whitespace changes
+do not invalidate semantic rechecks; they do not qualify a PCF capture.
 
 An empty HTTP 200 index, Common Crawl's exact no-captures response, timeout,
 incomplete result, or failed byte/identity check does not establish that a

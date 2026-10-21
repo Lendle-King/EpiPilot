@@ -15,7 +15,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from epipilot.research.discovery import safe_input
 from epipilot.research.frontier import MeasurementContract, Quality
@@ -28,12 +28,15 @@ from epipilot.workspace.commoncrawl_sse_notice import (
 )
 
 ADAPTER_ID = "commoncrawl_szse_pcf_v1"
+ADAPTER_ID_V2 = "commoncrawl_szse_pcf_v2"
 _SCHEMA = "szse-pcf-commoncrawl-targets/v1"
 _PROBE_SCHEMA = "szse-pcf-commoncrawl-probe/v1"
 _RESPONSE_PROBE_SCHEMA = "szse-pcf-commoncrawl-response-probe/v1"
+_LONG_TIMEOUT_PROBE_SCHEMA = "szse-pcf-commoncrawl-probe/v2"
 _INDEX_HOST = "index.commoncrawl.org"
 _DATA_HOST = "data.commoncrawl.org"
 _REQUEST_TIMEOUT_SECONDS = 8
+_LONG_REQUEST_TIMEOUT_SECONDS = 12
 _MAX_TARGETS = 4
 _MAX_INDEX_BYTES = 1024 * 1024
 _MAX_WARC_BYTES = 2 * 1024 * 1024
@@ -101,10 +104,21 @@ class _TargetFile(BaseModel):
         alias="schema",
         pattern=(
             f"^({re.escape(_SCHEMA)}|{re.escape(_PROBE_SCHEMA)}|"
-            f"{re.escape(_RESPONSE_PROBE_SCHEMA)})$"
+            f"{re.escape(_RESPONSE_PROBE_SCHEMA)}|"
+            f"{re.escape(_LONG_TIMEOUT_PROBE_SCHEMA)})$"
         ),
     )
     targets: tuple[_TargetInput, ...] = Field(min_length=1, max_length=_MAX_TARGETS)
+    request_timeout_seconds: int | None = Field(default=None, ge=1, le=30)
+
+    @model_validator(mode="after")
+    def validate_timeout(self) -> _TargetFile:
+        if self.schema_name == _LONG_TIMEOUT_PROBE_SCHEMA:
+            if self.request_timeout_seconds != _LONG_REQUEST_TIMEOUT_SECONDS:
+                raise ValueError("timeout must be pinned to 12 seconds")
+        elif self.request_timeout_seconds is not None:
+            raise ValueError("legacy Common Crawl manifests cannot override their timeout")
+        return self
 
 
 @dataclass(frozen=True)
@@ -131,7 +145,11 @@ class _NoRedirect(HTTPRedirectHandler):
         return
 
 
-def _fetch_commoncrawl(url: str, request_headers: Mapping[str, str]) -> CommonCrawlResponse:
+def _fetch_commoncrawl(
+    url: str,
+    request_headers: Mapping[str, str],
+    timeout_seconds: int = _REQUEST_TIMEOUT_SECONDS,
+) -> CommonCrawlResponse:
     parsed = urlparse(url)
     if (
         parsed.scheme != "https"
@@ -150,7 +168,7 @@ def _fetch_commoncrawl(url: str, request_headers: Mapping[str, str]) -> CommonCr
     )
     opener = build_opener(_NoRedirect())
     try:
-        with opener.open(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
+        with opener.open(request, timeout=timeout_seconds) as response:
             status = response.status
             final_url = response.geturl()
             headers = {
@@ -167,14 +185,21 @@ def _fetch_commoncrawl(url: str, request_headers: Mapping[str, str]) -> CommonCr
     return CommonCrawlResponse(status=status, final_url=final_url, headers=headers, body=body)
 
 
-def _read_targets(path: Path) -> tuple[tuple[_Target, ...], str]:
+def _read_targets(path: Path) -> tuple[tuple[_Target, ...], str, int]:
     try:
         raw = json.loads(path.read_bytes())
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("Common Crawl SZSE target manifest is not valid UTF-8 JSON") from error
     manifest = _TargetFile.model_validate(raw)
     expected_count = (
-        1 if manifest.schema_name in {_PROBE_SCHEMA, _RESPONSE_PROBE_SCHEMA} else _MAX_TARGETS
+        1
+        if manifest.schema_name
+        in {
+            _PROBE_SCHEMA,
+            _RESPONSE_PROBE_SCHEMA,
+            _LONG_TIMEOUT_PROBE_SCHEMA,
+        }
+        else _MAX_TARGETS
     )
     if len(manifest.targets) != expected_count:
         raise ValueError("full manifests need four targets and bounded probes need one")
@@ -224,7 +249,8 @@ def _read_targets(path: Path) -> tuple[tuple[_Target, ...], str]:
         )
     if manifest.schema_name == _SCHEMA and seen != set(pinned):
         raise ValueError("manifest must contain all four pinned SZSE PCF URLs")
-    return tuple(targets), manifest.schema_name
+    timeout_seconds = manifest.request_timeout_seconds or _REQUEST_TIMEOUT_SECONDS
+    return tuple(targets), manifest.schema_name, timeout_seconds
 
 
 def _index_url(target: _Target) -> str:
@@ -268,17 +294,32 @@ class CommonCrawlSZSEPCFComputer(Computer):
     """Verify at most one latest pre-cutoff raw WARC range per fixed SZSE PCF URL."""
 
     quality = Quality.MEASUREMENT
+    adapter_id = ADAPTER_ID
+    request_timeout_seconds = _REQUEST_TIMEOUT_SECONDS
+    allowed_schemas = frozenset({_SCHEMA, _PROBE_SCHEMA, _RESPONSE_PROBE_SCHEMA})
 
     def __init__(
         self,
         fetcher: Callable[[str, Mapping[str, str]], CommonCrawlResponse] | None = None,
     ) -> None:
-        self._fetcher = fetcher or _fetch_commoncrawl
+        self._fetcher = fetcher
 
     def measure(self, root: Path, contract: MeasurementContract) -> Measured:
-        if contract.adapter != ADAPTER_ID or len(contract.inputs) != 1:
+        if contract.adapter != self.adapter_id or len(contract.inputs) != 1:
             raise ValueError("Common Crawl SZSE requires one fixed target manifest")
-        targets, manifest_schema = _read_targets(safe_input(root, contract.inputs[0].path))
+        targets, manifest_schema, timeout_seconds = _read_targets(
+            safe_input(root, contract.inputs[0].path)
+        )
+        if manifest_schema not in self.allowed_schemas:
+            raise ValueError("Common Crawl manifest schema does not match the registered adapter")
+        if timeout_seconds != self.request_timeout_seconds:
+            raise ValueError("Common Crawl timeout does not match the registered adapter")
+
+        def fetch(url: str, headers: Mapping[str, str]) -> CommonCrawlResponse:
+            if self._fetcher is not None:
+                return self._fetcher(url, headers)
+            return _fetch_commoncrawl(url, headers, timeout_seconds)
+
         counts = {
             "index_http_200_responses": 0,
             "index_empty_responses": 0,
@@ -301,13 +342,13 @@ class CommonCrawlSZSEPCFComputer(Computer):
         response_probe = manifest_schema == _RESPONSE_PROBE_SCHEMA
         details.append(
             f"manifest_schema={manifest_schema},registered_targets={len(targets)},"
-            f"request_timeout_seconds={_REQUEST_TIMEOUT_SECONDS},"
+            f"request_timeout_seconds={timeout_seconds},"
             f"response_only={int(response_probe)}"
         )
         for target in targets:
             index_url = _index_url(target)
             try:
-                response = self._fetcher(index_url, {})
+                response = fetch(index_url, {})
             except (OSError, TimeoutError, ValueError) as error:
                 counts["index_requests_failed"] += 1
                 details.append(f"{target.record_id}:index=unavailable,error={type(error).__name__}")
@@ -413,7 +454,7 @@ class CommonCrawlSZSEPCFComputer(Computer):
             range_url = f"https://{_DATA_HOST}/{filename}"
             end = offset + length - 1
             try:
-                warc = self._fetcher(range_url, {"Range": f"bytes={offset}-{end}"})
+                warc = fetch(range_url, {"Range": f"bytes={offset}-{end}"})
             except (OSError, TimeoutError, ValueError) as error:
                 counts["warc_requests_failed"] += 1
                 details.append(
@@ -487,3 +528,11 @@ class CommonCrawlSZSEPCFComputer(Computer):
             samples=len(targets),
             details=tuple(details),
         )
+
+
+class CommonCrawlSZSEPCFLongTimeoutComputer(CommonCrawlSZSEPCFComputer):
+    """One-target raw-byte probe with a manifest-pinned twelve-second timeout."""
+
+    adapter_id = ADAPTER_ID_V2
+    request_timeout_seconds = _LONG_REQUEST_TIMEOUT_SECONDS
+    allowed_schemas = frozenset({_LONG_TIMEOUT_PROBE_SCHEMA})

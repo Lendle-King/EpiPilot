@@ -17,6 +17,7 @@ from epipilot.workspace.commoncrawl_sse_notice import CommonCrawlResponse
 from epipilot.workspace.commoncrawl_szse_pcf import (
     ADAPTER_ID,
     CommonCrawlSZSEPCFComputer,
+    CommonCrawlSZSEPCFLongTimeoutComputer,
 )
 
 PINNED = (
@@ -81,6 +82,32 @@ def _single_target_contract(root: Path, schema: str) -> MeasurementContract:
     return contract.model_copy(
         update={
             "inputs": (InputFile(path="targets.json", sha256=hashlib.sha256(content).hexdigest()),)
+        }
+    )
+
+
+def _long_timeout_contract(root: Path, timeout_seconds: int = 12) -> MeasurementContract:
+    contract = _contract(root)
+    manifest_path = root / "targets.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    target = next(
+        item
+        for item in manifest["targets"]
+        if item["code"] == "159915" and item["date"] == "2020-11-30"
+    )
+    content = json.dumps(
+        {
+            "schema": "szse-pcf-commoncrawl-probe/v2",
+            "request_timeout_seconds": timeout_seconds,
+            "targets": [target],
+        },
+        separators=(",", ":"),
+    ).encode()
+    manifest_path.write_bytes(content)
+    return contract.model_copy(
+        update={
+            "adapter": "commoncrawl_szse_pcf_v2",
+            "inputs": (InputFile(path="targets.json", sha256=hashlib.sha256(content).hexdigest()),),
         }
     )
 
@@ -406,6 +433,73 @@ def test_response_probe_never_replays_warc_ranges(tmp_path: Path) -> None:
 
     assert len(calls) == 1
     assert measured.metrics[7].value == 0
+
+
+def test_long_timeout_probe_replays_matching_pre_cutoff_warc_bytes_at_12_seconds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from epipilot.workspace import commoncrawl_szse_pcf
+
+    contract = _long_timeout_contract(tmp_path)
+    target_url = _url("159915", "2020-11-30")
+    body = "申购赎回清单 ETF159915 2020-11-30\r\n".encode("gbk")
+    timestamp = "20201130011459"
+    filename = (
+        "crawl-data/CC-MAIN-2020-50/segments/1234567890.1/warc/"
+        "CC-MAIN-20201123000000-20201206032041-00000.warc.gz"
+    )
+    warc = _warc_record(
+        body,
+        target_url=target_url,
+        timestamp="2020-11-30T01:14:59Z",
+    )
+    digest = base64.b32encode(hashlib.sha1(body).digest()).decode("ascii").rstrip("=")
+    row = {
+        "url": target_url,
+        "timestamp": timestamp,
+        "status": "200",
+        "mime": "text/plain",
+        "digest": digest,
+        "offset": "100",
+        "length": str(len(warc)),
+        "filename": filename,
+    }
+    index_body = (json.dumps(row) + "\n").encode()
+    calls: list[tuple[str, int]] = []
+
+    def fetch(url: str, headers: Mapping[str, str], timeout_seconds: int) -> CommonCrawlResponse:
+        calls.append((url, timeout_seconds))
+        if urlparse(url).hostname == INDEX_HOST:
+            assert parse_qs(urlparse(url).query)["url"] == [target_url]
+            return _response(url, index_body)
+        assert urlparse(url).hostname == DATA_HOST
+        assert headers == {"Range": f"bytes=100-{99 + len(warc)}"}
+        return _response(
+            url,
+            warc,
+            status=206,
+            headers={"Content-Range": f"bytes 100-{99 + len(warc)}/1000000"},
+        )
+
+    monkeypatch.setattr(commoncrawl_szse_pcf, "_fetch_commoncrawl", fetch)
+    measured = CommonCrawlSZSEPCFLongTimeoutComputer().measure(tmp_path, contract)
+
+    metrics = _metrics(measured)
+    assert metrics["verified_pre_cutoff_targets"] == 1
+    assert metrics["warc_range_requests"] == 1
+    assert metrics["gbk_identity_matches"] == 1
+    assert len(calls) == 2
+    assert all(timeout == 12 for _, timeout in calls)
+
+
+def test_long_timeout_probe_rejects_unpinned_timeout_before_network(tmp_path: Path) -> None:
+    contract = _long_timeout_contract(tmp_path, timeout_seconds=15)
+
+    def forbidden_fetch(_: str, __: Mapping[str, str]) -> CommonCrawlResponse:
+        pytest.fail("invalid timeout contract must be rejected before network access")
+
+    with pytest.raises(ValueError, match="timeout must be pinned to 12 seconds"):
+        CommonCrawlSZSEPCFLongTimeoutComputer(fetcher=forbidden_fetch).measure(tmp_path, contract)
 
 
 def test_full_schema_does_not_silently_accept_a_target_subset(tmp_path: Path) -> None:

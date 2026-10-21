@@ -126,6 +126,17 @@ historical universe membership, PIT qualification or prospective strategy perfor
 adapter is registered by the local workspace API and uses `MEASUREMENT` quality with
 `integrity` scope.
 
+The QUANT_ETF host also registers `commoncrawl_szse_pcf_v1` for the four pinned SZSE PCF
+targets. Full and one-target manifests are bound to fixed URLs, collection windows and
+09:15 Asia/Shanghai cutoffs; the response-only probe records index response semantics
+without replaying WARC bytes. All v1 requests use an eight-second timeout. The separate
+`commoncrawl_szse_pcf_v2` adapter accepts one pinned target only, requires the v2 probe
+manifest to pin a 12-second timeout, and can verify a raw pre-cutoff WARC range against
+CDX length/digest, target URI, capture timestamp and GBK code/date. Neither version treats
+timeouts, empty indexes or mismatches as evidence of historical absence or source first
+publication. Both remain read-only `MEASUREMENT` integrity checks and cannot qualify PIT
+membership or strategy performance.
+
 Quality is set by trusted measurement code, not by an observation or model. Scientific
 questions require MEASUREMENT or above. Built-in offline measurements cannot claim
 independent/prospective evidence; their recomputation does not establish market causality,
