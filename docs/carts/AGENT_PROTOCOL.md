@@ -125,6 +125,16 @@ ETF membership, full PIT qualification or prospective strategy performance. The 
 `MEASUREMENT` quality with `integrity` scope, uses anonymous HTTPS GETs without cookies, rejects
 redirects, and caps each request at eight seconds.
 
+The QUANT_ETF host also registers `huaan_pcf_archive_v1` for exactly two issuer-archive
+targets: Huaan ETF 159949 PCF files dated 2023-01-03 and 2026-10-16. It queries the issuer's
+date-specific historical page and follows only the exact matching `pcf_159949_YYYYMMDD.xml`
+download link from the same allowlisted host. The adapter validates the XML fund code, trading
+date, record counts and component rows, and records content digests. Requests are anonymous
+HTTPS GETs without cookies or redirects. This measures current retrieval of historical issuer
+files; the page has no source-time-qualified publication timestamp, so the result cannot
+establish pre-open availability, first publication, historical universe completeness, PIT
+qualification or prospective strategy performance. It is a `MEASUREMENT` integrity check.
+
 The QUANT_ETF host also registers `commoncrawl_sse_index_notice_v2`. A preregistered target
 binds an exact official SSE notice URL, a named Common Crawl collection and its published
 window, a UTC decision cutoff, and the page/effective dates already observed in the notice.

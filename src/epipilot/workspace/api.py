@@ -69,6 +69,12 @@ from epipilot.workspace.commoncrawl_szse_pcf import (
     CommonCrawlSZSEPCFStableLongTimeoutComputer,
 )
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
+from epipilot.workspace.huaan_pcf_archive import (
+    ADAPTER_ID as HUAAN_PCF_ARCHIVE_ADAPTER_ID,
+)
+from epipilot.workspace.huaan_pcf_archive import (
+    HuaanPCFArchiveComputer,
+)
 from epipilot.workspace.iteration_loop import AutoIterationLoop
 from epipilot.workspace.onboarding import WorkspaceStore
 from epipilot.workspace.phase_execution import (
@@ -778,6 +784,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
         WAYBACK_SZSE_PCF_ADAPTER_ID: WaybackSZSEPCFComputer(),
         ARQUIVO_SZSE_PCF_ADAPTER_ID: ArquivoSZSEPCFComputer(),
+        HUAAN_PCF_ARCHIVE_ADAPTER_ID: HuaanPCFArchiveComputer(),
         COMMONCRAWL_SSE_NOTICE_ADAPTER_ID: CommonCrawlSseNoticeComputer(),
         COMMONCRAWL_SZSE_PCF_ADAPTER_ID: CommonCrawlSZSEPCFComputer(),
         COMMONCRAWL_SZSE_PCF_ADAPTER_ID_V2: CommonCrawlSZSEPCFLongTimeoutComputer(),
