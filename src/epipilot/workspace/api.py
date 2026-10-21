@@ -51,6 +51,7 @@ from epipilot.workspace.commoncrawl_sse_notice import CommonCrawlSseNoticeComput
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
 from epipilot.workspace.iteration_loop import AutoIterationLoop
 from epipilot.workspace.onboarding import WorkspaceStore
+from epipilot.workspace.phase_execution import phase_comparison_computers
 from epipilot.workspace.remote_model import ThirdPartyChatModel, model_configuration
 from epipilot.workspace.research_agent import ResearchOnboardingAgent, experience_digest
 from epipilot.workspace.sse_lifecycle_archive import (
@@ -746,6 +747,12 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
     executor = _local_algorithm_executor(repository)
     if executor is not None:
         computers.update(etf_algorithm_computers(engine, repository, executor))
+        computers.update(
+            phase_comparison_computers(
+                executor.python_executable,
+                Path(__file__).resolve().parents[2],
+            )
+        )
     return AgentService(engine, repository, computers=computers)
 
 

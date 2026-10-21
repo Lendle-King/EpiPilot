@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 from test_engine import Runner, Verifier, setup
 
@@ -43,10 +45,22 @@ def test_agent_frontier_dispatches_registered_adapter_and_requires_discovery(tmp
 
 
 def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, monkeypatch):
+    import sys
+
     from test_agent_cycle import discovered
 
+    from epipilot.workspace.algorithm_execution import LocalAlgorithmExecutor
+    from epipilot.workspace.phase_execution import (
+        PHASE_COMPARISON_ADAPTER_ID,
+        SubprocessPhaseComparisonComputer,
+    )
+
     engine, _root, _batch = discovered(tmp_path)
-    monkeypatch.setattr(api, "_local_algorithm_executor", lambda repository: object())
+    monkeypatch.setattr(
+        api,
+        "_local_algorithm_executor",
+        lambda repository: LocalAlgorithmExecutor(repository, Path(sys.executable)),
+    )
 
     service = api._agent_service(engine)
 
@@ -57,3 +71,7 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
     assert "sse_lifecycle_archive_v1" in service.adapter.computers
     assert "commoncrawl_sse_index_notice_v2" in service.adapter.computers
     assert "wayback_sse_index_notice_v3" in service.adapter.computers
+    assert isinstance(
+        service.adapter.computers[PHASE_COMPARISON_ADAPTER_ID],
+        SubprocessPhaseComparisonComputer,
+    )
