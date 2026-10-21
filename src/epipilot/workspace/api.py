@@ -73,6 +73,12 @@ from epipilot.workspace.wayback_sse_notice import (
 from epipilot.workspace.wayback_sse_notice import (
     WaybackSseNoticeComputer,
 )
+from epipilot.workspace.wayback_szse_pcf import (
+    ADAPTER_ID as WAYBACK_SZSE_PCF_ADAPTER_ID,
+)
+from epipilot.workspace.wayback_szse_pcf import (
+    WaybackSZSEPCFComputer,
+)
 
 app = FastAPI(title="EpiPilot Research Workspace", version="0.1.0")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
@@ -750,6 +756,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID: SSELifecycleArchiveComputer(),
         SZSE_PCF_ARCHIVE_ADAPTER_ID: SZSEPCFArchiveComputer(),
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
+        WAYBACK_SZSE_PCF_ADAPTER_ID: WaybackSZSEPCFComputer(),
         COMMONCRAWL_SSE_NOTICE_ADAPTER_ID: CommonCrawlSseNoticeComputer(),
     }
     executor = _local_algorithm_executor(repository)

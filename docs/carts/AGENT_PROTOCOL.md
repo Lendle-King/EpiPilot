@@ -97,6 +97,17 @@ URLs, and cap each request at four seconds. Valid empty JSON arrays are recorded
 rows with response hashes; network failures and malformed responses remain inconclusive
 observations. The adapter remains `MEASUREMENT` quality and `integrity` scope.
 
+The QUANT_ETF host also registers `szse_pcf_wayback_archive_v1`. Its hashed target manifest
+must contain exactly the four pinned SZSE PCF URLs for 159915 (2019-01-11, 2020-11-30) and
+159949 (2023-01-03, 2026-10-16), each with a fixed 09:15 Asia/Shanghai cutoff. It queries only
+the Internet Archive CDX exact-URL endpoint, replays at most the two latest candidates per
+target, and counts a witness only when its capture time is strictly before the cutoff, raw
+replay SHA-1 and byte length match CDX, and strict GBK decoding contains the target ETF code
+and date. Empty indexes, unavailable replays and mismatches do not prove historical absence or
+source first-publication time. Requests are anonymous HTTPS GETs without cookies or redirects;
+this adapter is `MEASUREMENT` quality and `integrity` scope, not PIT qualification or strategy
+performance evidence.
+
 The QUANT_ETF host also registers `commoncrawl_sse_index_notice_v2`. A preregistered target
 binds an exact official SSE notice URL, a named Common Crawl collection and its published
 window, a UTC decision cutoff, and the page/effective dates already observed in the notice.

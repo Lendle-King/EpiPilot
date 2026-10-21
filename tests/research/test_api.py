@@ -73,6 +73,7 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
     assert "sse_lifecycle_archive_v1" in service.adapter.computers
     assert "commoncrawl_sse_index_notice_v2" in service.adapter.computers
     assert "wayback_sse_index_notice_v3" in service.adapter.computers
+    assert "szse_pcf_wayback_archive_v1" in service.adapter.computers
     assert isinstance(
         service.adapter.computers[PHASE_COMPARISON_ADAPTER_ID],
         SubprocessPhaseComparisonComputer,
