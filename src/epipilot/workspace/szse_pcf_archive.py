@@ -192,8 +192,7 @@ class SZSEPCFArchiveComputer(Computer):
                 raise ValueError("SZSE PCF query response exceeds the byte limit")
             details.append(
                 f"query={target.code}:{day}:status={query_response.status}:"
-                f"sha256={hashlib.sha256(query_body).hexdigest()}:"
-                f"http_date={_header(query_response.headers, 'Date') or 'missing'}"
+                f"sha256={hashlib.sha256(query_body).hexdigest()}"
             )
             if query_response.status != 200:
                 continue
@@ -271,7 +270,6 @@ class SZSEPCFArchiveComputer(Computer):
             file_headers = file_response.headers
             last_modified = _header(file_headers, "Last-Modified")
             etag = _header(file_headers, "ETag") or "missing"
-            http_date = _header(file_headers, "Date") or "missing"
             body_sha = hashlib.sha256(raw_body).hexdigest()
             identity_match = False
             if (
@@ -303,7 +301,7 @@ class SZSEPCFArchiveComputer(Computer):
                 f"file={target.code}:{day}:status={file_response.status}:"
                 f"identity_match={int(identity_match)}:body_sha256={body_sha}:"
                 f"last_modified={last_modified or 'missing'}:"
-                f"http_date={http_date}:etag={etag}:"
+                f"etag={etag}:"
                 f"server_last_modified_before_open={int(last_modified_before_open)}"
             )
 

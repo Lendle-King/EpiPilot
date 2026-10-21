@@ -122,6 +122,26 @@ def test_retrieves_matching_szse_pcf_and_reports_server_timestamp_without_promot
     )
 
 
+def test_measurement_is_stable_when_http_date_headers_change(tmp_path: Path) -> None:
+    first_responses = _fixture_responses()
+    second_responses = _fixture_responses()
+    for index, response in enumerate(second_responses):
+        headers = dict(response.headers)
+        headers["Date"] = f"Wed, 21 Oct 2026 13:0{index}:00 GMT"
+        second_responses[index] = HTTPResult(response.status, headers, response.body)
+
+    first = _computer_type()(transport=StaticTransport(first_responses)).measure(
+        tmp_path,
+        _contract(tmp_path),
+    )
+    second = _computer_type()(transport=StaticTransport(second_responses)).measure(
+        tmp_path,
+        _contract(tmp_path),
+    )
+
+    assert first == second
+
+
 def test_rejects_code_mismatch_in_szse_pcf_listing_without_fetching_file(tmp_path: Path) -> None:
     transport = StaticTransport(_fixture_responses(link_code="159920")[:1])
 
