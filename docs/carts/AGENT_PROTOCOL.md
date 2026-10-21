@@ -81,6 +81,18 @@ It cannot establish an announcement's first-publication time, archive completene
 ETF universe membership, or point-in-time qualification. Network errors and malformed capture
 contracts fail closed; HTTP status or byte changes are measured as negative observations.
 
+The API also registers `quant_etf_sse_announcement_archive_v1`, a subprocess bridge to the
+QUANT_ETF pinned announcement-query runner. It accepts a hashed, bounded query plan for the
+official `query.sse.com.cn/commonQuery.do` endpoint and permits only the declared ETF
+announcement SQL identifier, six-digit security code, date interval, and pagination fields.
+The runner captures response bytes and hashes; its verifier checks the request binding,
+pagination, response identity and recomputed PCF-related official PDF-link metrics. This
+measures what the current announcement endpoint returns for the pinned query. `SSEDATE` is an
+announcement date, not a publication timestamp; a current PDF link does not establish when it
+first became available, daily PCF continuity, historical ETF membership, PIT qualification or
+strategy performance. Network failures, malformed responses and incomplete page capture fail
+closed or remain inconclusive under the preregistered contract.
+
 The QUANT_ETF host also registers `wayback_sse_index_notice_v3`. It accepts a bounded,
 hashed target manifest of exact SSE notice URLs on only `www.sse.com.cn` or `sse.com.cn`,
 using `http` or `https`, with UTC cutoffs and expected notice dates. The host/scheme aliases

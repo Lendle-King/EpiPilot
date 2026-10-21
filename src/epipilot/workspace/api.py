@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import threading
 import urllib.request
 from datetime import UTC, datetime, timedelta
@@ -102,6 +103,12 @@ from epipilot.workspace.phase_execution import (
 )
 from epipilot.workspace.remote_model import ThirdPartyChatModel, model_configuration
 from epipilot.workspace.research_agent import ResearchOnboardingAgent, experience_digest
+from epipilot.workspace.sse_announcement_archive_execution import (
+    ADAPTER_ID as SSE_ANNOUNCEMENT_ARCHIVE_ADAPTER_ID,
+)
+from epipilot.workspace.sse_announcement_archive_execution import (
+    SubprocessSseAnnouncementArchiveComputer,
+)
 from epipilot.workspace.sse_lifecycle_archive import (
     ADAPTER_ID as SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID,
 )
@@ -812,6 +819,9 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         "integrity": IntegrityComputer(),
         CHINAAMC_ETF_ARCHIVE_ADAPTER_ID: ChinaAMCEtfArchiveComputer(),
         SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID: SSELifecycleArchiveComputer(),
+        SSE_ANNOUNCEMENT_ARCHIVE_ADAPTER_ID: SubprocessSseAnnouncementArchiveComputer(
+            sys.executable, Path(__file__).resolve().parents[2]
+        ),
         SZSE_PCF_ARCHIVE_ADAPTER_ID: SZSEPCFArchiveComputer(),
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
         WAYBACK_SSE_PDF_ATTACHMENT_ADAPTER_ID: WaybackSsePDFAttachmentComputer(),

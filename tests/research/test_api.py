@@ -56,6 +56,12 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
         SubprocessExposureSensitivityComputer,
         SubprocessPhaseComparisonComputer,
     )
+    from epipilot.workspace.sse_announcement_archive_execution import (
+        ADAPTER_ID as SSE_ANNOUNCEMENT_ARCHIVE_ADAPTER_ID,
+    )
+    from epipilot.workspace.sse_announcement_archive_execution import (
+        SubprocessSseAnnouncementArchiveComputer,
+    )
 
     engine, _root, _batch = discovered(tmp_path)
     monkeypatch.setattr(
@@ -70,6 +76,11 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
     assert "series" in service.adapter.computers
     assert "integrity" in service.adapter.computers
     assert "chinaamc_etf_archive_v1" in service.adapter.computers
+    assert SSE_ANNOUNCEMENT_ARCHIVE_ADAPTER_ID in service.adapter.computers
+    assert isinstance(
+        service.adapter.computers[SSE_ANNOUNCEMENT_ARCHIVE_ADAPTER_ID],
+        SubprocessSseAnnouncementArchiveComputer,
+    )
     from epipilot.workspace.chinaamc_etf_archive import ChinaAMCEtfArchiveComputer
 
     assert isinstance(
