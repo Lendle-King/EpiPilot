@@ -159,6 +159,20 @@ files; the page has no source-time-qualified publication timestamp, so the resul
 establish pre-open availability, first publication, historical universe completeness, PIT
 qualification or prospective strategy performance. It is a `MEASUREMENT` integrity check.
 
+The QUANT_ETF host also registers `chinaamc_etf_archive_v1` for exactly one fixed ChinaAMC
+historical archive item: fund 510050, query date 2020-11-30. It POSTs only to the issuer's
+fixed `tradeList` and `etfDownload` endpoints, using the pinned fund/date and the matching
+filename/year returned by that query. Redirects, unpinned targets, oversized bodies, invalid
+JSON, a non-matching fund/date, failed GB18030 decoding, or missing `ETFMaster` /
+`ETFConstituent` sections cannot produce a verified identity result. It records response
+digests and the presence (not values) of Date, Last-Modified and ETag headers. This is a
+present-day retrieval and file-identity measurement only. The issuer page explicitly says
+its supplementary data do not replace the official PCF, and its current response headers do
+not establish historical first-publication time or pre-open availability. It cannot qualify
+historical ETF universe membership, PIT eligibility or prospective performance. Requests are
+anonymous bounded HTTPS POSTs without cookies or redirects; this adapter is `MEASUREMENT`
+quality and `integrity` scope.
+
 The QUANT_ETF host also registers `commoncrawl_sse_index_notice_v2`. A preregistered target
 binds an exact official SSE notice URL, a named Common Crawl collection and its published
 window, a UTC decision cutoff, and the page/effective dates already observed in the notice.

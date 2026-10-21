@@ -69,6 +69,12 @@ def test_agent_service_registers_configured_etf_algorithm_computers(tmp_path, mo
     assert "missingness" in service.adapter.computers
     assert "series" in service.adapter.computers
     assert "integrity" in service.adapter.computers
+    assert "chinaamc_etf_archive_v1" in service.adapter.computers
+    from epipilot.workspace.chinaamc_etf_archive import ChinaAMCEtfArchiveComputer
+
+    assert isinstance(
+        service.adapter.computers["chinaamc_etf_archive_v1"], ChinaAMCEtfArchiveComputer
+    )
     assert "quant_etf_dual_momentum_126trend_135vol_v1" in service.adapter.computers
     assert "sse_lifecycle_archive_v1" in service.adapter.computers
     assert "commoncrawl_sse_index_notice_v2" in service.adapter.computers

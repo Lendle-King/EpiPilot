@@ -50,6 +50,10 @@ from epipilot.workspace.chatgpt_web import (
     PlaywrightChatGPTDriver,
     resolve_attach_cdp_url,
 )
+from epipilot.workspace.chinaamc_etf_archive import (
+    ADAPTER_ID as CHINAAMC_ETF_ARCHIVE_ADAPTER_ID,
+)
+from epipilot.workspace.chinaamc_etf_archive import ChinaAMCEtfArchiveComputer
 from epipilot.workspace.commoncrawl_sse_notice import (
     ADAPTER_ID as COMMONCRAWL_SSE_NOTICE_ADAPTER_ID,
 )
@@ -806,6 +810,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         "missingness": MissingnessComputer(),
         "series": SeriesComputer(),
         "integrity": IntegrityComputer(),
+        CHINAAMC_ETF_ARCHIVE_ADAPTER_ID: ChinaAMCEtfArchiveComputer(),
         SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID: SSELifecycleArchiveComputer(),
         SZSE_PCF_ARCHIVE_ADAPTER_ID: SZSEPCFArchiveComputer(),
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
