@@ -55,8 +55,12 @@ from epipilot.workspace.commoncrawl_szse_pcf import (
     ADAPTER_ID_V2 as COMMONCRAWL_SZSE_PCF_ADAPTER_ID_V2,
 )
 from epipilot.workspace.commoncrawl_szse_pcf import (
+    ADAPTER_ID_V3 as COMMONCRAWL_SZSE_PCF_ADAPTER_ID_V3,
+)
+from epipilot.workspace.commoncrawl_szse_pcf import (
     CommonCrawlSZSEPCFComputer,
     CommonCrawlSZSEPCFLongTimeoutComputer,
+    CommonCrawlSZSEPCFStableLongTimeoutComputer,
 )
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
 from epipilot.workspace.iteration_loop import AutoIterationLoop
@@ -770,6 +774,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         COMMONCRAWL_SSE_NOTICE_ADAPTER_ID: CommonCrawlSseNoticeComputer(),
         COMMONCRAWL_SZSE_PCF_ADAPTER_ID: CommonCrawlSZSEPCFComputer(),
         COMMONCRAWL_SZSE_PCF_ADAPTER_ID_V2: CommonCrawlSZSEPCFLongTimeoutComputer(),
+        COMMONCRAWL_SZSE_PCF_ADAPTER_ID_V3: CommonCrawlSZSEPCFStableLongTimeoutComputer(),
     }
     executor = _local_algorithm_executor(repository)
     if executor is not None:

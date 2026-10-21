@@ -18,6 +18,7 @@ from epipilot.workspace.commoncrawl_szse_pcf import (
     ADAPTER_ID,
     CommonCrawlSZSEPCFComputer,
     CommonCrawlSZSEPCFLongTimeoutComputer,
+    CommonCrawlSZSEPCFStableLongTimeoutComputer,
 )
 
 PINNED = (
@@ -86,7 +87,13 @@ def _single_target_contract(root: Path, schema: str) -> MeasurementContract:
     )
 
 
-def _long_timeout_contract(root: Path, timeout_seconds: int = 12) -> MeasurementContract:
+def _long_timeout_contract(
+    root: Path,
+    timeout_seconds: int = 12,
+    *,
+    schema: str = "szse-pcf-commoncrawl-probe/v2",
+    adapter: str = "commoncrawl_szse_pcf_v2",
+) -> MeasurementContract:
     contract = _contract(root)
     manifest_path = root / "targets.json"
     manifest = json.loads(manifest_path.read_bytes())
@@ -97,7 +104,7 @@ def _long_timeout_contract(root: Path, timeout_seconds: int = 12) -> Measurement
     )
     content = json.dumps(
         {
-            "schema": "szse-pcf-commoncrawl-probe/v2",
+            "schema": schema,
             "request_timeout_seconds": timeout_seconds,
             "targets": [target],
         },
@@ -106,7 +113,7 @@ def _long_timeout_contract(root: Path, timeout_seconds: int = 12) -> Measurement
     manifest_path.write_bytes(content)
     return contract.model_copy(
         update={
-            "adapter": "commoncrawl_szse_pcf_v2",
+            "adapter": adapter,
             "inputs": (InputFile(path="targets.json", sha256=hashlib.sha256(content).hexdigest()),),
         }
     )
@@ -435,12 +442,31 @@ def test_response_probe_never_replays_warc_ranges(tmp_path: Path) -> None:
     assert measured.metrics[7].value == 0
 
 
+@pytest.mark.parametrize(
+    ("computer_type", "schema", "adapter"),
+    (
+        (
+            CommonCrawlSZSEPCFLongTimeoutComputer,
+            "szse-pcf-commoncrawl-probe/v2",
+            "commoncrawl_szse_pcf_v2",
+        ),
+        (
+            CommonCrawlSZSEPCFStableLongTimeoutComputer,
+            "szse-pcf-commoncrawl-probe/v3",
+            "commoncrawl_szse_pcf_v3",
+        ),
+    ),
+)
 def test_long_timeout_probe_replays_matching_pre_cutoff_warc_bytes_at_12_seconds(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    computer_type: type[CommonCrawlSZSEPCFComputer],
+    schema: str,
+    adapter: str,
 ) -> None:
     from epipilot.workspace import commoncrawl_szse_pcf
 
-    contract = _long_timeout_contract(tmp_path)
+    contract = _long_timeout_contract(tmp_path, schema=schema, adapter=adapter)
     target_url = _url("159915", "2020-11-30")
     body = "申购赎回清单 ETF159915 2020-11-30\r\n".encode("gbk")
     timestamp = "20201130011459"
@@ -482,7 +508,7 @@ def test_long_timeout_probe_replays_matching_pre_cutoff_warc_bytes_at_12_seconds
         )
 
     monkeypatch.setattr(commoncrawl_szse_pcf, "_fetch_commoncrawl", fetch)
-    measured = CommonCrawlSZSEPCFLongTimeoutComputer().measure(tmp_path, contract)
+    measured = computer_type().measure(tmp_path, contract)
 
     metrics = _metrics(measured)
     assert metrics["verified_pre_cutoff_targets"] == 1
@@ -490,6 +516,35 @@ def test_long_timeout_probe_replays_matching_pre_cutoff_warc_bytes_at_12_seconds
     assert metrics["gbk_identity_matches"] == 1
     assert len(calls) == 2
     assert all(timeout == 12 for _, timeout in calls)
+
+
+def test_stable_long_timeout_probe_rechecks_no_capture_json_semantically(tmp_path: Path) -> None:
+    contract = _long_timeout_contract(
+        tmp_path,
+        schema="szse-pcf-commoncrawl-probe/v3",
+        adapter="commoncrawl_szse_pcf_v3",
+    )
+    target_url = _url("159915", "2020-11-30")
+    responses = (
+        json.dumps({"message": f"No Captures found for: {target_url}"}, separators=(",", ":")),
+        json.dumps({"message": f"No Captures found for: {target_url}"}, indent=2),
+    )
+    call_count = 0
+
+    def fetch(url: str, _: Mapping[str, str]) -> CommonCrawlResponse:
+        nonlocal call_count
+        body = responses[min(call_count, len(responses) - 1)].encode()
+        call_count += 1
+        return _response(url, body, status=404)
+
+    computer = CommonCrawlSZSEPCFStableLongTimeoutComputer(fetcher=fetch)
+    first = computer.measure(tmp_path, contract)
+    second = computer.measure(tmp_path, contract)
+
+    assert first == second
+    assert _metrics(first)["index_no_captures_responses"] == 1
+    assert any("semantic_message_sha256=" in detail for detail in first.details)
+    assert not any("bytes=" in detail for detail in first.details)
 
 
 def test_long_timeout_probe_rejects_unpinned_timeout_before_network(tmp_path: Path) -> None:

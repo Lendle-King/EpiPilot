@@ -9,14 +9,22 @@ contains exactly one predefined tuple, but measures only the index response and
 never replays WARC bytes. These schemas do not permit caller-supplied URLs,
 collection IDs or cutoff times.
 
-`commoncrawl_szse_pcf_v2` is a separate one-target raw-byte probe for a
-previously inconclusive pinned target. It accepts only the
-`szse-pcf-commoncrawl-probe/v2` schema, with exactly one pinned target and
-`request_timeout_seconds: 12`. This timeout is part of the hashed input manifest;
-there is no runtime timeout override. The v1 adapter retains its eight-second
-per-request timeout.
+`commoncrawl_szse_pcf_v2` is a historical one-target raw-byte probe. It accepts
+only the `szse-pcf-commoncrawl-probe/v2` schema, with exactly one pinned target
+and `request_timeout_seconds: 12`. This timeout is part of the hashed input
+manifest; there is no runtime timeout override. The v1 adapter retains its
+eight-second per-request timeout. A v2 no-captures result records the raw response
+body hash, so semantically identical JSON with different whitespace can fail
+independent re-verification; R259 exposed this limitation and was recorded as
+invalid.
 
-Both adapters send sequential HTTPS requests only to `index.commoncrawl.org`
+New long-timeout probes use `commoncrawl_szse_pcf_v3`. It requires a single
+`szse-pcf-commoncrawl-probe/v3` target and the same manifest-pinned 12-second
+timeout. It canonicalizes only the exact fixed-URL no-captures message so
+formatting changes do not invalidate verification; HTTP 200 CDX candidates still
+follow the full raw-WARC byte, digest, timestamp and identity checks.
+
+All three adapters send sequential HTTPS requests only to `index.commoncrawl.org`
 and `data.commoncrawl.org`. They accept no more than the latest candidate whose
 capture timestamp is strictly before the preregistered cutoff. A witness requires
 a complete HTTP byte range matching the index offset and length, a valid response

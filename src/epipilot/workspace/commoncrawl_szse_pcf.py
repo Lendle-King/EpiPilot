@@ -29,10 +29,12 @@ from epipilot.workspace.commoncrawl_sse_notice import (
 
 ADAPTER_ID = "commoncrawl_szse_pcf_v1"
 ADAPTER_ID_V2 = "commoncrawl_szse_pcf_v2"
+ADAPTER_ID_V3 = "commoncrawl_szse_pcf_v3"
 _SCHEMA = "szse-pcf-commoncrawl-targets/v1"
 _PROBE_SCHEMA = "szse-pcf-commoncrawl-probe/v1"
 _RESPONSE_PROBE_SCHEMA = "szse-pcf-commoncrawl-response-probe/v1"
 _LONG_TIMEOUT_PROBE_SCHEMA = "szse-pcf-commoncrawl-probe/v2"
+_STABLE_LONG_TIMEOUT_PROBE_SCHEMA = "szse-pcf-commoncrawl-probe/v3"
 _INDEX_HOST = "index.commoncrawl.org"
 _DATA_HOST = "data.commoncrawl.org"
 _REQUEST_TIMEOUT_SECONDS = 8
@@ -105,7 +107,8 @@ class _TargetFile(BaseModel):
         pattern=(
             f"^({re.escape(_SCHEMA)}|{re.escape(_PROBE_SCHEMA)}|"
             f"{re.escape(_RESPONSE_PROBE_SCHEMA)}|"
-            f"{re.escape(_LONG_TIMEOUT_PROBE_SCHEMA)})$"
+            f"{re.escape(_LONG_TIMEOUT_PROBE_SCHEMA)}|"
+            f"{re.escape(_STABLE_LONG_TIMEOUT_PROBE_SCHEMA)})$"
         ),
     )
     targets: tuple[_TargetInput, ...] = Field(min_length=1, max_length=_MAX_TARGETS)
@@ -113,7 +116,10 @@ class _TargetFile(BaseModel):
 
     @model_validator(mode="after")
     def validate_timeout(self) -> _TargetFile:
-        if self.schema_name == _LONG_TIMEOUT_PROBE_SCHEMA:
+        if self.schema_name in {
+            _LONG_TIMEOUT_PROBE_SCHEMA,
+            _STABLE_LONG_TIMEOUT_PROBE_SCHEMA,
+        }:
             if self.request_timeout_seconds != _LONG_REQUEST_TIMEOUT_SECONDS:
                 raise ValueError("timeout must be pinned to 12 seconds")
         elif self.request_timeout_seconds is not None:
@@ -198,6 +204,7 @@ def _read_targets(path: Path) -> tuple[tuple[_Target, ...], str, int]:
             _PROBE_SCHEMA,
             _RESPONSE_PROBE_SCHEMA,
             _LONG_TIMEOUT_PROBE_SCHEMA,
+            _STABLE_LONG_TIMEOUT_PROBE_SCHEMA,
         }
         else _MAX_TARGETS
     )
@@ -340,6 +347,10 @@ class CommonCrawlSZSEPCFComputer(Computer):
         }
         details: list[str] = []
         response_probe = manifest_schema == _RESPONSE_PROBE_SCHEMA
+        stable_no_captures = manifest_schema in {
+            _RESPONSE_PROBE_SCHEMA,
+            _STABLE_LONG_TIMEOUT_PROBE_SCHEMA,
+        }
         details.append(
             f"manifest_schema={manifest_schema},registered_targets={len(targets)},"
             f"request_timeout_seconds={timeout_seconds},"
@@ -361,7 +372,7 @@ class CommonCrawlSZSEPCFComputer(Computer):
                 continue
             if _is_exact_no_captures(response, target.url):
                 counts["index_no_captures_responses"] += 1
-                if response_probe:
+                if stable_no_captures:
                     semantic_message = f"No Captures found for: {target.url}"
                     semantic_sha256 = hashlib.sha256(semantic_message.encode("utf-8")).hexdigest()
                     details.append(
@@ -536,3 +547,11 @@ class CommonCrawlSZSEPCFLongTimeoutComputer(CommonCrawlSZSEPCFComputer):
     adapter_id = ADAPTER_ID_V2
     request_timeout_seconds = _LONG_REQUEST_TIMEOUT_SECONDS
     allowed_schemas = frozenset({_LONG_TIMEOUT_PROBE_SCHEMA})
+
+
+class CommonCrawlSZSEPCFStableLongTimeoutComputer(CommonCrawlSZSEPCFComputer):
+    """Stable one-target raw-byte probe with semantic no-capture verification."""
+
+    adapter_id = ADAPTER_ID_V3
+    request_timeout_seconds = _LONG_REQUEST_TIMEOUT_SECONDS
+    allowed_schemas = frozenset({_STABLE_LONG_TIMEOUT_PROBE_SCHEMA})
