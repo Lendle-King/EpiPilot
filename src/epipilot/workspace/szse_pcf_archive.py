@@ -166,6 +166,7 @@ class SZSEPCFArchiveComputer(Computer):
             "file_identity_match_count": 0,
             "last_modified_present_count": 0,
             "server_last_modified_before_open_count": 0,
+            "identity_and_preopen_count": 0,
         }
         details = [f"target_count={len(targets)}"]
 
@@ -296,6 +297,8 @@ class SZSEPCFArchiveComputer(Computer):
                     last_modified_before_open = timestamp.astimezone(UTC) < cutoff
                     if last_modified_before_open:
                         counts["server_last_modified_before_open_count"] += 1
+                        if identity_match:
+                            counts["identity_and_preopen_count"] += 1
             details.append(
                 f"file={target.code}:{day}:status={file_response.status}:"
                 f"identity_match={int(identity_match)}:body_sha256={body_sha}:"
@@ -314,6 +317,7 @@ class SZSEPCFArchiveComputer(Computer):
                 "server_last_modified_before_open_count",
                 counts["server_last_modified_before_open_count"],
             ),
+            _metric("identity_and_preopen_count", counts["identity_and_preopen_count"]),
         )
         details.extend(
             (

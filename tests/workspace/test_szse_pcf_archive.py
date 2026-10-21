@@ -113,6 +113,7 @@ def test_retrieves_matching_szse_pcf_and_reports_server_timestamp_without_promot
     assert values["file_identity_match_count"] == 1
     assert values["last_modified_present_count"] == 1
     assert values["server_last_modified_before_open_count"] == 1
+    assert values["identity_and_preopen_count"] == 1
     assert "first-publication time is not established" in " ".join(measured.details)
     assert len(transport.urls) == 2
     assert transport.urls[0].startswith("https://www.szse.cn/api/report/ShowReport/data?")
@@ -149,6 +150,7 @@ def test_does_not_treat_error_response_timestamp_as_pcf_metadata(tmp_path: Path)
     assert values["file_identity_match_count"] == 0
     assert values["last_modified_present_count"] == 0
     assert values["server_last_modified_before_open_count"] == 0
+    assert values["identity_and_preopen_count"] == 0
 
 
 def test_rejects_non_etf_codes_in_szse_target_manifest(tmp_path: Path) -> None:
