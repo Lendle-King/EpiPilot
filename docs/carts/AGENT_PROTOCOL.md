@@ -81,6 +81,18 @@ It cannot establish an announcement's first-publication time, archive completene
 ETF universe membership, or point-in-time qualification. Network errors and malformed capture
 contracts fail closed; HTTP status or byte changes are measured as negative observations.
 
+The QUANT_ETF host also registers `wayback_sse_index_notice_v1`. It accepts a bounded,
+hashed target manifest of exact `www.sse.com.cn/market/sseindex/diclosure/...` notice URLs,
+UTC cutoffs and expected notice dates. It queries only the Internet Archive CDX exact-URL
+endpoint, fetches at most three latest pre-cutoff raw replay candidates per URL, and requires
+the replay SHA-1/length to match CDX plus the page/effective dates to match the pinned target.
+This can establish a third-party archive witness that matching content was captured no later
+than the cutoff; missing results do not prove contemporaneous non-availability or archive
+completeness. It does not establish source first-publication time, index membership
+completeness, ETF PIT qualification or prospective strategy performance. Requests are
+anonymous HTTPS GETs without cookies, do not follow redirects, and reject non-allowlisted
+source URLs. The adapter remains `MEASUREMENT` quality and `integrity` scope.
+
 Quality is set by trusted measurement code, not by an observation or model. Scientific
 questions require MEASUREMENT or above. Built-in offline measurements cannot claim
 independent/prospective evidence; their recomputation does not establish market causality,

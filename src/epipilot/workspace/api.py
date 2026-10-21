@@ -55,6 +55,12 @@ from epipilot.workspace.sse_lifecycle_archive import (
 from epipilot.workspace.sse_lifecycle_archive import (
     SSELifecycleArchiveComputer,
 )
+from epipilot.workspace.wayback_sse_notice import (
+    ADAPTER_ID as WAYBACK_SSE_NOTICE_ADAPTER_ID,
+)
+from epipilot.workspace.wayback_sse_notice import (
+    WaybackSseNoticeComputer,
+)
 
 app = FastAPI(title="EpiPilot Research Workspace", version="0.1.0")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
@@ -730,6 +736,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         "series": SeriesComputer(),
         "integrity": IntegrityComputer(),
         SSE_LIFECYCLE_ARCHIVE_ADAPTER_ID: SSELifecycleArchiveComputer(),
+        WAYBACK_SSE_NOTICE_ADAPTER_ID: WaybackSseNoticeComputer(),
     }
     executor = _local_algorithm_executor(repository)
     if executor is not None:
