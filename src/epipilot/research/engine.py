@@ -35,8 +35,10 @@ from epipilot.research.events import (
     ExperimentReviewed,
     ProposalAdded,
     ResearchConfigured,
+    ResearchGoalRevised,
     ResearchNodeAdded,
 )
+from epipilot.research.intelligence_models import ResearchPolicy
 from epipilot.research.models import (
     Assessment,
     Cost,
@@ -152,6 +154,22 @@ class ResearchEngine:
                 continue
             self.propose(p, str(decision_id))
         self._ensure_plan(str(decision_id))
+
+    def revise_goal(
+        self, goal: ResearchGoal, basis_ref: str, *, policy: ResearchPolicy | None = None
+    ) -> None:
+        """Append an authorized goal revision without reinterpreting historical reviews."""
+        if self.state.research is None:
+            raise ValueError("research not configured")
+        self.append(
+            EventType.RESEARCH_GOAL_REVISED,
+            ResearchGoalRevised(
+                previous_goal=self.state.research.goal,
+                goal=goal,
+                basis_ref=basis_ref,
+                policy=policy,
+            ),
+        )
 
     def add_hypothesis(
         self,

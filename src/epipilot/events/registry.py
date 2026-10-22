@@ -29,6 +29,7 @@ from epipilot.research.events import (
     ProposalAdded,
     ResearchBudgetExtended,
     ResearchConfigured,
+    ResearchGoalRevised,
     ResearchNodeAdded,
 )
 from epipilot.research.frontier import FrontierDiscovered, FrontierInitialized, QuestionResolved
@@ -54,6 +55,7 @@ EVENT_PAYLOAD_TYPES: dict[EventType, type[EventPayload]] = {
     EventType.RESEARCH_QUESTION_RESOLVED: QuestionResolved,
     EventType.RESEARCH_NODE_ADDED: ResearchNodeAdded,
     EventType.RESEARCH_CONFIGURED: ResearchConfigured,
+    EventType.RESEARCH_GOAL_REVISED: ResearchGoalRevised,
     EventType.RESEARCH_BUDGET_EXTENDED: ResearchBudgetExtended,
     EventType.PROPOSAL_ADDED: ProposalAdded,
     EventType.EXPERIMENT_RESERVED: ExperimentReserved,

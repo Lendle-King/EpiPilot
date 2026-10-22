@@ -15,6 +15,7 @@ from epipilot.research.events import (
     ProposalAdded,
     ResearchBudgetExtended,
     ResearchConfigured,
+    ResearchGoalRevised,
     ResearchNodeAdded,
 )
 from epipilot.research.frontier import Quality
@@ -48,6 +49,44 @@ def reduce_research(state: ProjectState, payload: EventPayload) -> ProjectState:
         return replace(state, research=ResearchState(goal=payload.goal, nodes=payload.nodes))
     if r is None:
         raise ValueError("research not configured")
+    if isinstance(payload, ResearchGoalRevised):
+        if not any(
+            str(d.id) == payload.basis_ref and d.authority.value == "user" for d in state.decisions
+        ):
+            raise ValueError("goal revision requires a canonical user decision")
+        if (
+            r.active
+            or (state.intelligence and state.intelligence.active)
+            or (
+                {x.operation_id for x in r.overhead_reservations}
+                - {x.operation_id for x in r.overhead_settlements}
+            )
+        ):
+            raise ValueError("recover active operations before goal revision")
+        if payload.previous_goal != r.goal:
+            raise ValueError("stale previous research goal")
+        if payload.goal == r.goal:
+            raise ValueError("goal revision requires a changed contract")
+        if payload.goal.budgets != r.goal.budgets or payload.goal.resources != r.goal.resources:
+            raise ValueError("goal revision cannot change budgets/resources")
+        intel = state.intelligence
+        policy = payload.policy
+        if (
+            intel
+            and intel.policies
+            and (policy is None or policy.utility_version == intel.policy.utility_version)
+        ):
+            raise ValueError("goal revision requires a new utility version and policy")
+        if policy is not None:
+            from epipilot.research.intelligence_models import ResearchPolicyConfigured
+            from epipilot.research.intelligence_reducer import reduce_intelligence
+
+            if policy.basis_ref != payload.basis_ref:
+                raise ValueError("goal and policy require the same user decision")
+            if intel and any(p.utility_version == policy.utility_version for p in intel.policies):
+                raise ValueError("goal revision requires a new utility version")
+            state = reduce_intelligence(state, ResearchPolicyConfigured(policy=policy))
+        return replace(state, research=r.model_copy(update={"goal": payload.goal}))
     if isinstance(payload, ResearchBudgetExtended):
         decision = next(
             (item for item in state.decisions if str(item.id) == payload.basis_ref), None
