@@ -23,6 +23,7 @@ from epipilot.research.frontier import (
     Resolution,
 )
 from epipilot.research.frontier_reducer import validate_resolution
+from epipilot.research.intelligence_models import ResearchPolicy, ScoutRequest
 from epipilot.research.measurement import Computer, MeasurementAdapter
 from epipilot.research.models import ExperimentProposal, Metric, Observation, Ranking, ResearchGoal
 from epipilot.research.policy import goal_met
@@ -144,6 +145,9 @@ class AgentPacket(FrontierValue):
     delivery_mode: str = "managed"
     delivery_configuration: str = "configuration-required"
     push_due: tuple[PublicationDue, ...] = ()
+    research_policy: ResearchPolicy | None = None
+    scout_request: ScoutRequest | None = None
+    scout_due: bool = False
 
 
 class AgentService:
@@ -161,6 +165,23 @@ class AgentService:
         f = r.frontier
         ranking = rank_agent(state, frozenset(self.adapter.computers))
         proposal_id = None
+        intel = state.intelligence
+        scout_due = False
+        scout_failed_epoch = False
+        if intel is not None:
+            from epipilot.research.scout import research_epoch, research_revision
+
+            epoch = research_epoch(state, research_revision(state, self.root))
+            requests = [s.request for s in intel.starts if s.request.epoch == epoch]
+            scout_due = not requests
+            scout_failed_epoch = bool(
+                requests
+                and not intel.active
+                and not any(
+                    c.operation_id == requests[-1].operation_id and c.status.value == "accepted"
+                    for c in intel.completions
+                )
+            )
         if r.active:
             proposal_id = r.active[0].proposal_id
             action = Action.RESUME if r.observation(proposal_id) else Action.RECOVER
@@ -173,7 +194,14 @@ class AgentService:
             )
         elif goal_met(state):
             action = Action.GOAL_MET
-        elif not f.discoveries or f.discoveries[-1].review_count != len(r.reviews):
+        elif scout_failed_epoch:
+            action = Action.BLOCKED
+        elif (
+            scout_due
+            or (intel is not None and intel.active)
+            or not f.discoveries
+            or f.discoveries[-1].review_count != len(r.reviews)
+        ):
             action = Action.DISCOVER
         elif ranking.ranked:
             action = Action.EXECUTE
@@ -220,7 +248,7 @@ class AgentService:
                         artifact=o.artifact,
                     )
                 )
-        instructions = (
+        instructions: tuple[str, ...] = (
             "Read primary code and pinned sources; identify properties, variables, method "
             "boundaries and bottlenecks.",
             "Submit falsifiable alternatives and the cheapest discriminative experiment; "
@@ -234,6 +262,14 @@ class AgentService:
             "Stop on blocked inputs, unknown costs, budget exhaustion or verified goal; "
             "preserve frozen protocols and logs.",
         )
+        if intel is not None:
+            instructions = (
+                *instructions,
+                "Research policy is enabled: use scout prepare/submit for discovery. "
+                "Recover the active scout_request before preparing another operation. "
+                "State/revision conflicts require reinspection; unknown costs remain reserved. "
+                "start/run freeze a decision forecast; verify/resume reconcile measured outcomes.",
+            )
         return AgentPacket(
             project_id=state.project_id,
             authority=tuple(
@@ -254,6 +290,9 @@ class AgentService:
             omitted_questions=max(0, len(questions) - len(views)),
             ranking=ranking,
             proposal_id=proposal_id,
+            research_policy=intel.policy if intel is not None else None,
+            scout_request=intel.active[0].request if intel is not None and intel.active else None,
+            scout_due=scout_due,
             canonical_root=str(self.root),
             delivery_configuration="configured"
             if any(e.policy for e in state.engineering)
@@ -282,7 +321,10 @@ class AgentService:
         if packet.action is not Action.EXECUTE or packet.proposal_id is None:
             raise ValueError(f"cannot start: {packet.action.value}")
         p = self.engine.reserve(
-            packet.proposal_id, packet.ranking.ranked[0].model_dump_json(), packet.ranking.at
+            packet.proposal_id,
+            packet.ranking.ranked[0].model_dump_json(),
+            packet.ranking.at,
+            registered=frozenset(self.adapter.computers),
         )
         self.engine._start(p)
         return p.id
@@ -290,6 +332,9 @@ class AgentService:
     def verify(self) -> None:
         self.engine.resume(self.adapter)
         reconcile_questions(self.engine)
+        from epipilot.research.decision_policy import reconcile_decision_outcomes
+
+        reconcile_decision_outcomes(self.engine)
 
     def run_next(self) -> Observation | None:
         if self.iterate().action is not Action.EXECUTE:

@@ -9,6 +9,7 @@ from epipilot.engineering.models import ManagedEvent
 from epipilot.epistemics.models import Fact, Hypothesis, Unknown
 from epipilot.planning.graph import PlanGraph
 from epipilot.requirements.models import Decision, Requirement
+from epipilot.research.intelligence_models import IntelligenceState
 from epipilot.research.models import ResearchState
 
 
@@ -74,6 +75,7 @@ class ProjectState:
     artifact_refs: tuple[str, ...] = ()
     research: ResearchState | None = None
     engineering: tuple[ManagedEvent, ...] = ()
+    intelligence: IntelligenceState | None = None
     event_version: int = 0
 
     def __post_init__(self) -> None:

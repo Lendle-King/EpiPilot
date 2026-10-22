@@ -18,6 +18,11 @@ def new_event_id() -> EventId:
 
 
 class EventType(StrEnum):
+    RESEARCH_POLICY_CONFIGURED = "research_policy_configured"
+    SCOUT_STARTED = "scout_started"
+    SCOUT_COMPLETED = "scout_completed"
+    DECISION_FORECAST_RECORDED = "decision_forecast_recorded"
+    DECISION_OUTCOME_RECORDED = "decision_outcome_recorded"
     MANAGED_WORK = "managed_work"
     RESEARCH_FRONTIER_INITIALIZED = "research_frontier_initialized"
     RESEARCH_FRONTIER_DISCOVERED = "research_frontier_discovered"

@@ -32,10 +32,22 @@ from epipilot.research.events import (
     ResearchNodeAdded,
 )
 from epipilot.research.frontier import FrontierDiscovered, FrontierInitialized, QuestionResolved
+from epipilot.research.intelligence_models import (
+    DecisionForecastRecorded,
+    DecisionOutcomeRecorded,
+    ResearchPolicyConfigured,
+    ScoutCompleted,
+    ScoutStarted,
+)
 
 TYPED_EVENT_SCHEMA_VERSION = 2
 
 EVENT_PAYLOAD_TYPES: dict[EventType, type[EventPayload]] = {
+    EventType.RESEARCH_POLICY_CONFIGURED: ResearchPolicyConfigured,
+    EventType.SCOUT_STARTED: ScoutStarted,
+    EventType.SCOUT_COMPLETED: ScoutCompleted,
+    EventType.DECISION_FORECAST_RECORDED: DecisionForecastRecorded,
+    EventType.DECISION_OUTCOME_RECORDED: DecisionOutcomeRecorded,
     EventType.MANAGED_WORK: ManagedEvent,
     EventType.RESEARCH_FRONTIER_INITIALIZED: FrontierInitialized,
     EventType.RESEARCH_FRONTIER_DISCOVERED: FrontierDiscovered,

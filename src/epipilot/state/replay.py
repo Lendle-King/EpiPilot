@@ -20,4 +20,7 @@ def replay_project(
             raise DuplicateAppliedEvent(f"event {event.id} appears more than once in the stream")
         seen.add(event.id)
         state = reduce_event(state, event)
+    from epipilot.research.intelligence_reducer import validate_intelligence_boundary
+
+    validate_intelligence_boundary(state)
     return state
