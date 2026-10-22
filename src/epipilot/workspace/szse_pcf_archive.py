@@ -22,12 +22,14 @@ from epipilot.research.measurement import Computer, Measured
 from epipilot.research.models import Metric
 
 SZSE_PCF_ARCHIVE_ADAPTER_ID = "szse_pcf_archive_v1"
+SZSE_PCF_CATALOG_ADAPTER_ID = "szse_pcf_catalog_v1"
 _API_URL = "https://www.szse.cn/api/report/ShowReport/data"
 _PCF_HOST = "reportdocs.static.szse.cn"
 _PCF_PATH = re.compile(r"^/files/text/etf/ETF(?P<code>159\d{3})(?P<date>\d{8})\.txt$")
 _MAX_INPUT_BYTES = 1_000_000
 _MAX_RESPONSE_BYTES = 1_000_000
 _MAX_TARGETS = 4
+_MAX_CATALOG_PAGES = 12
 _TIMEOUT_SECONDS = 4.0
 _PREOPEN_CUTOFF_UTC = time(1, 15)
 _LIMITATION = "first-publication time is not established"
@@ -142,6 +144,26 @@ def _read_targets(path: Path) -> tuple[_Target, ...]:
     if len({(target.code, target.trading_date) for target in targets}) != len(targets):
         raise ValueError("SZSE target manifest contains duplicate code/date pairs")
     return tuple(targets)
+
+
+def _read_catalog_date(path: Path) -> date:
+    if path.stat().st_size > _MAX_INPUT_BYTES:
+        raise ValueError("SZSE PCF catalog manifest exceeds the byte limit")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError("SZSE PCF catalog manifest is not valid UTF-8 JSON") from None
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"schema", "date"}
+        or value.get("schema") != "szse-pcf-catalog-target/v1"
+        or not isinstance(value.get("date"), str)
+    ):
+        raise ValueError("SZSE PCF catalog manifest fields differ from the registered schema")
+    try:
+        return date.fromisoformat(value["date"])
+    except ValueError:
+        raise ValueError("SZSE PCF catalog date must be an ISO date") from None
 
 
 def _metric(name: str, value: int | float) -> Metric:
@@ -328,3 +350,164 @@ class SZSEPCFArchiveComputer(Computer):
 
 def szse_pcf_archive_computers() -> dict[str, Computer]:
     return {SZSE_PCF_ARCHIVE_ADAPTER_ID: SZSEPCFArchiveComputer()}
+
+
+class SZSEPCFCatalogComputer(Computer):
+    """Read a bounded, date-specific current SZSE catalog without PIT promotion."""
+
+    quality = Quality.MEASUREMENT
+
+    def __init__(self, transport: HTTPGetPort | None = None) -> None:
+        self.transport = transport or UrllibHTTPGet()
+
+    def measure(self, root: Path, contract: MeasurementContract) -> Measured:
+        if contract.adapter != SZSE_PCF_CATALOG_ADAPTER_ID or len(contract.inputs) != 1:
+            raise ValueError("SZSE PCF catalog requires its adapter and one date manifest")
+        catalog_date = _read_catalog_date(safe_input(root, contract.inputs[0].path))
+        day = catalog_date.isoformat()
+        expected_page_count: int | None = None
+        codes: set[str] = set()
+        rows_received = 0
+        identity_match_count = 0
+        invalid_row_count = 0
+        pages_received = 0
+        details = [f"catalog_date={day}", f"max_pages={_MAX_CATALOG_PAGES}"]
+        failure: str | None = None
+
+        for page_number in range(1, _MAX_CATALOG_PAGES + 1):
+            query = urlencode(
+                {
+                    "SHOWTYPE": "JSON",
+                    "CATALOGID": "sgshqd",
+                    "TABKEY": "tab1",
+                    "PAGENO": str(page_number),
+                    "txtStart": day,
+                    "txtEnd": day,
+                }
+            )
+            try:
+                response = self.transport.get(
+                    f"{_API_URL}?{query}",
+                    timeout_seconds=_TIMEOUT_SECONDS,
+                    max_bytes=_MAX_RESPONSE_BYTES,
+                )
+            except (TimeoutError, OSError) as error:
+                failure = "timeout" if isinstance(error, TimeoutError) else "network_error"
+                details.append(f"page={page_number}:{failure}")
+                break
+            if len(response.body) > _MAX_RESPONSE_BYTES:
+                raise ValueError("SZSE PCF catalog response exceeds the byte limit")
+            details.append(
+                f"page={page_number}:status={response.status}:"
+                f"sha256={hashlib.sha256(response.body).hexdigest()}"
+            )
+            if response.status != 200:
+                failure = f"http_{response.status}"
+                break
+            content_type = _header(response.headers, "Content-Type") or ""
+            if "application/json" not in content_type.lower():
+                failure = "unexpected_content_type"
+                break
+            try:
+                payload = json.loads(response.body)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                failure = "malformed_json"
+                break
+            if (
+                not isinstance(payload, list)
+                or len(payload) != 1
+                or not isinstance(payload[0], dict)
+            ):
+                failure = "unexpected_response_shape"
+                break
+            listing = payload[0]
+            metadata, rows = listing.get("metadata"), listing.get("data")
+            if (
+                not isinstance(metadata, dict)
+                or metadata.get("catalogid") != "sgshqd"
+                or metadata.get("pageno") != page_number
+                or not isinstance(rows, list)
+            ):
+                failure = "invalid_pagination_metadata"
+                break
+            record_count = metadata.get("recordcount")
+            page_count = metadata.get("pagecount")
+            if (
+                isinstance(record_count, bool)
+                or not isinstance(record_count, int)
+                or record_count != len(rows)
+                or isinstance(page_count, bool)
+                or not isinstance(page_count, int)
+                or page_count < 0
+                or listing.get("error") not in (None, "")
+            ):
+                failure = "inconsistent_pagination_metadata"
+                break
+            if expected_page_count is None:
+                expected_page_count = page_count
+            elif expected_page_count != page_count:
+                failure = "page_count_changed"
+                break
+            pages_received += 1
+            rows_received += len(rows)
+            for row in rows:
+                if not isinstance(row, dict) or not isinstance(row.get("jjdm"), str):
+                    invalid_row_count += 1
+                    continue
+                parser = _PCFLinkParser()
+                parser.feed(row["jjdm"])
+                display = "".join(parser.text_parts)
+                matches = [
+                    match
+                    for path_value in parser.paths
+                    if (match := _PCF_PATH.fullmatch(path_value)) is not None
+                    and match.group("date") == catalog_date.strftime("%Y%m%d")
+                    and match.group("code") in display
+                    and day in display
+                ]
+                if len(matches) != 1:
+                    invalid_row_count += 1
+                    continue
+                code = matches[0].group("code")
+                if code in codes:
+                    invalid_row_count += 1
+                    continue
+                codes.add(code)
+                identity_match_count += 1
+            if page_count == 0 or page_number >= page_count:
+                break
+
+        complete = (
+            expected_page_count is not None
+            and expected_page_count <= _MAX_CATALOG_PAGES
+            and pages_received == expected_page_count
+            and identity_match_count == rows_received
+            and invalid_row_count == 0
+            and failure is None
+        )
+        if expected_page_count is not None and expected_page_count > _MAX_CATALOG_PAGES:
+            details.append("page_limit_reached=1")
+        if failure is not None:
+            details.append(f"incomplete_reason={failure}")
+        details.append("codes=" + ",".join(sorted(codes)))
+        details.extend(
+            (
+                f"adapter_sha256={hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}",
+                "This is the current SZSE historical catalog response; it does not establish "
+                "contemporaneous publication or PIT universe membership.",
+            )
+        )
+        metrics = (
+            _metric("page_count", expected_page_count or 0),
+            _metric("pages_received", pages_received),
+            _metric("rows_received", rows_received),
+            _metric("identity_match_count", identity_match_count),
+            _metric("invalid_row_count", invalid_row_count),
+            _metric("unique_code_count", len(codes)),
+            _metric("complete_catalog", int(complete)),
+        )
+        return Measured(metrics=metrics, samples=rows_received, details=tuple(details))
+
+
+def szse_pcf_catalog_computers() -> dict[str, Computer]:
+    return {SZSE_PCF_CATALOG_ADAPTER_ID: SZSEPCFCatalogComputer()}
