@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 from epipilot.epistemics.models import HypothesisStatus, UnknownImpact
 from epipilot.research.budget import BudgetManager
 from epipilot.research.frontier import Phase, Purpose, Question
-from epipilot.research.models import Outcome, Ranking, Rejected, amounts
+from epipilot.research.models import ExperimentProposal, Outcome, Ranking, Rejected, amounts
 from epipilot.research.policy import prerequisite_supported, rank_candidates
 from epipilot.state.project import ProjectState
 
@@ -69,9 +70,42 @@ WEIGHTS = {
 }
 
 
+def agent_contract_reason(
+    state: ProjectState,
+    p: ExperimentProposal,
+    registered: frozenset[str],
+    *,
+    assumed_supported: frozenset[UUID] = frozenset(),
+) -> str | None:
+    """Measurement eligibility independent of either legacy or decision-value scores."""
+    r = state.research
+    assert r is not None and r.frontier is not None
+    c = next((c for c in r.frontier.contracts if c.proposal_id == p.id), None)
+    if c is None or c.adapter not in registered:
+        return "no registered input-bound runner/verifier contract"
+    if {cost.unit for cost in p.estimated_cost} != {"wall_seconds"}:
+        return "built-in runner meters wall_seconds; provide a domain cost-aware runner"
+    if c.purpose is Purpose.EXPLORE and all(
+        question_closed(state, q) for q in r.frontier.questions if q.unknown_id in p.unknown_ids
+    ):
+        return "question already resolved; require new variable/input or valid reopening"
+    if c.purpose is Purpose.OPTIMIZE:
+        node = next(n for n in r.nodes if n.hypothesis_id == p.hypothesis_id)
+        if not any(
+            hid in assumed_supported or prerequisite_supported(state, hid)
+            for hid in (p.hypothesis_id, *node.parent_ids, *node.and_ids)
+        ):
+            return "optimization has no currently supported mechanism/baseline"
+    return None
+
+
 def rank_agent(
     state: ProjectState, registered: frozenset[str], at: datetime | None = None
 ) -> Ranking:
+    if state.intelligence is not None:
+        from epipilot.research.decision_policy import rank_decision_value
+
+        return rank_decision_value(state, at or datetime.now(UTC), registered)
     ranking = rank_candidates(state, at or datetime.now(UTC))
     r = state.research
     if r is None or r.frontier is None:
@@ -88,22 +122,7 @@ def rank_agent(
     for item in ranking.ranked:
         c = by_contract.get(item.proposal_id)
         p = r.proposal(item.proposal_id)
-        reason = None
-        if c is None or c.adapter not in registered:
-            reason = "no registered input-bound runner/verifier contract"
-        elif {cost.unit for cost in p.estimated_cost} != {"wall_seconds"}:
-            reason = "built-in runner meters wall_seconds; provide a domain cost-aware runner"
-        elif c.purpose is Purpose.EXPLORE and all(
-            question_closed(state, q) for q in f.questions if q.unknown_id in p.unknown_ids
-        ):
-            reason = "question already resolved; require new variable/input or valid reopening"
-        elif c.purpose is Purpose.OPTIMIZE:
-            node = next(n for n in r.nodes if n.hypothesis_id == p.hypothesis_id)
-            if not any(
-                prerequisite_supported(state, hid)
-                for hid in (p.hypothesis_id, *node.parent_ids, *node.and_ids)
-            ):
-                reason = "optimization has no currently supported mechanism/baseline"
+        reason = agent_contract_reason(state, p, registered)
         if reason:
             rejected.append(Rejected(proposal_id=p.id, reason=reason))
             continue

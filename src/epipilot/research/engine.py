@@ -77,6 +77,9 @@ class ResearchEngine:
     def append(self, kind: EventType, payload: EventPayload) -> None:
         event = make_project_event(kind, self.project_id, payload)
         updated = reduce_event(self._state, event)  # validate before durable append
+        from epipilot.research.intelligence_reducer import validate_intelligence_boundary
+
+        validate_intelligence_boundary(updated)
         self.store.append(event, expected_version=self._state.event_version)
         self._state = updated
 
@@ -89,6 +92,9 @@ class ResearchEngine:
         )
         for event in events:
             updated = reduce_event(updated, event)
+        from epipilot.research.intelligence_reducer import validate_intelligence_boundary
+
+        validate_intelligence_boundary(updated)
         self.store.append_many(events, expected_version=self.state.event_version)
         self._state = updated
 
@@ -239,21 +245,49 @@ class ResearchEngine:
         return self.reserve(p.id, best.model_dump_json(), ranking.at)
 
     def reserve(
-        self, identifier: str, explanation: str, at: datetime | None = None
+        self,
+        identifier: str,
+        explanation: str,
+        at: datetime | None = None,
+        *,
+        registered: frozenset[str] | None = None,
     ) -> ExperimentProposal:
         assert self.state.research is not None
         p = self.state.research.proposal(identifier)
-        self.append(
-            EventType.EXPERIMENT_RESERVED,
-            ExperimentReserved(
-                reservation=Reservation(
-                    proposal_id=p.id,
-                    costs=BudgetManager(self.state.research).reservation(p),
-                    at=at or datetime.now(UTC),
-                    score_explanation=explanation,
-                )
-            ),
+        when = at or datetime.now(UTC)
+        entry = ExperimentReserved(
+            reservation=Reservation(
+                proposal_id=p.id,
+                costs=BudgetManager(self.state.research).reservation(p),
+                at=when,
+                score_explanation=explanation,
+            )
         )
+        if self.state.intelligence is not None:
+            from epipilot.research.decision_policy import make_forecast, registered_contracts
+            from epipilot.research.intelligence_models import DecisionForecastRecorded
+            from epipilot.research.scout import research_revision
+
+            assert self.state.research.frontier is not None
+            revision = research_revision(self.state, Path(self.state.research.frontier.repository))
+            forecast = make_forecast(
+                self.state,
+                p.id,
+                when,
+                revision,
+                registered if registered is not None else registered_contracts(self.state),
+            )
+            self.append_batch(
+                (
+                    (
+                        EventType.DECISION_FORECAST_RECORDED,
+                        DecisionForecastRecorded(forecast=forecast),
+                    ),
+                    (EventType.EXPERIMENT_RESERVED, entry),
+                )
+            )
+        else:
+            self.append(EventType.EXPERIMENT_RESERVED, entry)
         return p
 
     def _start(self, p: ExperimentProposal) -> None:
@@ -319,6 +353,9 @@ class ResearchEngine:
                 )
                 self._finish(p, o, a, verification_cost)
             self._settle(o)
+        from epipilot.research.decision_policy import reconcile_decision_outcomes
+
+        reconcile_decision_outcomes(self)
 
     def _finish(
         self,
@@ -420,6 +457,10 @@ class ResearchEngine:
                 )
             ),
         )
+
+        from epipilot.research.decision_policy import reconcile_decision_outcomes
+
+        reconcile_decision_outcomes(self)
 
     def cancel(self, identifier: str, actual_cost: tuple[Cost, ...], reason: str) -> None:
         r = self.state.research

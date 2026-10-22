@@ -47,6 +47,15 @@ epoch; repeating empty discovery in the same epoch is rejected. Duplicate measur
 fingerprints, stale versions, unsupported references or invalid source lines reject the
 entire batch. No partially accepted claims or proposals are left behind.
 
+## Optional Research Scout and decision value
+
+[Research Scout V1](SCOUT.md) adds bounded host-driven `scout configure/prepare/submit`
+over the same EventStore and budgets. A configured AgentPacket exposes `research_policy`,
+`scout_due` and an active `scout_request`; respond to discovery_required with this protocol,
+not a second investigator or truth store. Forecast/reservation is atomic, and existing
+verification/settlement records outcomes and rebuilds calibration. Unconfigured projects
+retain their previous behavior. Search notes and model estimates never promote science.
+
 ## Managed engineering work
 
 Use the same global `--root`, `--project`, and `--db` flags for `work` commands.

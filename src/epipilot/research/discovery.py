@@ -35,6 +35,7 @@ from epipilot.research.frontier import (
     MeasurementContract,
     Question,
 )
+from epipilot.research.intelligence_models import SourceSnapshot
 from epipilot.research.models import ExperimentProposal, ResearchNode
 from epipilot.research.policy import validate_graph
 from epipilot.research.reducer import canonical_basis, task_id
@@ -68,6 +69,7 @@ class DiscoveryBatch(FrontierValue):
     basis_ref: str
     summary: str = Field(min_length=1)
     sources: tuple[SourceAnchor, ...] = ()
+    external_sources: tuple[SourceSnapshot, ...] = ()
     findings: tuple[Finding, ...] = ()
     proposals: tuple[AgentProposal, ...] = ()
     no_new_findings_reason: str = ""
@@ -79,7 +81,7 @@ def git(root: Path, *args: str) -> str:
     ).stdout.rstrip("\r\n")
 
 
-def safe_input(root: Path, path: str) -> Path:
+def validate_relative_path(path: str) -> None:
     relative = PurePosixPath(path)
     if (
         path != relative.as_posix()
@@ -94,6 +96,10 @@ def safe_input(root: Path, path: str) -> Path:
         )
     ):
         raise ValueError("input path escapes research scope or references secrets")
+
+
+def safe_input(root: Path, path: str) -> Path:
+    validate_relative_path(path)
     resolved = (root / path).resolve()
     if root.resolve() not in resolved.parents or not resolved.is_file():
         raise ValueError("input missing or outside research repository")
@@ -139,7 +145,9 @@ def enable_frontier(engine: ResearchEngine, root: Path, exploration_fraction: fl
     )
 
 
-def apply_discovery(engine: ResearchEngine, root: Path, batch: DiscoveryBatch) -> None:
+def discovery_entries(
+    engine: ResearchEngine, root: Path, batch: DiscoveryBatch, *, allow_empty_refresh: bool = False
+) -> tuple[tuple[EventType, EventPayload], ...]:
     r = engine.state.research
     if r is None or r.frontier is None or Path(r.frontier.repository).resolve() != root.resolve():
         raise ValueError("agent frontier/root not configured")
@@ -149,10 +157,11 @@ def apply_discovery(engine: ResearchEngine, root: Path, batch: DiscoveryBatch) -
         raise ValueError("discovery requires canonical user decision or evidence basis")
     if not batch.findings and not batch.no_new_findings_reason.strip():
         raise ValueError("discovery must report findings or justify no new findings")
-    if batch.findings and not batch.sources:
+    if batch.findings and not (batch.sources or batch.external_sources):
         raise ValueError("new findings require exact source anchors")
     if (
-        not batch.findings
+        not allow_empty_refresh
+        and not batch.findings
         and not batch.proposals
         and r.frontier.discoveries
         and r.frontier.discoveries[-1].review_count == len(r.reviews)
@@ -162,7 +171,10 @@ def apply_discovery(engine: ResearchEngine, root: Path, batch: DiscoveryBatch) -
     entries: list[tuple[EventType, EventPayload]] = []
     source_ids = []
     for index, source in enumerate(batch.sources):
-        safe_input(root, source.path)
+        validate_relative_path(source.path)
+        mode = git(root, "ls-tree", source.revision, "--", source.path).split(" ", 1)[0]
+        if mode not in {"100644", "100755"}:
+            raise ValueError("source must be a regular file in pinned Git tree")
         raw = subprocess.run(
             [
                 "git",
@@ -190,6 +202,30 @@ def apply_discovery(engine: ResearchEngine, root: Path, batch: DiscoveryBatch) -
                     provenance_source=f"git:{source.revision}:{source.path}:{source.line}",
                     provenance_scope="document observation only; not scientific validation",
                     provenance_created_at=utc_now(),
+                    independently_verified=True,
+                ),
+            )
+        )
+    for index, snapshot in enumerate(batch.external_sources):
+        from epipilot.research.source_snapshots import validate_source_snapshot
+
+        validate_source_snapshot(engine.output, snapshot)
+        if snapshot.access_level not in {"full_text", "sections", "abstract"}:
+            raise ValueError("unread external source cannot support discovery")
+        eid = stable_id(engine.project_id, f"{batch.id}:external:{index}")
+        source_ids.append(eid)
+        entries.append(
+            (
+                EventType.EVIDENCE_RECORDED,
+                EvidenceRecordedPayload(
+                    evidence_id=eid,
+                    kind=EvidenceKind.STATIC_INSPECTION,
+                    summary=snapshot.quote,
+                    provenance_source=f"{snapshot.url}#snapshot={snapshot.sha256};{snapshot.locator}",
+                    provenance_scope=(
+                        "external document observation only; not local scientific validation"
+                    ),
+                    provenance_created_at=snapshot.accessed_at,
                     independently_verified=True,
                 ),
             )
@@ -289,4 +325,8 @@ def apply_discovery(engine: ResearchEngine, root: Path, batch: DiscoveryBatch) -
             ),
         )
     )
-    engine.append_batch(tuple(entries))
+    return tuple(entries)
+
+
+def apply_discovery(engine: ResearchEngine, root: Path, batch: DiscoveryBatch) -> None:
+    engine.append_batch(discovery_entries(engine, root, batch))

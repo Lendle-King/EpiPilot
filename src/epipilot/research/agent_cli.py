@@ -80,6 +80,15 @@ def main(argv: list[str] | None = None) -> int:
         "schema",
     ):
         commands.add_parser(name)
+    scout_parser = commands.add_parser("scout")
+    scout_actions = scout_parser.add_subparsers(dest="scout_action", required=True)
+    scout_actions.add_parser("schema")
+    scout_configure = scout_actions.add_parser("configure")
+    scout_configure.add_argument("--file", type=Path, required=True)
+    scout_prepare = scout_actions.add_parser("prepare")
+    scout_prepare.add_argument("--operation", required=True)
+    scout_submit = scout_actions.add_parser("submit")
+    scout_submit.add_argument("--file", type=Path, required=True)
     commands.add_parser("onboard")
     commands.add_parser("validate-code")
     snapshot = commands.add_parser("snapshot")
@@ -104,6 +113,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "work":
             return execute(args)
+        if args.command == "scout" and args.scout_action == "schema":
+            from epipilot.research.scout import ScoutSubmission
+
+            print(json.dumps(ScoutSubmission.model_json_schema(), ensure_ascii=False, indent=2))
+            return 0
         if args.command == "schema":
             print(json.dumps(DiscoveryBatch.model_json_schema(), ensure_ascii=False, indent=2))
             return 0
@@ -177,6 +191,26 @@ def main(argv: list[str] | None = None) -> int:
             elif args.goal and args.goal != engine.state.research.goal.statement:
                 raise ValueError("cannot overwrite the existing research goal")
             enable_frontier(engine, root, args.exploration_fraction)
+        if args.command == "scout":
+            from epipilot.research.intelligence_models import (
+                ResearchPolicy,
+                ResearchPolicyConfigured,
+            )
+            from epipilot.research.scout import ScoutService, ScoutSubmission
+
+            scout_service = ScoutService(engine, root)
+            if args.scout_action == "configure":
+                policy = ResearchPolicy.model_validate_json(args.file.read_bytes())
+                engine.append(
+                    EventType.RESEARCH_POLICY_CONFIGURED, ResearchPolicyConfigured(policy=policy)
+                )
+                print(policy.model_dump_json(indent=2))
+            elif args.scout_action == "prepare":
+                print(scout_service.prepare(args.operation).model_dump_json(indent=2))
+            else:
+                submission = ScoutSubmission.model_validate_json(args.file.read_bytes())
+                print(scout_service.submit(submission).model_dump_json(indent=2))
+            return 0
         service = AgentService(engine, root)
         if args.command == "discover":
             apply_discovery(

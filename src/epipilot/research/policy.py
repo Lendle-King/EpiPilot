@@ -88,10 +88,26 @@ def prerequisite_supported(state: ProjectState, identifier: UUID) -> bool:
     return supported(identifier)
 
 
-def _infeasible(state: ProjectState, p: ExperimentProposal, at: datetime) -> str | None:
+def infeasible_reason(
+    state: ProjectState,
+    p: ExperimentProposal,
+    at: datetime,
+    *,
+    assumed_supported: frozenset[UUID] = frozenset(),
+    assumed_completed: frozenset[TaskId] = frozenset(),
+) -> str | None:
+    """Shared hard gates. Assumptions are scoring-only counterfactuals, never persisted."""
     r = state.research
     assert r is not None
+    if state.intelligence is not None and state.intelligence.active:
+        return "Scout in flight requires recovery"
     statuses: dict[UUID, HypothesisStatus] = {h.id: h.status for h in state.hypotheses}
+    for hid in assumed_supported:
+        statuses[hid] = HypothesisStatus.SUPPORTED
+
+    def supported(hid: UUID) -> bool:
+        return hid in assumed_supported or prerequisite_supported(state, hid)
+
     node = next(n for n in r.nodes if n.hypothesis_id == p.hypothesis_id)
     if p.id in {x.proposal_id for x in r.reservations}:
         return "already submitted; reuse recorded result or explicitly recover in-flight work"
@@ -115,9 +131,9 @@ def _infeasible(state: ProjectState, p: ExperimentProposal, at: datetime) -> str
         return "future input unavailable at decision time"
     if not p.data_qualified:
         return f"data unqualified: {p.data_reason}"
-    if any(not prerequisite_supported(state, x) for x in node.and_ids):
+    if any(not supported(x) for x in node.and_ids):
         return "AND prerequisite not supported"
-    if node.or_ids and not any(prerequisite_supported(state, x) for x in node.or_ids):
+    if node.or_ids and not any(supported(x) for x in node.or_ids):
         return "OR prerequisites not supported"
     for other in r.nodes:
         if other.hypothesis_id in node.mutex_ids or node.hypothesis_id in other.mutex_ids:
@@ -153,7 +169,17 @@ def _infeasible(state: ProjectState, p: ExperimentProposal, at: datetime) -> str
         from epipilot.research.reducer import task_id
 
         canonical_task = task_id(state.project_id, p.id)
-        if canonical_task not in {t.id for t in state.current_plan.runnable_tasks()}:
+        plan = state.current_plan
+        if canonical_task not in {t.id for t in plan.tasks}:
+            return "canonical task graph not runnable"
+        from epipilot.core.models import TaskStatus
+
+        if plan.task(canonical_task).status is not TaskStatus.READY or any(
+            d.successor == canonical_task
+            and d.predecessor not in assumed_completed
+            and plan.task(d.predecessor).status is not TaskStatus.PASSED
+            for d in plan.dependencies
+        ):
             return "canonical task graph not runnable"
     # Only explicit, comparable stages are gated; no universal low-fidelity pruning.
     active = tuple(r.proposal(a.proposal_id).resources for a in r.active)
@@ -197,10 +223,14 @@ def rank_candidates(
     r = state.research
     if r is None:
         raise ValueError("research not configured")
+    if state.intelligence is not None and strategy is Strategy.CARTS:
+        from epipilot.research.decision_policy import rank_decision_value
+
+        return rank_decision_value(state, at)
     validate_graph(r.nodes)
     ranked, rejected = [], []
     for index, p in enumerate(r.proposals):
-        reason = _infeasible(state, p, at)
+        reason = infeasible_reason(state, p, at)
         if reason:
             rejected.append(Rejected(proposal_id=p.id, reason=reason))
             continue

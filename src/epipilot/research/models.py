@@ -226,9 +226,21 @@ class Settlement(Value):
     actual_cost: tuple[Cost, ...]
 
 
+class OverheadReservation(Value):
+    operation_id: str
+    costs: tuple[Cost, ...]
+
+
+class OverheadSettlement(Value):
+    operation_id: str
+    actual_cost: tuple[Cost, ...]
+
+
 class ResearchState(Value):
     goal: ResearchGoal
     budget_additions: tuple[Cost, ...] = ()
+    overhead_reservations: tuple[OverheadReservation, ...] = ()
+    overhead_settlements: tuple[OverheadSettlement, ...] = ()
     frontier: ResearchFrontier | None = None
     nodes: tuple[ResearchNode, ...] = ()
     proposals: tuple[ExperimentProposal, ...] = ()

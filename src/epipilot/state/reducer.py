@@ -75,6 +75,29 @@ def reduce_event(state: ProjectState, event: ProjectEvent) -> ProjectState:
             state, engineering=(*state.engineering, payload), event_version=state.event_version + 1
         )
 
+    from epipilot.research.intelligence_models import (
+        DecisionForecastRecorded,
+        DecisionOutcomeRecorded,
+        ResearchPolicyConfigured,
+        ScoutCompleted,
+        ScoutStarted,
+    )
+
+    if isinstance(
+        payload,
+        (
+            ResearchPolicyConfigured,
+            ScoutStarted,
+            ScoutCompleted,
+            DecisionForecastRecorded,
+            DecisionOutcomeRecorded,
+        ),
+    ):
+        from epipilot.research.intelligence_reducer import reduce_intelligence
+
+        updated = reduce_intelligence(state, payload)
+        return replace(updated, event_version=state.event_version + 1)
+
     try:
         updated = _reduce_payload(state, event.type, payload)
     except ValueError as exc:

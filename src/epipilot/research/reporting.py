@@ -41,12 +41,35 @@ def report(engine: ResearchEngine) -> dict[str, Any]:
             "release_accepted": False,
         }
         observation["scientific_assessment"] = assessment
+    intel = engine.state.intelligence
+    from epipilot.research.decision_policy import calibration_id
+
+    intelligence = (
+        None
+        if intel is None
+        else {
+            "policy": intel.policy.model_dump(mode="json"),
+            "scout_runs": [v.model_dump(mode="json") for v in intel.completions],
+            "active_scout_requests": [v.request.model_dump(mode="json") for v in intel.active],
+            "forecasts": [v.model_dump(mode="json") for v in intel.forecasts],
+            "outcomes": [v.model_dump(mode="json") for v in intel.outcomes],
+            "calibration_id": calibration_id(engine.state),
+            "probability_samples": len(intel.outcomes),
+            "mean_brier_score": (
+                sum(v.brier_score for v in intel.outcomes) / len(intel.outcomes)
+                if intel.outcomes
+                else None
+            ),
+            "qualification": "Selected experiments only; model-implied gains are not observed VoI",
+        }
+    )
     return {
+        "intelligence": intelligence,
         "project_id": engine.project_id,
         "event_version": engine.state.event_version,
         "goal": r.goal.model_dump(mode="json"),
         "budget": engine.budget(),
-        "running": bool(r.active),
+        "running": bool(r.active or (intel and intel.active)),
         "rounds_completed": len(r.settlements),
         "stop_reason": ranking.stop_reason,
         "engineering_validation": engineering_validation,

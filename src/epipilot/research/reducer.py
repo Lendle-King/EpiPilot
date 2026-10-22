@@ -103,7 +103,22 @@ def reduce_research(state: ProjectState, payload: EventPayload) -> ProjectState:
         from epipilot.research.policy import rank_candidates
 
         ranking = rank_candidates(state, entry.at)
-        if entry.proposal_id not in {x.proposal_id for x in ranking.ranked}:
+        if state.intelligence is not None:
+            from epipilot.research.policy import infeasible_reason
+
+            if infeasible_reason(state, r.proposal(entry.proposal_id), entry.at):
+                raise ValueError("cannot reserve infeasible experiment")
+            forecast = next(
+                (
+                    f
+                    for f in reversed(state.intelligence.forecasts)
+                    if f.selected_proposal == entry.proposal_id
+                ),
+                None,
+            )
+            if forecast is None or forecast.based_on_version + 1 != state.event_version:
+                raise ValueError("experiment requires an atomic pre-execution forecast")
+        elif entry.proposal_id not in {x.proposal_id for x in ranking.ranked}:
             raise ValueError("cannot reserve infeasible or submitted experiment")
         expected = BudgetManager(r).reservation(r.proposal(entry.proposal_id))
         if expected != entry.costs:

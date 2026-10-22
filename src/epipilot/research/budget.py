@@ -29,6 +29,9 @@ class BudgetManager:
         for settlement in self.state.settlements:
             for unit, value in amounts(settlement.actual_cost).items():
                 result[unit] = result.get(unit, 0.0) + value
+        for overhead in self.state.overhead_settlements:
+            for unit, value in amounts(overhead.actual_cost).items():
+                result[unit] = result.get(unit, 0.0) + value
         return result
 
     @property
@@ -37,6 +40,11 @@ class BudgetManager:
         for reservation in self.state.active:
             for unit, value in amounts(reservation.costs).items():
                 result[unit] -= value
+        settled = {s.operation_id for s in self.state.overhead_settlements}
+        for overhead_reservation in self.state.overhead_reservations:
+            if overhead_reservation.operation_id not in settled:
+                for unit, value in amounts(overhead_reservation.costs).items():
+                    result[unit] -= value
         return result
 
     def normalized(self, costs: tuple[Cost, ...]) -> float:
