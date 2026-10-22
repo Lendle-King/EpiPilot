@@ -97,6 +97,10 @@ Do not dump entire transcripts or the entire repository into the executor contex
 
 ## Git discipline
 
+- Managed delivery uses `epi work configure/acquire/complete/status/publish` and the canonical EventStore. Existing projects require explicit immutable repository/ref/acceptance authorization.
+- Edit only in the acquired lease cwd; canonical research `--root` remains the adopted root. Never stage, stash, reset or clean the user's checkout. Integration uses an exclusive `epipilot/*` branch/worktree.
+- Acceptance is explicit policy argv executed without a shell against the exact candidate; engineering integration/publication never accepts scientific claims. Scope diff enforcement is not an OS read sandbox.
+- Milestone publication requires integrated work plus checkpoint/artifact references, uses a fixed remote and SHA-to-ref normal fast-forward push only. No routine measurement push.
 - Make focused changes.
 - Do not modify unrelated files.
 - Do not rewrite public history.

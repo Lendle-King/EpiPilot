@@ -18,6 +18,7 @@ def new_event_id() -> EventId:
 
 
 class EventType(StrEnum):
+    MANAGED_WORK = "managed_work"
     RESEARCH_FRONTIER_INITIALIZED = "research_frontier_initialized"
     RESEARCH_FRONTIER_DISCOVERED = "research_frontier_discovered"
     RESEARCH_QUESTION_RESOLVED = "research_question_resolved"

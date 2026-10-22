@@ -6,6 +6,8 @@ from pathlib import Path
 from uuid import UUID
 
 from epipilot.core.events import EventType
+from epipilot.engineering.models import PublicationDue, WorkLease
+from epipilot.engineering.service import ManagedWork
 from epipilot.research.agent_policy import (
     question_closed,
     question_weight,
@@ -137,6 +139,11 @@ class AgentPacket(FrontierValue):
     ranking: Ranking
     proposal_id: str | None = None
     instructions: tuple[str, ...]
+    canonical_root: str = ""
+    engineering_workspaces: tuple[WorkLease, ...] = ()
+    delivery_mode: str = "managed"
+    delivery_configuration: str = "configuration-required"
+    push_due: tuple[PublicationDue, ...] = ()
 
 
 class AgentService:
@@ -247,7 +254,27 @@ class AgentService:
             omitted_questions=max(0, len(questions) - len(views)),
             ranking=ranking,
             proposal_id=proposal_id,
-            instructions=instructions,
+            canonical_root=str(self.root),
+            delivery_configuration="configured"
+            if any(e.policy for e in state.engineering)
+            else "configuration-required",
+            push_due=ManagedWork(self.engine.store, state.project_id, self.root).push_due()
+            if any(e.policy for e in state.engineering)
+            else (),
+            engineering_workspaces=tuple(
+                {
+                    event.work.operation_id: event.work
+                    for event in state.engineering
+                    if event.work is not None
+                }.values()
+            ),
+            instructions=(
+                *instructions,
+                "Before code/report edits, use work acquire; edit and run engineering commands "
+                "in its absolute cwd. Keep --root canonical; reuse the lease within a stage. "
+                "work complete independently commits, gates and integrates. Publish only "
+                "an integrated engineering milestone with checkpoint/artifact refs.",
+            ),
         )
 
     def start(self) -> str:

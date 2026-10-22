@@ -3,9 +3,9 @@
 Runs one project's experiment route cycle repeatedly until a phase goal is
 signalled (verdict ``goal_met``), a blocking verdict appears (``blocked``), the
 round budget is exhausted, or a major problem fails closed. Verified work from
-finished rounds is preserved: each round commits its report into the research
-repository, re-pins the snapshot, and refreshes grounded claims before the
-next route is generated.
+finished rounds is preserved: each round delivers its report through an explicitly
+authorized isolated managed lease, pins the integrated commit, and refreshes grounded
+claims before the next route is generated.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import re
 import subprocess
 import threading
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -312,48 +311,39 @@ class AutoIterationLoop:
                 if repo_path is None or not report_markdown.strip():
                     raise ValueError("Round requires a repository and a nonblank experiment report")
                 if execution is not None and manifest is not None:
-                    archive = (
-                        repo_path
-                        / "docs/auto_iteration/experiments"
-                        / (f"round_{round_index}_{execution.route_run_id}.json")
-                    )
-                    archive.parent.mkdir(parents=True, exist_ok=True)
-                    serialized = execution.model_dump_json(indent=2)
-                    if archive.exists() and archive.read_text(encoding="utf-8") != serialized:
-                        raise ValueError("Refusing to overwrite an archived execution receipt")
-                    archive.write_text(serialized, encoding="utf-8")
-                    git(repo_path, "add", str(archive.relative_to(repo_path)))
                     report_markdown += "\n\n" + execution_summary(execution)
-                    report_markdown += "\n执行清单: " + str(archive.relative_to(repo_path))
                     report_markdown += "\n算法结论: " + str(review["candidate_conclusion"])
                     report_markdown += "\n\n待验证的新 claims(模型分析):\n" + "\n".join(
                         "- " + str(claim) for claim in review["new_claims_zh"]
                     )
+                from epipilot.engineering.reports import deliver_report
+
+                operation = f"report:{route['run_id']}:{round_index}"
+                report_path, integrated = deliver_report(
+                    store.path,
+                    project_id,
+                    repo_path,
+                    operation,
+                    report_markdown,
+                    execution.model_dump_json(indent=2) if execution is not None else None,
+                )
                 archived = planner.load_loop_archive(project_id, str(route["run_id"]), round_index)
-                if archived is not None:
-                    report_path = str(archived["report_path"])
-                    blob_id = git(repo_path, "rev-parse", "HEAD:" + report_path)
-                    current_bytes = (repo_path / report_path).read_bytes()
-                    if (
-                        blob_id != archived["blob_id"]
-                        or hashlib.sha256(current_bytes).hexdigest() != archived["sha256"]
-                    ):
-                        raise ValueError("Previously archived report changed; refusing recovery")
-                else:
-                    report_path = self._commit_round_report(repo_path, round_index, report_markdown)
+                blob_id = git(repo_path, "rev-parse", integrated + ":" + report_path)
+                if archived is not None and blob_id != archived["blob_id"]:
+                    raise ValueError("Previously archived report changed; refusing recovery")
+                if archived is None:
                     planner.record_loop_archive(
                         project_id,
                         {
                             "route_run_id": route["run_id"],
                             "round": round_index,
                             "report_path": report_path,
-                            "sha256": hashlib.sha256(
-                                (repo_path / report_path).read_bytes()
-                            ).hexdigest(),
-                            "blob_id": git(repo_path, "rev-parse", "HEAD:" + report_path),
+                            "integrated_commit": integrated,
+                            "sha256": hashlib.sha256(report_markdown.encode()).hexdigest(),
+                            "blob_id": blob_id,
                         },
                     )
-                store.repin_snapshot(project_id)
+                store.repin_snapshot(project_id, integrated)
                 agent.run_model(
                     project_id,
                     claim_model,
@@ -445,22 +435,6 @@ class AutoIterationLoop:
         raise ValueError(
             "Algorithm review repair budget exhausted; current round remains incomplete"
         )
-
-    @staticmethod
-    def _commit_round_report(repo_path: Path, round_index: int, markdown: str) -> str:
-        target_dir = repo_path / "docs" / "auto_iteration"
-        target_dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        path = target_dir / f"round_{round_index}_{stamp}.md"
-        path.write_text(markdown, encoding="utf-8")
-        git(repo_path, "add", str(path.relative_to(repo_path)))
-        git(
-            repo_path,
-            "commit",
-            "-m",
-            f"docs(auto-iteration): round {round_index} experiment report",
-        )
-        return str(path.relative_to(repo_path))
 
     @staticmethod
     def _persist_summary(project_id: str, store: WorkspaceStore, state: LoopState) -> None:

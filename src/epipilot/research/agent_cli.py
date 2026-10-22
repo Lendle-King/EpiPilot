@@ -43,8 +43,12 @@ def code_validation(root: Path) -> dict[str, object]:
         "revision": revision,
         "clean": clean,
         "changed_paths": changed_paths,
-        "mergeable": clean,
-        "blocking_reasons": [] if clean else ["working tree has uncommitted or untracked changes"],
+        "mergeable": False,
+        "working_tree_clean": clean,
+        "ci_verified": False,
+        "merge_ready": False,
+        "blocking_reasons": ["independent engineering gate has not run"]
+        + ([] if clean else ["working tree has uncommitted or untracked changes"]),
         "scope": "working-tree validation only",
         "complete_ci": False,
         "scientific_acceptance": False,
@@ -93,8 +97,13 @@ def main(argv: list[str] | None = None) -> int:
     resolve.add_argument("--evidence-id", type=UUID, required=True)
     resolve.add_argument("--reopen", action="store_true")
     resolve.add_argument("--reason", required=True)
+    from epipilot.engineering.cli import add_commands, execute
+
+    add_commands(commands)
     args = parser.parse_args(argv)
     try:
+        if args.command == "work":
+            return execute(args)
         if args.command == "schema":
             print(json.dumps(DiscoveryBatch.model_json_schema(), ensure_ascii=False, indent=2))
             return 0

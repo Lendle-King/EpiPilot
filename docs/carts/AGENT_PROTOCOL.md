@@ -47,6 +47,68 @@ epoch; repeating empty discovery in the same epoch is rejected. Duplicate measur
 fingerprints, stale versions, unsupported references or invalid source lines reject the
 entire batch. No partially accepted claims or proposals are left behind.
 
+## Managed engineering work
+
+Use the same global `--root`, `--project`, and `--db` flags for `work` commands.
+`work configure --file policy.json` records immutable explicit authorization in the
+canonical project event stream, not a separate state database. Example policy:
+
+```json
+{
+  "repository": "/absolute/research",
+  "common_dir": "/absolute/research/.git",
+  "worktree_root": "/absolute/managed-worktrees",
+  "integration_branch": "epipilot/integration",
+  "remote": "origin",
+  "remote_url": "https://example.invalid/team/research.git",
+  "publication_ref": "refs/heads/research-delivery",
+  "profile": "engineering-v1",
+  "acceptance": [["python", "-m", "pytest"], ["ruff", "check", "."]],
+  "timeout_seconds": 300
+}
+```
+
+Configure the actual Git common-dir (`git rev-parse --path-format=absolute
+--git-common-dir`). `work acquire --operation STABLE-ID --scope src --scope tests`
+returns an isolated cwd/base/scope. `--forbidden PATH` narrows it. Repeated acquire reuses
+the same lease. `work complete --operation STABLE-ID` checks real staged/unstaged/untracked
+paths and HEAD, creates task and candidate commits, runs explicit argv without a shell in
+a separate candidate worktree, rejects tracked/untracked pollution and integrates only the
+verified candidate. A Git common-dir file lock serializes cooperating processes.
+
+`work status` projects persisted intent/result history. An interrupted operation can be
+retried with its stable ID; completed integration and publication are idempotent. Failed
+worktrees are retained for inspection, never automatically cleaned. The service never
+stashes/resets/cleans or stages the user's checkout and refuses a user-checked-out target
+branch. This is post-run diff enforcement, **not an OS read sandbox**.
+
+`work publish --operation STABLE-ID --artifact CHECKPOINT-OR-ARTIFACT` is an explicit
+engineering milestone delivery, not a per-measurement hook. It uses only the fixed remote
+URL and exact SHA-to-ref refspec, normal fast-forward only. Divergence blocks; a push
+failure/timeout queries the exact remote ref before retrying. If the remote ref is a
+strict descendant already containing the integrated SHA, publication is idempotent but
+records `already-contained; remote ref was an existing descendant`; it is not reported as
+the exact SHA being the remote tip. No force, deletion or deploy.
+References must be typed (`work:OP`, `artifact:PATH`, `evidence:UUID`, or allowed
+settlement/review/question-resolution event IDs); arbitrary strings are rejected. The
+packet's `push_due` is advisory and carries source/references; publishing never means
+scientific acceptance. Reports use a stable shared report workspace and release it only
+when clean, detached, reachable from integration, and no active operation owns it.
+`work release --operation STABLE-ID` is the safe cleanup entry; blocked/dirty/unowned
+worktrees remain. New onboarding projects report `mode=managed` and
+`configuration-required` until explicit capability/remote/ref/argv configuration exists;
+no remote or main authority is inferred.
+
+Agent packets expose `canonical_root` separately from `engineering_workspaces[].cwd`.
+Do not replace canonical research `--root` with execution cwd. `validate-code` is only a
+working-tree diagnostic: `working_tree_clean` does not imply `ci_verified`, `merge_ready`,
+or scientific acceptance; legacy `mergeable` stays false for that diagnostic.
+
+The legacy iteration report path uses the same service and stable route/round IDs,
+archives report/receipt in isolation, and pins the integrated SHA before claim refresh and
+checkpoint. Unconfigured old projects stop with an explicit configure requirement and do
+not silently write to remotes. Pure measurements create no engineering worktree.
+
 ## Cumulative understanding at ten-check boundaries
 
 After every ten settled checks and before planning another batch, the semantic research

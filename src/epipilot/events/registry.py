@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from epipilot.core.events import EventType
+from epipilot.engineering.models import ManagedEvent
 from epipilot.events.payloads import (
     ContextCompiledPayload,
     DecisionMadePayload,
@@ -35,6 +36,7 @@ from epipilot.research.frontier import FrontierDiscovered, FrontierInitialized, 
 TYPED_EVENT_SCHEMA_VERSION = 2
 
 EVENT_PAYLOAD_TYPES: dict[EventType, type[EventPayload]] = {
+    EventType.MANAGED_WORK: ManagedEvent,
     EventType.RESEARCH_FRONTIER_INITIALIZED: FrontierInitialized,
     EventType.RESEARCH_FRONTIER_DISCOVERED: FrontierDiscovered,
     EventType.RESEARCH_QUESTION_RESOLVED: QuestionResolved,

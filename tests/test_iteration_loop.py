@@ -11,7 +11,33 @@ from epipilot.workspace.chatgpt_web import ChatGPTWebError
 from epipilot.workspace.experiment_routes import ExperimentRoutePlanner
 from epipilot.workspace.iteration_loop import AutoIterationLoop, _host_repository_handoff
 from test_experiment_routes import FakeRouteModel, _route_payload, _seed_claims
-from test_research_onboarding_agent import _bad_batch, _good_batch, _setup
+from test_research_onboarding_agent import _bad_batch, _good_batch
+from test_research_onboarding_agent import _setup as _unmanaged_setup
+
+
+def _setup(tmp_path: Any) -> tuple[Any, str]:
+    import sys
+
+    from epipilot.engineering.models import ManagedPolicy
+    from epipilot.engineering.service import ManagedWork
+    from epipilot.runtime.sqlite_event_store import SqliteEventStore
+
+    store, project = _unmanaged_setup(tmp_path)
+    root = tmp_path / "repo"
+    git = ManagedWork.git
+    git(root, "remote", "add", "origin", str(tmp_path / "unused.git"))
+    ManagedWork(SqliteEventStore(store.path), project, root).configure(
+        ManagedPolicy(
+            repository=str(root),
+            common_dir=git(root, "rev-parse", "--path-format=absolute", "--git-common-dir"),
+            worktree_root=str(tmp_path / "managed"),
+            remote="origin",
+            remote_url=str(tmp_path / "unused.git"),
+            publication_ref="refs/heads/reports",
+            acceptance=((sys.executable, "-c", "pass"),),
+        )
+    )
+    return store, project
 
 
 class AlwaysGood:
@@ -143,7 +169,7 @@ def test_algorithm_round_repairs_review_and_archives_verified_metrics(tmp_path: 
     assert status["rounds_completed"] == 1
     assert status["verdicts"] == ["continue"]  # historical evidence cannot prove forward goal
     assert status["round"] == 1
-    report = next((tmp_path / "repo/docs/auto_iteration").glob("round_1_*.md"))
+    report = next((tmp_path / "managed/integration/docs/auto_iteration").glob("round_*.md"))
     assert "-10.000000%" in report.read_text()
     assert "reject" in report.read_text()
     assert "repair" in driver.prompts[1].lower()
@@ -203,7 +229,7 @@ def test_algorithm_round_resumes_failed_claim_refresh_without_web_or_duplicate_r
     )
     assert resumed["rounds_completed"] == 1, resumed
     assert resumed["round"] == 1
-    assert len(list((tmp_path / "repo/docs/auto_iteration").glob("round_1_*.md"))) == 1
+    assert len(list((tmp_path / "managed/integration/docs/auto_iteration").glob("round_*.md"))) == 1
 
 
 def test_imported_review_cannot_bypass_algorithm_contract_during_recovery(tmp_path: Any) -> None:
@@ -246,9 +272,9 @@ def test_loop_stops_on_goal_met_and_records_rounds(tmp_path: Any) -> None:
     assert status["verdicts"] == ["continue", "goal_met"]
     assert status["running"] is False
     # round 1 committed its report and re-pinned the snapshot before round 2
-    reports = list((tmp_path / "repo" / "docs" / "auto_iteration").glob("round_1_*.md"))
-    assert len(reports) == 1
-    assert "Result line." in reports[0].read_text(encoding="utf-8")
+    reports = list((tmp_path / "managed/integration/docs/auto_iteration").glob("round_*.md"))
+    assert len(reports) == 2
+    assert any("Result line." in report.read_text(encoding="utf-8") for report in reports)
     assert store.get(_project_of(store))["git_commit"] != ""
     assert len(driver.prompts) == 2
 
@@ -369,8 +395,8 @@ def test_terminal_round_archives_report_before_checkpoint(tmp_path: Any, verdict
         SequenceDriver([_review(verdict, "# Terminal report\nNo independent result.")]),
         max_rounds=10,
     )
-    repo = tmp_path / "repo"
-    reports = list((repo / "docs" / "auto_iteration").glob("round_1_*.md"))
+    repo = tmp_path / "managed/integration"
+    reports = list((repo / "docs" / "auto_iteration").glob("round_*.md"))
     assert len(reports) == 1
     relative = str(reports[0].relative_to(repo))
     assert "No independent result." in git(repo, "show", f"HEAD:{relative}")
@@ -409,7 +435,7 @@ def test_rejected_new_report_does_not_advance_checkpoint(tmp_path: Any) -> None:
     assert status["rounds_completed"] == 0
     assert ExperimentRoutePlanner(store).load_loop_checkpoint(_project_of(store)) is None
     # The committed observation and rejected extraction stay available for audit.
-    assert len(list((tmp_path / "repo" / "docs" / "auto_iteration").glob("*.md"))) == 1
+    assert len(list((tmp_path / "managed/integration/docs/auto_iteration").glob("*.md"))) == 1
 
 
 def test_resume_uses_original_route_then_continues_round_budget(tmp_path: Any) -> None:

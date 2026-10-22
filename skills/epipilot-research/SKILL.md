@@ -22,6 +22,35 @@ Do not guess flags. `--help`, `schema`, `onboard`, `snapshot`, `iterate` are ava
 `init` on a configured project enables the frontier without replacing its goal or history.
 Never create a different project simply to reset a spent budget or blocked result.
 
+## Managed engineering delivery
+
+Existing projects need one explicit `work configure --file policy.json` authorization.
+The immutable policy binds repository/common-dir, external worktree root, dedicated
+`epipilot/*` integration branch, remote name/URL, publication ref, and acceptance argv.
+Never derive acceptance shell commands from experimental/model text.
+
+Before editing code or reports (including blocked-state repairs), call
+`work acquire --operation STABLE-ID --scope relative/path` (repeat `--scope` as needed).
+Edit and run engineering commands only in the returned absolute `cwd`. Reuse that lease
+within the same stage; measurement alone needs neither a new lease nor a push.
+Keep global `--root` pointing to the canonical research repository, not the lease.
+`work complete --operation STABLE-ID` independently checks scope and HEAD, commits,
+verifies a frozen candidate in a separate gate worktree, and integrates locally.
+`work status` exposes recovery intents/results. Retry with the same operation ID after
+inspecting the failure; do not allocate a new ID to conceal a blocked operation.
+
+At an engineering delivery milestone, inspect packet `push_due` and use
+`work publish --operation STABLE-ID --artifact artifact:path` (or a canonical
+`evidence:UUID` / allowed `event:UUID`). Typed references are checked against the
+integrated tree or canonical EventStore; arbitrary checkpoint text is rejected. It
+publishes the exact verified integrated SHA to the fixed ref, never force/deletes/deploys.
+No repeated commit/push approval is needed within configured authority. Remote divergence
+blocks; preserve the local result. A failed scientific hypothesis may still yield a
+correct integrated report. Engineering success never resolves a scientific unknown.
+Release only with `work release` after the result is integrated and no longer dirty;
+blocked or dirty worktrees remain for recovery. Scope enforcement is not an OS read
+sandbox.
+
 ## Autonomous loop
 
 Repeat until verified goal, exhausted budget, blocked inputs, or an ambiguous contract:

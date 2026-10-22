@@ -65,6 +65,15 @@ def reduce_event(state: ProjectState, event: ProjectEvent) -> ProjectState:
             f"event aggregate {event.aggregate_id!r} does not match project {state.project_id!r}"
         )
     payload = decode_event_payload(event)
+    from epipilot.engineering.models import ManagedEvent
+
+    if isinstance(payload, ManagedEvent):
+        from epipilot.engineering.reducer import validate_managed
+
+        validate_managed(state.engineering, payload)
+        return replace(
+            state, engineering=(*state.engineering, payload), event_version=state.event_version + 1
+        )
 
     try:
         updated = _reduce_payload(state, event.type, payload)

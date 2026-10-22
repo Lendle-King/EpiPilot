@@ -163,8 +163,8 @@ class WorkspaceStore:
             (project_id, kind, json.dumps(payload, ensure_ascii=False), _now()),
         )
 
-    def repin_snapshot(self, project_id: str) -> str:
-        """Move the pinned Git snapshot to the current repository HEAD.
+    def repin_snapshot(self, project_id: str, integrated_commit: str | None = None) -> str:
+        """Pin an explicit integrated commit, or current HEAD for manual onboarding.
 
         Used after an automated iteration commits new research documents, so the
         next grounded analysis can see them. The re-pin is recorded as an
@@ -175,6 +175,10 @@ class WorkspaceStore:
         if not isinstance(path, str):
             raise ValueError("Snapshot re-pin requires an adopted Git repository")
         root, head, branch = self._resolve_repo(path)
+        if integrated_commit is not None:
+            if not re.fullmatch(r"[0-9a-f]{40,64}", integrated_commit):
+                raise ValueError("explicit integrated commit must be a full object ID")
+            head = git(root, "rev-parse", integrated_commit + "^{commit}")
         with self._db() as conn:
             conn.execute(
                 "UPDATE projects SET git_commit = ? WHERE id = ?",
@@ -281,6 +285,23 @@ class WorkspaceStore:
         ]
         data["events"] = [{**dict(e), "payload": json.loads(str(e["payload"]))} for e in events]
         data["git"] = self.git_status(project_id)
+        # WorkspaceStore and the canonical EventStore intentionally share this SQLite path;
+        # project_events remains the authoritative engineering/research stream, while
+        # workspace_events is only the legacy onboarding projection.
+        from epipilot.runtime.sqlite_event_store import SqliteEventStore
+        from epipilot.state.replay import replay_project
+
+        managed = replay_project(project_id, SqliteEventStore(self.path).load(project_id))
+        data["delivery"] = {
+            "mode": "managed",
+            "configuration": "configured"
+            if any(e.policy for e in managed.engineering)
+            else "configuration-required",
+            "instruction": (
+                "Configure repository/common-dir, remote URL/ref and acceptance argv "
+                "once using epi work configure; no remote/main authority is inferred."
+            ),
+        }
         return data
 
     def git_status(self, project_id: str) -> dict[str, Any]:

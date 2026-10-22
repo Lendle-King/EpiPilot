@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from epipilot.core.models import Evidence, EvidenceId, Task, TaskId
+from epipilot.engineering.models import ManagedEvent
 from epipilot.epistemics.models import Fact, Hypothesis, Unknown
 from epipilot.planning.graph import PlanGraph
 from epipilot.requirements.models import Decision, Requirement
@@ -72,6 +73,7 @@ class ProjectState:
     verifications: tuple[VerificationRecord, ...] = ()
     artifact_refs: tuple[str, ...] = ()
     research: ResearchState | None = None
+    engineering: tuple[ManagedEvent, ...] = ()
     event_version: int = 0
 
     def __post_init__(self) -> None:

@@ -3,6 +3,7 @@ import io
 import json
 from pathlib import Path
 
+import pytest
 from test_agent_discovery import batch_for, make_agent
 
 
@@ -64,6 +65,16 @@ def test_cli_uses_same_canonical_database_and_discovery_protocol(tmp_path):
     assert not (root / ".research").exists()
 
 
+def test_cli_help_loads_managed_work_commands(capsys):
+    from epipilot.research.agent_cli import main
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--project", "agent", "--help"])
+
+    assert exc_info.value.code == 0
+    assert "work" in capsys.readouterr().out
+
+
 def test_validate_code_is_read_only_and_does_not_require_database(tmp_path, capsys):
     from epipilot.research.agent_cli import main
 
@@ -76,7 +87,10 @@ def test_validate_code_is_read_only_and_does_not_require_database(tmp_path, caps
     assert result["revision"] == _revision
     assert result["clean"] is True
     assert result["changed_paths"] == []
-    assert result["mergeable"] is True
+    assert result["mergeable"] is False
+    assert result["working_tree_clean"] is True
+    assert result["ci_verified"] is False
+    assert result["merge_ready"] is False
     assert result["complete_ci"] is False
     assert result["scientific_acceptance"] is False
     assert not db.exists()

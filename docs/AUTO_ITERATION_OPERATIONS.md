@@ -5,8 +5,9 @@ the requested round budget, or an adapter/validation failure. A review is an
 observation, not independent verification of the research goal.
 
 Every terminal round follows the same archival sequence as a continuing round:
-validate the review, commit its report under `docs/auto_iteration/` in the
-research repository, repin the source snapshot, refresh grounded candidate
+validate the review, deliver its report/receipt under `docs/auto_iteration/` through
+an explicitly configured managed lease, independently gate and integrate in the dedicated
+worktree, repin the exact integrated commit (not the user's HEAD), refresh grounded candidate
 claims, then append the checkpoint. A failure during archival or extraction
 fails closed before a new checkpoint is recorded. Existing audit rows are
 never replaced.
