@@ -146,6 +146,18 @@ anonymous HTTPS GETs without cookies or redirects;
 this adapter is `MEASUREMENT` quality and `integrity` scope, not PIT qualification or strategy
 performance evidence.
 
+The QUANT_ETF host also registers `szse_pcf_wayback_availability_v1` as an alternate candidate
+locator for the same four fixed SZSE PCF URLs and 09:15 Asia/Shanghai cutoffs. It queries only
+the Internet Archive Availability JSON endpoint for the exact pinned URL and cutoff. Availability
+results are not witnesses by themselves: an eligible candidate must also have a single exact
+CDX row at that timestamp, a raw replay whose SHA-1 and byte length match the CDX record, and
+strict GBK content containing the pinned ETF code and PCF date. It replays at most one candidate
+per fixed target. Missing or late candidates, timeouts, and digest or identity mismatches remain
+inconclusive and do not establish source absence, archive completeness, first-publication time,
+historical membership, PIT qualification, or strategy performance. Requests are anonymous HTTPS
+GETs without cookies or redirects, with four-second request and byte limits; this adapter is
+`MEASUREMENT` quality and `integrity` scope.
+
 The QUANT_ETF host also registers `arquivo_szse_pcf_v1` for the same four fixed SZSE PCF
 targets and cutoffs. It queries Arquivo.pt's exact-URL CDX endpoint with a bounded result limit,
 then replays at most the newest strict pre-cutoff candidate through the archive's raw `noFrame`

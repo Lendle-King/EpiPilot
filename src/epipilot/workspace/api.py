@@ -143,6 +143,12 @@ from epipilot.workspace.wayback_szse_pcf import (
 from epipilot.workspace.wayback_szse_pcf import (
     WaybackSZSEPCFComputer,
 )
+from epipilot.workspace.wayback_szse_pcf_availability import (
+    ADAPTER_ID as WAYBACK_SZSE_PCF_AVAILABILITY_ADAPTER_ID,
+)
+from epipilot.workspace.wayback_szse_pcf_availability import (
+    WaybackSZSEPCFAvailabilityComputer,
+)
 
 app = FastAPI(title="EpiPilot Research Workspace", version="0.1.0")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
@@ -830,6 +836,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         COMMONCRAWL_SSE_PCF_ADAPTER_ID_V2: CommonCrawlSSEPCFLongIndexTimeoutComputer(),
         COMMONCRAWL_SSE_PCF_ADAPTER_ID_V3: CommonCrawlSSEPCFStableLongIndexTimeoutComputer(),
         WAYBACK_SZSE_PCF_ADAPTER_ID: WaybackSZSEPCFComputer(),
+        WAYBACK_SZSE_PCF_AVAILABILITY_ADAPTER_ID: WaybackSZSEPCFAvailabilityComputer(),
         ARQUIVO_SZSE_PCF_ADAPTER_ID: ArquivoSZSEPCFComputer(),
         HUAAN_PCF_ARCHIVE_ADAPTER_ID: HuaanPCFArchiveComputer(),
         COMMONCRAWL_SSE_NOTICE_ADAPTER_ID: CommonCrawlSseNoticeComputer(),
