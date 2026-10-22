@@ -76,7 +76,7 @@ class DiscoveryBatch(FrontierValue):
 def git(root: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(root), *args], check=True, capture_output=True, text=True
-    ).stdout.strip()
+    ).stdout.rstrip("\r\n")
 
 
 def safe_input(root: Path, path: str) -> Path:

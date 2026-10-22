@@ -190,6 +190,9 @@ class Observation(Value):
     samples: int = Field(default=0, ge=0)
     actual_cost: tuple[Cost, ...]
     artifact: str
+    artifact_sha256: str | None = None
+    source_revision: str | None = None
+    data_cutoff: str | None = None
     summary: str
     recorded_at: AwareDatetime
 

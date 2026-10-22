@@ -29,6 +29,28 @@ from epipilot.runtime.event_store import EventStoreError
 from epipilot.runtime.sqlite_event_store import SqliteEventStore
 
 
+def code_validation(root: Path) -> dict[str, object]:
+    revision = git(root, "rev-parse", "HEAD")
+    status = git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    changed_paths = []
+    for line in status.splitlines():
+        if line.startswith(("??", "!!")):
+            changed_paths.append(line[3:])
+        elif line.startswith((" M", "M ", " A", "A ", " D", "D ", " R", "R ", " C", "C ")):
+            changed_paths.append(line[3:] if line.startswith(" ") else line[2:])
+    clean = not changed_paths
+    return {
+        "revision": revision,
+        "clean": clean,
+        "changed_paths": changed_paths,
+        "mergeable": clean,
+        "blocking_reasons": [] if clean else ["working tree has uncommitted or untracked changes"],
+        "scope": "working-tree validation only",
+        "complete_ci": False,
+        "scientific_acceptance": False,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
@@ -55,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         commands.add_parser(name)
     commands.add_parser("onboard")
+    commands.add_parser("validate-code")
     snapshot = commands.add_parser("snapshot")
     snapshot.add_argument("--file", action="append", required=True)
     discovery = commands.add_parser("discover")
@@ -76,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(DiscoveryBatch.model_json_schema(), ensure_ascii=False, indent=2))
             return 0
         root = args.root.resolve()
+        if args.command == "validate-code":
+            print(json.dumps(code_validation(root), ensure_ascii=False, indent=2))
+            return 0
         if args.command == "onboard":
             revision = git(root, "rev-parse", "HEAD")
             paths = git(root, "ls-files").splitlines()

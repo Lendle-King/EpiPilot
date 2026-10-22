@@ -86,9 +86,26 @@ class MeasurementContract(FrontierValue):
     boundary_date: str = Field(default="2019-01-01", pattern="^\\d{4}-\\d{2}-\\d{2}$")
     cutoff_date: str | None = None
     rules: tuple[Rule, ...] = Field(min_length=1)
+    prospective: bool = False
+    data_source: str = ""
+
+    @model_validator(mode="after")
+    def validate_prospective(self) -> Self:
+        if self.prospective and (
+            self.cutoff_date is None or not self.data_source.strip() or not self.rules
+        ):
+            raise ValueError(
+                "prospective contracts require cutoff_date, data_source, and explicit rules"
+            )
+        return self
 
     def fingerprint(self) -> str:
-        data = self.model_dump(mode="json", exclude={"proposal_id", "purpose"})
+        excluded = {"proposal_id", "purpose"}
+        if not self.prospective:
+            excluded.add("prospective")
+        if not self.data_source:
+            excluded.add("data_source")
+        data = self.model_dump(mode="json", exclude=excluded)
         # File spelling/order is not scientific novelty. Preserve content multiplicity;
         # validation rejects duplicate contents/identities inside a measurement.
         data["inputs"] = sorted(item.sha256 for item in self.inputs)

@@ -258,6 +258,13 @@ point-in-time validity, absence of survivor bias or independent forward alpha. N
 adapter can promotion-qualify a goal. A failed threshold refutes only if the proposal
 preregistered a definitive negative; otherwise it remains inconclusive.
 
+The six gates remain separate: authority, provenance, scope, verification, engineering/code
+delivery, and scientific assessment. JSON/Markdown projections expose engineering validation
+and scientific assessment in separate sections; a science outcome is never a merge or release
+acceptance. `validate-code` is a read-only local working-tree check: it reports revision,
+cleanliness, changed paths, and merge blockers, but does not write the canonical database,
+commit/push, run full pytest/lint/CI, or establish scientific acceptance.
+
 For a new domain, implement `Computer.measure(root, contract) -> Measured` and `quality`,
 test its real outputs and failure cases, and inject an explicit reviewed name-to-Computer
 mapping into `AgentService(engine, root, computers=...)`. The same adapter recomputes fresh

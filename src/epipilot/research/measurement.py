@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 import statistics
@@ -144,6 +145,35 @@ class IntegrityComputer:
         )
 
 
+def file_sha256(path: Path) -> str:
+    with path.open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def artifact_payload(
+    proposal: ExperimentProposal,
+    contract: MeasurementContract,
+    measured: Measured,
+    error: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "metadata": {
+            "proposal_id": proposal.id,
+            "input_fingerprint": proposal.input_revision,
+            "contract_fingerprint": contract.fingerprint(),
+            "contract": contract.model_dump(mode="json"),
+            "input_manifest": [item.model_dump(mode="json") for item in contract.inputs],
+            "code_revision": contract.git_revision,
+            "data_source": contract.data_source,
+            "prospective": contract.prospective,
+        },
+        "measurement": measured.model_dump(mode="json"),
+    }
+    if error is not None:
+        payload["error"] = error
+    return payload
+
+
 class MeasurementAdapter:
     """Inject reviewed domain Computers without changing the search algorithm."""
 
@@ -180,24 +210,22 @@ class MeasurementAdapter:
                 "built-in runner meters wall_seconds; use a domain runner for other units"
             )
         start = perf_counter()
+        contract = self.contract(p)
         try:
-            measured, _ = self.measure(p)
-            payload = {
-                "proposal_id": p.id,
-                "input_fingerprint": p.input_revision,
-                "measurement": measured.model_dump(mode="json"),
-            }
-            execution = ExecutionStatus.SUCCEEDED
-            summary = "registered input-bound measurement"
+            validate_contract(self.root, contract)
+            if contract.adapter not in self.computers:
+                raise ValueError("no registered domain measurement computer")
+            computer = self.computers[contract.adapter]
+            measured = computer.measure(self.root, contract)
         except (ValueError, OSError, KeyError) as exc:
             measured = Measured(metrics=(), samples=0)
-            payload = {
-                "proposal_id": p.id,
-                "input_fingerprint": p.input_revision,
-                "error": type(exc).__name__,
-            }
+            payload = artifact_payload(p, contract, measured, type(exc).__name__)
             execution = ExecutionStatus.INVALID
             summary = "measurement failed closed; inputs or adapter invalid"
+        else:
+            payload = artifact_payload(p, contract, measured)
+            execution = ExecutionStatus.SUCCEEDED
+            summary = "registered input-bound measurement"
         output.write_text(
             json.dumps(payload, sort_keys=True, ensure_ascii=False, indent=2), encoding="utf8"
         )
@@ -208,6 +236,9 @@ class MeasurementAdapter:
             samples=measured.samples,
             actual_cost=(Cost(unit="wall_seconds", amount=perf_counter() - start),),
             artifact=str(output),
+            artifact_sha256=file_sha256(output),
+            source_revision=contract.git_revision,
+            data_cutoff=contract.cutoff_date,
             summary=summary,
             recorded_at=datetime.now(UTC),
         )
@@ -219,14 +250,14 @@ class MeasurementAdapter:
         try:
             c = self.contract(p)
             measured, quality = self.measure(p)  # fresh independently executed input recomputation
-            payload = json.loads(Path(o.artifact).read_text(encoding="utf8"))
-            expected = {
-                "proposal_id": p.id,
-                "input_fingerprint": p.input_revision,
-                "measurement": measured.model_dump(mode="json"),
-            }
+            artifact = Path(o.artifact)
+            payload = json.loads(artifact.read_text(encoding="utf8"))
+            expected = artifact_payload(p, c, measured)
             verified = (
-                payload == expected
+                o.artifact_sha256 == file_sha256(artifact)
+                and payload == expected
+                and o.source_revision == c.git_revision
+                and o.data_cutoff == c.cutoff_date
                 and (
                     p.scope not in {Scope.INDEPENDENT, Scope.PROSPECTIVE}
                     or quality >= Quality.INDEPENDENT

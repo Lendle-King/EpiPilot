@@ -17,6 +17,30 @@ def report(engine: ResearchEngine) -> dict[str, Any]:
         raise ValueError("research not configured")
     ranking = engine.ranking()
     statuses: dict[UUID, str] = {h.id: h.status.value for h in engine.state.hypotheses}
+    observations = [o.model_dump(mode="json") for o in r.observations]
+    reviews = [x.model_dump(mode="json") for x in r.reviews]
+    review_by_proposal = {item["assessment"]["proposal_id"]: item["assessment"] for item in reviews}
+    engineering_validation = {
+        "status": "not_recorded",
+        "mergeable": False,
+        "release_accepted": False,
+        "reason": "No canonical code-delivery validation is recorded by the research report.",
+    }
+    scientific_assessment = {
+        "reviews": reviews,
+        "note": "Scientific outcomes are canonical assessments, not merge or release decisions.",
+    }
+    for observation in observations:
+        assessment = review_by_proposal.get(observation["proposal_id"])
+        observation["engineering_validation"] = {
+            "status": "measurement_execution",
+            "execution": observation["execution"],
+            "artifact": observation["artifact"],
+            "source_revision": observation.get("source_revision"),
+            "mergeable": False,
+            "release_accepted": False,
+        }
+        observation["scientific_assessment"] = assessment
     return {
         "project_id": engine.project_id,
         "event_version": engine.state.event_version,
@@ -25,6 +49,8 @@ def report(engine: ResearchEngine) -> dict[str, Any]:
         "running": bool(r.active),
         "rounds_completed": len(r.settlements),
         "stop_reason": ranking.stop_reason,
+        "engineering_validation": engineering_validation,
+        "scientific_assessment": scientific_assessment,
         "tree": [
             {
                 "id": str(n.hypothesis_id),
@@ -38,8 +64,8 @@ def report(engine: ResearchEngine) -> dict[str, Any]:
             }
             for n in r.nodes
         ],
-        "observations": [o.model_dump(mode="json") for o in r.observations],
-        "reviews": [x.model_dump(mode="json") for x in r.reviews],
+        "observations": observations,
+        "reviews": reviews,
         "ranking": ranking.model_dump(mode="json"),
     }
 
@@ -53,15 +79,22 @@ def write_report(path: Path, data: dict[str, Any], title: str = "CARTS research 
     for node in data.get("tree", []):
         lines.append(f"- **{node['status']}** — {node['label']}")
     if "observations" in data:
-        lines += ["", "## Executed observations", ""]
+        lines += ["", "## Engineering / code-delivery validation", ""]
+        engineering = data.get("engineering_validation", {})
+        lines.append(
+            f"- status={engineering.get('status', 'not_recorded')}; "
+            f"mergeable={engineering.get('mergeable', False)}; "
+            f"release_accepted={engineering.get('release_accepted', False)}"
+        )
+        lines += ["", "## Scientific assessment", ""]
         reviews = {r["assessment"]["proposal_id"]: r["assessment"] for r in data.get("reviews", [])}
         for o in data["observations"]:
             assessment = reviews.get(o["proposal_id"], {})
             metrics = ", ".join(f"{m['name']}={m['value']:.6g}" for m in o["metrics"])
-            lines += [
+            lines.append(
                 f"- {o['proposal_id']}: execution={o['execution']}, "
-                f"science={assessment.get('outcome', 'unverified')}; {metrics}"
-            ]
+                f"outcome={assessment.get('outcome', 'unverified')}; {metrics}"
+            )
     if "decisions" in data:
         lines += [
             "",

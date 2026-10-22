@@ -64,6 +64,38 @@ def test_cli_uses_same_canonical_database_and_discovery_protocol(tmp_path):
     assert not (root / ".research").exists()
 
 
+def test_validate_code_is_read_only_and_does_not_require_database(tmp_path, capsys):
+    from epipilot.research.agent_cli import main
+
+    _, root, _revision = make_agent(tmp_path)
+    db = tmp_path / "not-created.sqlite3"
+    before = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+    assert main(["--root", str(root), "--db", str(db), "--project", "agent", "validate-code"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    after = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+    assert result["revision"] == _revision
+    assert result["clean"] is True
+    assert result["changed_paths"] == []
+    assert result["mergeable"] is True
+    assert result["complete_ci"] is False
+    assert result["scientific_acceptance"] is False
+    assert not db.exists()
+    assert after == before
+
+
+def test_validate_code_reports_porcelain_paths(tmp_path, capsys):
+    from epipilot.research.agent_cli import main
+
+    _, root, _revision = make_agent(tmp_path)
+    changed = root / "data.csv"
+    changed.write_text(changed.read_text(encoding="utf8") + "2022-01-01,1\n", encoding="utf8")
+    assert main(["--root", str(root), "--project", "agent", "validate-code"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["clean"] is False
+    assert result["mergeable"] is False
+    assert result["changed_paths"] == ["data.csv"]
+
+
 def test_default_artifacts_match_workspace_api_location(tmp_path, capsys):
     from epipilot.research.agent_cli import main
     from epipilot.research.discovery import apply_discovery
