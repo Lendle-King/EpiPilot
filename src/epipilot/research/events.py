@@ -1,6 +1,7 @@
 """Typed research events, stored in EpiPilot's existing canonical event stream."""
 
 from epipilot.events.payloads import EventPayload
+from epipilot.research.intelligence_models import ResearchPolicy
 from epipilot.research.models import (
     Cost,
     ExperimentProposal,
@@ -21,6 +22,13 @@ class ResearchConfigured(EventPayload):
 class ResearchBudgetExtended(EventPayload):
     basis_ref: str
     additions: tuple[Cost, ...]
+
+
+class ResearchGoalRevised(EventPayload):
+    previous_goal: ResearchGoal
+    goal: ResearchGoal
+    basis_ref: str
+    policy: ResearchPolicy | None = None
 
 
 class ProposalAdded(EventPayload):

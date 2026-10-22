@@ -162,3 +162,20 @@ versioned report edits use `work acquire/complete`; keep `--root` canonical, use
 read the integrated SHA and refresh stale discovery/forecast inputs. Publication is a separate
 explicit milestone operation and never scientific acceptance. Do not checkout/reset/stash
 or stage the user's working copy to make new source files visible.
+# Revising an authorized research goal
+
+`ResearchEngine.revise_goal(goal, basis_ref, policy=...)` emits the typed
+`research_goal_revised` event. The basis must be a canonical USER decision. The event
+contains the previous and replacement goals; stale replacements and unchanged retries
+are rejected. Recover all experiments and Scout reservations first. Budgets, resource
+limits, historical reviews, evidence and settlements cannot be changed by this operation.
+Budget additions still require their existing separate authorization.
+
+When Scout is configured, supply a new policy ID and a never-used utility version with
+the same decision basis. Goal and policy change in one append, preventing estimates or
+probability calibration under the old objective from selecting new work. Old policies,
+forecasts and outcomes remain available for audit; existing claims are not reaccepted
+against the new goal. New scientific acceptance uses the revised contract. Historical
+prefix replay reconstructs its original goal. Older runtimes cannot read this new event;
+upgrade all consumers before writing it to their shared EventStore.
+
