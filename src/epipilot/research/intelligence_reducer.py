@@ -1,11 +1,13 @@
 """Pure replay and authority gates for Scout metadata and frozen decisions."""
 
 from dataclasses import replace
+from math import ulp
 
 from epipilot.events.payloads import EventPayload
 from epipilot.research.budget import BudgetManager
 from epipilot.research.intelligence_models import (
     DecisionForecastRecorded,
+    DecisionOutcome,
     DecisionOutcomeRecorded,
     IntelligenceState,
     ResearchPolicyConfigured,
@@ -15,6 +17,22 @@ from epipilot.research.intelligence_models import (
 )
 from epipilot.research.models import OverheadReservation, OverheadSettlement, amounts
 from epipilot.state.project import ProjectState
+
+
+def _same_outcome(recorded: DecisionOutcome, expected: DecisionOutcome | None) -> bool:
+    if expected is None:
+        return False
+    # Python 3.12 changed float sum accuracy. Permit only last-bit differences in
+    # recomputed diagnostics; identities, measured costs and all other fields stay exact.
+    diagnostics = ("brier_score", "model_implied_gain")
+    for field in diagnostics:
+        left, right = getattr(recorded, field), getattr(expected, field)
+        if abs(left - right) > 4 * max(ulp(left), ulp(right)):
+            return False
+    return (
+        recorded.model_copy(update={field: getattr(expected, field) for field in diagnostics})
+        == expected
+    )
 
 
 def reduce_intelligence(state: ProjectState, payload: EventPayload) -> ProjectState:
@@ -119,7 +137,7 @@ def reduce_intelligence(state: ProjectState, payload: EventPayload) -> ProjectSt
         if (
             f is None
             or f.id in {o.forecast_id for o in intel.outcomes}
-            or outcome_for(state, f) != payload.outcome
+            or not _same_outcome(payload.outcome, outcome_for(state, f))
         ):
             raise ValueError("outcome requires unique verified review/settlement correspondence")
         intel = intel.model_copy(update={"outcomes": (*intel.outcomes, payload.outcome)})

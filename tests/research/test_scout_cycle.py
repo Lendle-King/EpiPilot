@@ -196,6 +196,64 @@ def test_all_new_events_roundtrip_in_durable_store(tmp_path):
     assert replay_project("agent", store.load("agent")) == engine.state
 
 
+@pytest.mark.parametrize("field", ["brier_score", "model_implied_gain"])
+def test_outcome_replay_preserves_derived_float_roundoff(tmp_path, field):
+    from math import inf, nextafter
+
+    from epipilot.core.events import EventType
+    from epipilot.events.codec import make_project_event
+    from epipilot.research.agent_service import AgentService
+    from epipilot.research.intelligence_models import DecisionOutcomeRecorded
+    from epipilot.runtime.sqlite_event_store import SqliteEventStore
+
+    engine, root = submitted(tmp_path)
+    AgentService(engine, root).run_next()
+    events = engine.store.load("agent")
+    index = next(i for i, e in enumerate(events) if e.type is EventType.DECISION_OUTCOME_RECORDED)
+    outcome = engine.state.intelligence.outcomes[0]
+    recorded = outcome.model_copy(update={field: nextafter(getattr(outcome, field), inf)})
+    event = make_project_event(
+        EventType.DECISION_OUTCOME_RECORDED, "agent", DecisionOutcomeRecorded(outcome=recorded)
+    )
+    store = SqliteEventStore(tmp_path / "roundoff.sqlite3")
+    store.append_many((*events[:index], event, *events[index + 1 :]), expected_version=0)
+    state = replay_project("agent", store.load("agent"))
+    assert state.intelligence.outcomes == (recorded,)
+
+
+@pytest.mark.parametrize(
+    "field", ["brier_score", "model_implied_gain", "actual_cost", "evidence_id"]
+)
+def test_outcome_replay_rejects_material_changes_and_exact_provenance_changes(tmp_path, field):
+    from math import inf, nextafter
+    from uuid import uuid4
+
+    from epipilot.core.events import EventType
+    from epipilot.events.codec import make_project_event
+    from epipilot.research.agent_service import AgentService
+    from epipilot.research.intelligence_models import DecisionOutcomeRecorded
+
+    engine, root = submitted(tmp_path)
+    AgentService(engine, root).run_next()
+    events = engine.store.load("agent")
+    index = next(i for i, e in enumerate(events) if e.type is EventType.DECISION_OUTCOME_RECORDED)
+    outcome = engine.state.intelligence.outcomes[0]
+    if field == "actual_cost":
+        cost = outcome.actual_cost[0]
+        value = (cost.model_copy(update={"amount": nextafter(cost.amount, inf)}),)
+    elif field == "evidence_id":
+        value = uuid4()
+    else:
+        value = getattr(outcome, field) + 1e-9
+    event = make_project_event(
+        EventType.DECISION_OUTCOME_RECORDED,
+        "agent",
+        DecisionOutcomeRecorded(outcome=outcome.model_copy(update={field: value})),
+    )
+    with pytest.raises(ValueError, match="unique verified"):
+        replay_project("agent", (*events[:index], event, *events[index + 1 :]))
+
+
 @pytest.mark.parametrize("child_cost,mutex", [(100.0, False), (1.0, True)])
 def test_unaffordable_unlock_cannot_inflate_decision_value(tmp_path, child_cost, mutex):
     from datetime import UTC, datetime
