@@ -17,6 +17,7 @@ from epipilot.workspace.phase_execution import (
     EXPOSURE_SENSITIVITY_ADAPTER_ID,
     EXPOSURE_SENSITIVITY_ADAPTER_V2_ID,
     PHASE_COMPARISON_ADAPTER_ID,
+    PHASE_COMPARISON_ADAPTER_V3_ID,
     TRADE_BAND_COMPARISON_ADAPTER_ID,
     SubprocessExposureSensitivityAbove21Computer,
     SubprocessExposureSensitivityComputer,
@@ -185,8 +186,41 @@ def test_phase_computer_rejects_modified_pinned_measurement_code(
 def test_phase_computer_is_registered_under_its_exact_contract_id() -> None:
     computers = phase_comparison_computers(Path(sys.executable), Path(__file__).parents[1] / "src")
 
-    assert set(computers) == {PHASE_COMPARISON_ADAPTER_ID, PHASE_COMPARISON_ADAPTER_V2_ID}
+    assert set(computers) == {
+        PHASE_COMPARISON_ADAPTER_ID,
+        PHASE_COMPARISON_ADAPTER_V2_ID,
+        PHASE_COMPARISON_ADAPTER_V3_ID,
+    }
     assert isinstance(computers[PHASE_COMPARISON_ADAPTER_ID], SubprocessPhaseComparisonComputer)
+
+
+def test_phase_computer_v3_reports_lag1_gap_to_best_other_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = _contract(tmp_path).model_copy(update={"adapter": PHASE_COMPARISON_ADAPTER_V3_ID})
+    metrics = []
+    ten_bp_cagrs = (0.12, 0.15, 0.13, 0.18, 0.14)
+    for fee in (0, 5, 10, 20):
+        for lag, cagr in enumerate(ten_bp_cagrs):
+            metrics.append(Metric(name=f"lag{lag}_fee{fee}_cagr", value=cagr + (10 - fee) * 0.001))
+    result = Measured(metrics=tuple(metrics), samples=964)
+    real_run = subprocess.run
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "git":
+            return real_run(args, **kwargs)  # type: ignore[arg-type]
+        return subprocess.CompletedProcess(args, 0, stdout=result.model_dump_json(), stderr="")
+
+    monkeypatch.setattr("epipilot.workspace.phase_execution.subprocess.run", run)
+    computer = phase_comparison_computers(Path(sys.executable), Path(__file__).parents[1] / "src")[
+        PHASE_COMPARISON_ADAPTER_V3_ID
+    ]
+
+    measured = computer.measure(tmp_path, contract)
+    values = {metric.name: metric.value for metric in measured.metrics}
+
+    assert values["lag1_minus_best_other_fee10_cagr"] == pytest.approx(-0.03)
+    assert measured.samples == 964
 
 
 def test_exposure_sensitivity_computer_is_registered_and_runs_in_isolation(

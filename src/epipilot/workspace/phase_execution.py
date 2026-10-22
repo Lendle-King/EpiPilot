@@ -9,9 +9,11 @@ from pathlib import Path
 
 from epipilot.research.frontier import MeasurementContract, Quality
 from epipilot.research.measurement import Computer, Measured
+from epipilot.research.models import Metric
 
 PHASE_COMPARISON_ADAPTER_ID = "quant_etf_phase_comparison_v1"
 PHASE_COMPARISON_ADAPTER_V2_ID = "quant_etf_phase_comparison_v2"
+PHASE_COMPARISON_ADAPTER_V3_ID = "quant_etf_phase_comparison_v3"
 EXPOSURE_SENSITIVITY_ADAPTER_ID = "quant_etf_exposure_sensitivity_v1"
 EXPOSURE_SENSITIVITY_ADAPTER_V2_ID = "quant_etf_exposure_sensitivity_v2"
 TRADE_BAND_COMPARISON_ADAPTER_ID = "quant_etf_trade_band_comparison_v1"
@@ -120,7 +122,11 @@ class SubprocessPhaseComparisonComputer:
         env["PYTHONPATH"] = os.pathsep.join((str(repository / "src"), str(self.epipilot_source)))
         runner_contract = (
             contract.model_copy(update={"adapter": PHASE_COMPARISON_ADAPTER_ID})
-            if contract.adapter == PHASE_COMPARISON_ADAPTER_V2_ID
+            if contract.adapter
+            in {
+                PHASE_COMPARISON_ADAPTER_V2_ID,
+                PHASE_COMPARISON_ADAPTER_V3_ID,
+            }
             else contract
         )
         process = subprocess.run(
@@ -139,6 +145,25 @@ class SubprocessPhaseComparisonComputer:
             measured = Measured.model_validate_json(process.stdout)
         except ValueError:
             raise ValueError("phase-comparison process returned invalid measurement JSON") from None
+        if contract.adapter == PHASE_COMPARISON_ADAPTER_V3_ID:
+            metrics = {item.name: item.value for item in measured.metrics}
+            comparative_metrics = []
+            for fee in (0, 5, 10, 20):
+                lag1 = metrics.get(f"lag1_fee{fee}_cagr")
+                alternatives = [metrics.get(f"lag{lag}_fee{fee}_cagr") for lag in (0, 2, 3, 4)]
+                if lag1 is None or any(value is None for value in alternatives):
+                    raise ValueError("phase-comparison v3 requires all five phase CAGR metrics")
+                comparative_metrics.append(
+                    Metric(
+                        name=f"lag1_minus_best_other_fee{fee}_cagr",
+                        value=lag1 - max(value for value in alternatives if value is not None),
+                    )
+                )
+            measured = Measured(
+                metrics=(*measured.metrics, *comparative_metrics),
+                samples=measured.samples,
+                details=measured.details,
+            )
         adapter_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         return Measured(
             metrics=measured.metrics,
@@ -157,6 +182,9 @@ def phase_comparison_computers(
         ),
         PHASE_COMPARISON_ADAPTER_V2_ID: SubprocessPhaseComparisonComputer(
             python_executable, epipilot_source, PHASE_COMPARISON_ADAPTER_V2_ID
+        ),
+        PHASE_COMPARISON_ADAPTER_V3_ID: SubprocessPhaseComparisonComputer(
+            python_executable, epipilot_source, PHASE_COMPARISON_ADAPTER_V3_ID
         ),
     }
 
