@@ -179,3 +179,9 @@ against the new goal. New scientific acceptance uses the revised contract. Histo
 prefix replay reconstructs its original goal. Older runtimes cannot read this new event;
 upgrade all consumers before writing it to their shared EventStore.
 
+
+Outcome replay permits at most four floating-point ULPs of recomputation difference
+in the derived `brier_score` and `model_implied_gain` diagnostics. This accommodates
+Python 3.11/3.12 summation rounding without changing persisted events. Evidence IDs,
+branches, forecasts, measured costs and all other outcome fields remain exact;
+material diagnostic changes are rejected. The originally recorded values are retained.
