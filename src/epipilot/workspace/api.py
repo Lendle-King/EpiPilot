@@ -118,8 +118,10 @@ from epipilot.workspace.sse_lifecycle_archive import (
 from epipilot.workspace.szse_pcf_archive import (
     SZSE_PCF_ARCHIVE_ADAPTER_ID,
     SZSE_PCF_CATALOG_ADAPTER_ID,
+    SZSE_PCF_CATALOG_ADAPTER_V2_ID,
     SZSEPCFArchiveComputer,
     SZSEPCFCatalogComputer,
+    SZSEPCFCatalogComputerV2,
 )
 from epipilot.workspace.wayback_sse_notice import (
     ADAPTER_ID as WAYBACK_SSE_NOTICE_V2_ADAPTER_ID,
@@ -832,6 +834,7 @@ def _agent_service(engine: ResearchEngine) -> AgentService:
         ),
         SZSE_PCF_ARCHIVE_ADAPTER_ID: SZSEPCFArchiveComputer(),
         SZSE_PCF_CATALOG_ADAPTER_ID: SZSEPCFCatalogComputer(),
+        SZSE_PCF_CATALOG_ADAPTER_V2_ID: SZSEPCFCatalogComputerV2(),
         WAYBACK_SSE_NOTICE_V2_ADAPTER_ID: WaybackSseNoticeComputer(),
         WAYBACK_SSE_PDF_ATTACHMENT_ADAPTER_ID: WaybackSsePDFAttachmentComputer(),
         WAYBACK_SSE_PCF_ARCHIVE_ADAPTER_ID: WaybackSSEPCFArchiveComputer(),

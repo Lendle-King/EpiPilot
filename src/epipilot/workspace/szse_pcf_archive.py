@@ -23,6 +23,7 @@ from epipilot.research.models import Metric
 
 SZSE_PCF_ARCHIVE_ADAPTER_ID = "szse_pcf_archive_v1"
 SZSE_PCF_CATALOG_ADAPTER_ID = "szse_pcf_catalog_v1"
+SZSE_PCF_CATALOG_ADAPTER_V2_ID = "szse_pcf_catalog_v2"
 _API_URL = "https://www.szse.cn/api/report/ShowReport/data"
 _PCF_HOST = "reportdocs.static.szse.cn"
 _PCF_PATH = re.compile(r"^/files/text/etf/ETF(?P<code>159\d{3})(?P<date>\d{8})\.txt$")
@@ -146,7 +147,7 @@ def _read_targets(path: Path) -> tuple[_Target, ...]:
     return tuple(targets)
 
 
-def _read_catalog_date(path: Path) -> date:
+def _read_catalog_date(path: Path, *, schema: str) -> date:
     if path.stat().st_size > _MAX_INPUT_BYTES:
         raise ValueError("SZSE PCF catalog manifest exceeds the byte limit")
     try:
@@ -156,7 +157,7 @@ def _read_catalog_date(path: Path) -> date:
     if (
         not isinstance(value, dict)
         or set(value) != {"schema", "date"}
-        or value.get("schema") != "szse-pcf-catalog-target/v1"
+        or value.get("schema") != schema
         or not isinstance(value.get("date"), str)
     ):
         raise ValueError("SZSE PCF catalog manifest fields differ from the registered schema")
@@ -356,16 +357,23 @@ class SZSEPCFCatalogComputer(Computer):
     """Read a bounded, date-specific current SZSE catalog without PIT promotion."""
 
     quality = Quality.MEASUREMENT
+    adapter_id = SZSE_PCF_CATALOG_ADAPTER_ID
+    manifest_schema = "szse-pcf-catalog-target/v1"
+    record_count_is_total = False
 
     def __init__(self, transport: HTTPGetPort | None = None) -> None:
         self.transport = transport or UrllibHTTPGet()
 
     def measure(self, root: Path, contract: MeasurementContract) -> Measured:
-        if contract.adapter != SZSE_PCF_CATALOG_ADAPTER_ID or len(contract.inputs) != 1:
+        if contract.adapter != self.adapter_id or len(contract.inputs) != 1:
             raise ValueError("SZSE PCF catalog requires its adapter and one date manifest")
-        catalog_date = _read_catalog_date(safe_input(root, contract.inputs[0].path))
+        catalog_date = _read_catalog_date(
+            safe_input(root, contract.inputs[0].path), schema=self.manifest_schema
+        )
         day = catalog_date.isoformat()
         expected_page_count: int | None = None
+        expected_record_count: int | None = None
+        expected_page_size: int | None = None
         codes: set[str] = set()
         rows_received = 0
         identity_match_count = 0
@@ -435,13 +443,36 @@ class SZSEPCFCatalogComputer(Computer):
             if (
                 isinstance(record_count, bool)
                 or not isinstance(record_count, int)
-                or record_count != len(rows)
+                or record_count < 0
                 or isinstance(page_count, bool)
                 or not isinstance(page_count, int)
                 or page_count < 0
                 or listing.get("error") not in (None, "")
             ):
                 failure = "inconsistent_pagination_metadata"
+                break
+            page_size = metadata.get("pagesize")
+            if self.record_count_is_total:
+                if (
+                    isinstance(page_size, bool)
+                    or not isinstance(page_size, int)
+                    or page_size <= 0
+                    or len(rows) > page_size
+                ):
+                    failure = "invalid_page_size"
+                    break
+                if expected_record_count is None:
+                    expected_record_count = record_count
+                    expected_page_size = page_size
+                elif expected_record_count != record_count or expected_page_size != page_size:
+                    failure = "record_count_or_page_size_changed"
+                    break
+                calculated_pages = (record_count + page_size - 1) // page_size
+                if page_count != calculated_pages:
+                    failure = "page_count_inconsistent_with_total"
+                    break
+            elif record_count != len(rows):
+                failure = "page_record_count_mismatch"
                 break
             if expected_page_count is None:
                 expected_page_count = page_count
@@ -485,6 +516,8 @@ class SZSEPCFCatalogComputer(Computer):
             and invalid_row_count == 0
             and failure is None
         )
+        if self.record_count_is_total:
+            complete = complete and expected_record_count == rows_received
         if expected_page_count is not None and expected_page_count > _MAX_CATALOG_PAGES:
             details.append("page_limit_reached=1")
         if failure is not None:
@@ -498,6 +531,8 @@ class SZSEPCFCatalogComputer(Computer):
             )
         )
         metrics = (
+            _metric("record_count", expected_record_count or rows_received),
+            _metric("page_size", expected_page_size or 0),
             _metric("page_count", expected_page_count or 0),
             _metric("pages_received", pages_received),
             _metric("rows_received", rows_received),
@@ -509,5 +544,16 @@ class SZSEPCFCatalogComputer(Computer):
         return Measured(metrics=metrics, samples=rows_received, details=tuple(details))
 
 
+class SZSEPCFCatalogComputerV2(SZSEPCFCatalogComputer):
+    """Versioned catalog reader for SZSE's total-record pagination metadata."""
+
+    adapter_id = SZSE_PCF_CATALOG_ADAPTER_V2_ID
+    manifest_schema = "szse-pcf-catalog-target/v2"
+    record_count_is_total = True
+
+
 def szse_pcf_catalog_computers() -> dict[str, Computer]:
-    return {SZSE_PCF_CATALOG_ADAPTER_ID: SZSEPCFCatalogComputer()}
+    return {
+        SZSE_PCF_CATALOG_ADAPTER_ID: SZSEPCFCatalogComputer(),
+        SZSE_PCF_CATALOG_ADAPTER_V2_ID: SZSEPCFCatalogComputerV2(),
+    }

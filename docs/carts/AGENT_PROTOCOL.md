@@ -158,16 +158,17 @@ historical membership, PIT qualification, or strategy performance. Requests are 
 GETs without cookies or redirects, with four-second request and byte limits; this adapter is
 `MEASUREMENT` quality and `integrity` scope.
 
-The QUANT_ETF host also registers `szse_pcf_catalog_v1` for one exact date in the official
+The QUANT_ETF host also registers `szse_pcf_catalog_v2` for one exact date in the official
 SZSE `sgshqd` PCF catalog. Its manifest contains only the ISO date; the adapter omits the fund
-code filter, reads at most 12 pages, validates each response's catalog/page metadata and each
-row's ETF-code/date filename and display text, and returns the distinct verified codes. A
+code filter, reads at most 12 pages, validates total `recordcount`, `pagesize`, `pagecount`, and
+each row's ETF-code/date filename and display text, and returns the distinct verified codes. A
 timeout, malformed page, inconsistent pagination, row mismatch, or page limit leaves the
-catalog incomplete. This measures the current endpoint's historical-date listing only; it
-does not establish contemporaneous publication, historical listing membership, PIT eligibility
-or prospective strategy performance. Requests are anonymous HTTPS GETs without cookies or
-redirects, with four-second request and one-megabyte response limits. It is a `MEASUREMENT`
-quality `integrity` check.
+catalog incomplete. Version 1 was retired after R317 exposed that SZSE reports `recordcount`
+across all pages, not as the number of rows in the current page. This measures the current
+endpoint's historical-date listing only; it does not establish contemporaneous publication,
+historical listing membership, PIT eligibility or prospective strategy performance. Requests
+are anonymous HTTPS GETs without cookies or redirects, with four-second request and one-megabyte
+response limits. It is a `MEASUREMENT` quality `integrity` check.
 
 The QUANT_ETF host also registers `arquivo_szse_pcf_v1` for the same four fixed SZSE PCF
 targets and cutoffs. It queries Arquivo.pt's exact-URL CDX endpoint with a bounded result limit,
