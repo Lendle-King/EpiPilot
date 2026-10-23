@@ -71,6 +71,21 @@ Keep this clone if you use an editable install. If `epi` is not on the agent's `
 
 ### 2. Make the research skill available in your target project
 
+**Recommended single-command setup** (run after installing the Python runtime):
+
+~~~bash
+epipilot-install-agent --project /path/to/research/project --agent both
+~~~
+
+For Codex only, use `--agent codex`; for Kimi Code only, use `--agent kimi`.
+Use `--dry-run` first to inspect changes, or `--json` for machine-readable output.
+The installer copies a versioned project skill without overwriting user-modified
+skills unless `--force` is explicitly passed, and conservatively adds a bounded
+EpiPilot section to `AGENTS.md` for Kimi. It does **not** install or claim to
+enable a Codex-native marketplace plugin. Start a **new agent session** afterward.
+
+**Manual fallback**:
+
 Run the following **inside the repository you want EpiPilot to research**, replacing `/path/to/EpiPilot` with the clone from step 1:
 
 ~~~bash
