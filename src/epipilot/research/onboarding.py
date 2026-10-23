@@ -20,9 +20,20 @@ _SKIP_DIRS = {
     ".mypy_cache",
     "dist",
     "build",
-    "artifacts",
 }
-_SUFFIXES = {".py", ".md", ".toml", ".json", ".yaml", ".yml", ".ipynb", ".csv"}
+_SUFFIXES = {
+    ".py",
+    ".md",
+    ".toml",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".ipynb",
+    ".csv",
+    ".jsonl",
+    ".parquet",
+    ".txt",
+}
 _RELEVANT = (
     "readme",
     "research",
@@ -32,7 +43,13 @@ _RELEVANT = (
     "report",
     "benchmark",
     "backtest",
+    "artifact",
+    "metric",
+    "analysis",
+    "evaluation",
 )
+
+_PRIORITIZED = ("experiment", "result", "metric", "report", "backtest")
 
 
 def git_revision(root: Path) -> str:
@@ -78,5 +95,14 @@ def inspect_repository(root: Path, *, max_files: int = 10000) -> OnboardingSnaps
         git_revision=git_revision(root),
         project_root=str(root),
         source_counts=dict(sorted(counts.items())),
-        relevant_files=relevant[:200],
+        relevant_files=sorted(
+            relevant,
+            key=lambda name: (
+                not any(
+                    tag in name.lower()
+                    for tag in ("experiment", "result", "metric", "report", "backtest")
+                ),
+                name,
+            ),
+        )[:200],
     )
