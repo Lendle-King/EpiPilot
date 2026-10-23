@@ -24,7 +24,7 @@ jobs:
         run: python -m pip install 'ruff>=0.6'
       - name: Format research changes
         run: |
-          ruff check --fix src/epipilot/research tests/research
+          ruff check --fix --exit-zero src/epipilot/research tests/research
           ruff format src/epipilot/research tests/research
       - name: Commit deterministic formatting only
         env:
