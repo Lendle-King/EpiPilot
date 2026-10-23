@@ -29,6 +29,7 @@ def test_install_agent_skill_and_idempotent(tmp_path: Path, agent: str) -> None:
     if agents.exists():
         text = agents.read_text()
         assert text.count(START) == text.count(END) == 1
+        assert "\\`" not in text
     repeated = install(tmp_path, agent=agent)
     assert repeated["changed_or_pending"] == []
     assert repeated["unchanged"]

@@ -21,8 +21,8 @@ SECTION = """<!-- BEGIN EPIPILOT RESEARCH WORKFLOW -->
 ## EpiPilot research workflow
 
 For scientific or algorithm optimization tasks, read
-\`.agents/skills/epipilot-research/SKILL.md\` and follow its protocol.
-Use the installed \`epi\` CLI for goals, hypotheses, cost reservations,
+`.agents/skills/epipilot-research/SKILL.md` and follow its protocol.
+Use the installed `epi` CLI for goals, hypotheses, cost reservations,
 pre-registered experiments and verified evidence. Execute actions through
 this agent's existing tools and sandbox. Never invent measurements or
 convert executor self-report into canonical scientific conclusions.

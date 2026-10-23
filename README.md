@@ -48,7 +48,7 @@ The research skill/CLI currently provides:
 - **Failure recovery:** surface blocked, running and awaiting-verification studies, require a recorded corrective strategy for retries, and limit repeated failures.
 - **Agent-native operation:** no second autonomous agent or separate LLM backend is required. Your coding agent executes the research work using its normal tools and approval boundaries.
 
-**Maturity:** This is an MVP. Metric-threshold validation is a protocol safeguard, **not independent proof of causal or statistical validity**. Existing v1 event histories can be replayed but their old verification flags do not qualify as v2 measurement-validated evidence. The ranking policy is **not** a trained MCTS or a calibrated probabilistic value-of-information model. Automatic historical scientific synthesis, autonomous experiment execution, and demonstrated performance gains over baseline research policies are **not** claimed. See the [research plugin design and limitations](https://github.com/Lendle-King/EpiPilot/blob/main/docs/RESEARCH_PLUGIN.md).
+**Maturity:** This is an MVP. Metric-threshold checks do **not** establish causal or statistical validity; historical v1 verification flags do not become v2-qualified measurements. The ordinary `epi iterate` planner remains a deterministic two-step heuristic. An optional Scout-inspired **decision table / conditional information-value** analysis now supports frozen forecasts and calibration from qualified v2 results, but is **not** trained MCTS. Source-grounded onboarding produces *reviewable candidate notes*, not verified claims. No unattended scientific discovery or measured research-efficiency improvement is claimed. See [Research plugin limitations](docs/RESEARCH_PLUGIN.md) and [integration status](docs/INTEGRATION_STATUS.md).
 
 ## Install on Codex or Kimi Code (recommended research skill)
 
@@ -148,6 +148,49 @@ The CLI supports `epi unknown add`, `epi claim`, `epi propose`, `epi preregister
 **Research state:** written to `.research/events.jsonl` in the **target repository**. This file is intentionally Git-visible and single-writer; review its contents for credentials, personal information, or private traces before committing it. Do not run concurrent EpiPilot writers against the same research state.
 
 Detailed contracts and examples: [Research plugin documentation](https://github.com/Lendle-King/EpiPilot/blob/main/docs/RESEARCH_PLUGIN.md) · [Research skill source](https://github.com/Lendle-King/EpiPilot/blob/main/skills/epipilot-research/SKILL.md).
+
+## Optional Scout-inspired decision analysis
+
+After registering a `Proposal`, a coding agent can prepare a **four-outcome
+decision table** as local JSON (`improved / no_gain / inconclusive /
+infrastructure_failure`) containing normalized conditional utilities,
+probabilities, a non-executing stop option and bounded follow-on actions.
+EpiPilot validates and records this table before a preregistered experiment:
+
+~~~bash
+epi decision register --file decision-table.json
+epi decision rank
+epi decision status
+~~~
+
+These scores are advisory: `epi iterate` still uses the evidence-gated
+budget-aware planner. A decision estimate is frozen with its experiment
+contract; outcome calibration counts only validated v2 measurements from the
+matching predictor/utility version/group. This is **not** evidence that
+model-predicted probabilities are correct or that the research is causal.
+See [Scout-inspired decision code](src/epipilot/research/decision_value.py).
+
+## Optional local Research Workspace
+
+A separate **React + FastAPI** interface can create/adopt local research
+projects, stage observations from pinned Git history, show a source-lineage
+graph and offer human review. Its **Semantic onboarding** tab supports
+manually imported source-grounded JSON or an opt-in third-party
+OpenAI-compatible model. Any remote transmission of source excerpts
+requires explicit consent; the API key is server-only.
+
+~~~bash
+python -m pip install -e '.[ui]'
+python -m epipilot.workspace.api
+# in another terminal
+cd frontend && npm install && npm run dev
+~~~
+
+Open `http://127.0.0.1:5173`. Workspace candidates are saved in a separate
+staging SQLite store and **cannot set the CLI's canonical v2 Evidence/Claim
+status**. The UI does not run unattended research, connect to trading APIs or
+change GitHub/Notion on its own. See [workspace guide](docs/RESEARCH_WORKSPACE.md)
+and [semantic onboarding boundaries](docs/SEMANTIC_ONBOARDING_INTEGRATION.md).
 
 ## Alternative: native Codex Agent Plugin (separate integration)
 
