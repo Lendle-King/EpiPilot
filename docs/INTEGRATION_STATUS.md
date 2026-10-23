@@ -13,7 +13,7 @@ not a blanket endorsement of autonomous research quality.
 | [#13](https://github.com/Lendle-King/EpiPilot/pull/13) | Project-level Codex/Kimi research skill installer | No Codex marketplace plugin or background executor |
 | [#14](https://github.com/Lendle-King/EpiPilot/pull/14) | Scout-style four-outcome conditional value-of-information and frozen/calibrated forecasts | Advisory; default `epi iterate` heuristic unchanged; not full Scout agent |
 | [#16](https://github.com/Lendle-King/EpiPilot/pull/16) | Source-anchored semantic onboarding, manual import, explicit opt-in remote extraction | Human-reviewed candidate notes only; scientific fact promotion forbidden |
-| Scout v2 extension | Budget-reserved, agent-supplied source-grounded Unknown/Proposal discovery and explicit human review | No autonomous researcher, source authenticity is not scientific evidence |
+| [#17](https://github.com/Lendle-King/EpiPilot/pull/17) | Budget-reserved, source-grounded Scout Unknown/Proposal discovery and explicit operator review | No autonomous researcher; citation authenticity is not scientific evidence |
 
 The `main` stream remains `.research/events.jsonl` schema-v2, with read-only
 replay of schema-v1 histories. The UI stages its separate local SQLite
@@ -21,13 +21,14 @@ workspace and cannot write or assert verified v2 research evidence.
 
 ## Historical PRs and branches
 
-- **Closed, code retained:** PR #5 Hermes frontend, PR #9 supervised browser
-  handoff, PR #10 prior standalone workspace. Closing a PR did not remove
-  its Git branch or historical work.
-- **Open, unique work not fully integrated:** PR #4 checkpoint/recovery;
-  PR #6 older Codex-native MCP/marketplace integration; PR #7 replaceable
-  executors; PR #8 evidence workbench; PR #11 large stacked semantic/
-  experimental-engine feature set.
+- **Closed or superseded:** PR #5 Hermes frontend, #9 supervised browser handoff,
+  #10 standalone workspace, #8 alternate project workbench, and #11 obsolete
+  stacked semantic/experimental engine. Their unique historical work is
+  retained through GitHub PR history, explicitly named commits, and archival
+  Git tags where relevant. Closing them is **not** a claim of full feature parity.
+- **Open, unique work not yet integrated:** PR #4 checkpoint/recovery;
+  PR #6 native Codex MCP/marketplace installation; PR #7 replaceable executors.
+  The project-local Codex/Kimi skill installer does not replace native MCP.
 - **Preserved working branch:** `epipilot/research-scout-v1` extends the
   old PR #11 code by additional Scout and forecast-calibration commits.
   Only the bounded conditional decision-value part was ported. This
@@ -35,11 +36,14 @@ workspace and cannot write or assert verified v2 research evidence.
   pre-registration, budget and linked-Evidence rules.
 - **Historical backup:** `legacy/main-before-research-plugin`.
 
-Three optional development lines:
-`dev/research-intelligence`, `dev/agent-integrations`,
-`dev/research-workspace`. Their merged commits are in main; keep those
-refs only when genuinely developing new work. Do not delete an open PR's
-base/head or a branch with unique, unreviewed commits.
+Integrated development branches `dev/research-intelligence`,
+`dev/agent-integrations`, and `dev/research-workspace` have no outstanding
+unique commits and need not remain as active remote branch refs. Future work
+should start from current `main`. Retain `epipilot/research-scout-v1` while
+its remaining nonportable research modules are audited. Never delete the
+head/base of an open PR or an unarchived unique working tree.
+
+Remaining items are tracked in [integration follow-up #18](https://github.com/Lendle-King/EpiPilot/issues/18).
 
 ## Deferred work / acceptance gates
 
