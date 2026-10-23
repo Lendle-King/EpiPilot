@@ -260,8 +260,13 @@ class WorkspaceStore:
                 "INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
-                        note["id"], project_id, note["kind"], note["text"],
-                        note["source_path"], note["line"], note["source_sha256"],
+                        note["id"],
+                        project_id,
+                        note["kind"],
+                        note["text"],
+                        note["source_path"],
+                        note["line"],
+                        note["source_sha256"],
                         note["git_commit"],
                     )
                     for note in notes

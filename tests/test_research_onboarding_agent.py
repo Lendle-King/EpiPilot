@@ -644,7 +644,10 @@ def test_semantic_provider_requires_explicit_consent(
     )
     assert response.status_code == 422
     with store._db() as conn:
-        assert conn.execute(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' "
-            "AND name='semantic_onboarding'"
-        ).fetchone()[0] == 0
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' "
+                "AND name='semantic_onboarding'"
+            ).fetchone()[0]
+            == 0
+        )
