@@ -106,9 +106,7 @@ def artifact_metrics(root: Path, contract: ExperimentContract) -> tuple[dict[str
     if set(values) != {rule.name for rule in contract.metric_rules}:
         raise ValueError("artifact metric names disagree with frozen contract")
     if not all(
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
+        isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
         for value in values.values()
     ):
         raise ValueError("artifact metrics must be finite numeric values")

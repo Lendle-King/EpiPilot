@@ -106,12 +106,17 @@ def _parser() -> argparse.ArgumentParser:
     prereg.add_argument("--control", action="append", required=True)
     prereg.add_argument("--decision-rule", required=True)
     prereg.add_argument("--falsification", required=True)
-    prereg.add_argument("--metric-rule", action="append", required=True,
-                        help="name:at_least|at_most:threshold")
+    prereg.add_argument(
+        "--metric-rule", action="append", required=True, help="name:at_least|at_most:threshold"
+    )
     prereg.add_argument("--artifact", required=True, help="repository-relative JSON metric path")
     prereg.add_argument("--max-cost", type=float, required=True)
-    prereg.add_argument("--verifier", nargs=argparse.REMAINDER, required=True,
-                        help="frozen argv; use {artifact} to reference the JSON result")
+    prereg.add_argument(
+        "--verifier",
+        nargs=argparse.REMAINDER,
+        required=True,
+        help="frozen argv; use {artifact} to reference the JSON result",
+    )
 
     start = sub.add_parser("start", help="reserve cost before running a frozen experiment")
     start.add_argument("--contract", required=True)
@@ -133,8 +138,11 @@ def _parser() -> argparse.ArgumentParser:
     verify = sub.add_parser("verify", help="run frozen checker and validate metric artifact")
     verify.add_argument("--experiment", required=True)
     verify.add_argument("--timeout", type=int, default=120)
-    verify.add_argument("--check", nargs=argparse.REMAINDER,
-                        help="optional: must match the preregistered verifier exactly")
+    verify.add_argument(
+        "--check",
+        nargs=argparse.REMAINDER,
+        help="optional: must match the preregistered verifier exactly",
+    )
 
     retry = sub.add_parser("retry", help="resume failed validation after an explicit correction")
     retry.add_argument("--contract", required=True)
@@ -147,8 +155,9 @@ def _parser() -> argparse.ArgumentParser:
 
     reflect = sub.add_parser("reflect", help="apply a linked scientific verdict after validation")
     reflect.add_argument("--claim", required=True)
-    reflect.add_argument("--verdict", choices=["supported", "refuted", "inconclusive"],
-                         required=True)
+    reflect.add_argument(
+        "--verdict", choices=["supported", "refuted", "inconclusive"], required=True
+    )
     reflect.add_argument("--evidence", required=True)
     reflect.add_argument("--rationale", required=True)
     return parser
@@ -195,9 +204,7 @@ def _plan(state: ResearchState, proposal_id: str) -> dict[str, object]:
         "related_unknowns": [
             state.unknowns[key].model_dump(mode="json") for key in proposal.unknown_ids
         ],
-        "related_claims": [
-            state.claims[key].model_dump(mode="json") for key in proposal.claim_ids
-        ],
+        "related_claims": [state.claims[key].model_dump(mode="json") for key in proposal.claim_ids],
         "budget_remaining": state.remaining,
         "agent_instructions": [
             "Inspect code, past experiment data and contradictory claims before starting.",
@@ -236,8 +243,7 @@ def _metric_rules(items: list[str]) -> list[MetricRule]:
             raise ValueError("metric-rule must be name:at_least|at_most:threshold")
         name, direction, threshold = parts
         rules.append(
-            MetricRule(name=name, direction=MetricDirection(direction),
-                       threshold=float(threshold))
+            MetricRule(name=name, direction=MetricDirection(direction), threshold=float(threshold))
         )
     return rules
 
@@ -267,8 +273,11 @@ def _next_action(state: ResearchState) -> dict[str, object]:
     ):
         for item in state.contracts.values():
             if item.status is status:
-                return {"status": label, "contract": item.model_dump(mode="json"),
-                        "guidance": guidance}
+                return {
+                    "status": label,
+                    "contract": item.model_dump(mode="json"),
+                    "guidance": guidance,
+                }
     ranked = rank_proposals(state, limit=1)
     if ranked:
         return {
@@ -276,25 +285,27 @@ def _next_action(state: ResearchState) -> dict[str, object]:
             "task": _plan(state, ranked[0].proposal.id),
             "continuation": "Preregister before execution; update memory after verification.",
         }
-    blocked = [item.id for item in state.contracts.values()
-               if item.status is ContractStatus.BLOCKED]
+    blocked = [
+        item.id for item in state.contracts.values() if item.status is ContractStatus.BLOCKED
+    ]
     if blocked:
         return {
             "status": "blocked",
             "contracts": blocked,
             "guidance": "Diagnose failure; epi retry --reason for changed validation strategy "
-                        "or register a new scientifically different proposal.",
+            "or register a new scientifically different proposal.",
         }
     return {
         "status": "no_runnable_proposal",
         "guidance": "Review cost, unresolved unknowns and concluded evidence; "
-                    "stop when no decision-relevant improvement justifies expense.",
+        "stop when no decision-relevant improvement justifies expense.",
         **_status(state),
     }
 
 
-def _verify(args: argparse.Namespace, store: ResearchStore, root: Path,
-            state: ResearchState) -> dict[str, object]:
+def _verify(
+    args: argparse.Namespace, store: ResearchStore, root: Path, state: ResearchState
+) -> dict[str, object]:
     exp = state.experiments.get(args.experiment)
     if exp is None or exp.contract_id is None:
         raise ValueError("verification requires a recorded, pre-registered v2 experiment")
@@ -304,8 +315,9 @@ def _verify(args: argparse.Namespace, store: ResearchStore, root: Path,
     evidence = state.evidence[exp.evidence_id]
     if evidence.independently_verified:
         raise ValueError("evidence has already been validated")
-    expected_argv = [item.replace("{artifact}", contract.artifact_ref)
-                     for item in contract.verifier_argv]
+    expected_argv = [
+        item.replace("{artifact}", contract.artifact_ref) for item in contract.verifier_argv
+    ]
     if args.check is not None:
         requested = list(args.check)
         if requested and requested[0] == "--":
@@ -360,8 +372,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
     command: str = args.command
     if command == "init":
         goal = ResearchGoal(
-            statement=args.goal, budget=args.budget,
-            success_metrics=args.metric, constraints=args.constraint,
+            statement=args.goal,
+            budget=args.budget,
+            success_metrics=args.metric,
+            constraints=args.constraint,
         )
         store.add("goal_set", goal)
         return {"initialized": True, "goal": goal.model_dump(mode="json")}
@@ -401,8 +415,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
     if command == "unknown":
         if args.action == "add":
             item = Unknown(
-                id=args.id or research_id("UNK"), question=args.question,
-                importance=args.importance, decision_sensitivity=args.sensitivity,
+                id=args.id or research_id("UNK"),
+                question=args.question,
+                importance=args.importance,
+                decision_sensitivity=args.sensitivity,
             )
             store.add("unknown_added", item)
             return item.model_dump(mode="json")
@@ -413,29 +429,41 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         return {"resolved": args.id, "evidence_id": args.evidence}
     if command == "claim":
         item = Claim(
-            id=args.id or research_id("CLM"), statement=args.statement,
-            scope=args.scope, assumptions=args.assumption,
+            id=args.id or research_id("CLM"),
+            statement=args.statement,
+            scope=args.scope,
+            assumptions=args.assumption,
         )
         store.add("claim_added", item)
         return item.model_dump(mode="json")
     if command == "propose":
         item = Proposal(
-            id=args.id or research_id("ACT"), title=args.title,
-            kind=ProposalKind(args.kind), rationale=args.rationale,
-            acceptance=args.acceptance, unknown_ids=args.unknown,
-            claim_ids=args.claim, depends_on=args.depends_on,
-            information_gain=args.ig, expected_improvement=args.gain,
-            unlock_value=args.unlock, novelty=args.novelty,
-            estimated_cost=args.cost, risk=args.risk,
+            id=args.id or research_id("ACT"),
+            title=args.title,
+            kind=ProposalKind(args.kind),
+            rationale=args.rationale,
+            acceptance=args.acceptance,
+            unknown_ids=args.unknown,
+            claim_ids=args.claim,
+            depends_on=args.depends_on,
+            information_gain=args.ig,
+            expected_improvement=args.gain,
+            unlock_value=args.unlock,
+            novelty=args.novelty,
+            estimated_cost=args.cost,
+            risk=args.risk,
         )
         store.add("proposal_added", item)
         return item.model_dump(mode="json")
     if command == "next":
         return [
             {
-                "proposal_id": item.proposal.id, "title": item.proposal.title,
-                "score": item.score, "phase": item.phase,
-                "reason": item.rationale, "cost": item.proposal.estimated_cost,
+                "proposal_id": item.proposal.id,
+                "title": item.proposal.title,
+                "score": item.score,
+                "phase": item.phase,
+                "reason": item.rationale,
+                "cost": item.proposal.estimated_cost,
             }
             for item in rank_proposals(state, limit=args.limit)
         ]
@@ -455,17 +483,25 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             id=research_id("PRE"),
             proposal_id=args.proposal,
             git_revision=revision,
-            config_ref=args.config, dataset_ref=args.dataset,
+            config_ref=args.config,
+            dataset_ref=args.dataset,
             config_sha256=optional_fingerprint(root, args.config),
             dataset_sha256=optional_fingerprint(root, args.dataset),
-            baseline_ref=args.baseline, controls=args.control,
-            decision_rule=args.decision_rule, falsification_rule=args.falsification,
-            artifact_ref=args.artifact, metric_rules=_metric_rules(args.metric_rule),
-            verifier_argv=verifier, max_cost=args.max_cost,
+            baseline_ref=args.baseline,
+            controls=args.control,
+            decision_rule=args.decision_rule,
+            falsification_rule=args.falsification,
+            artifact_ref=args.artifact,
+            metric_rules=_metric_rules(args.metric_rule),
+            verifier_argv=verifier,
+            max_cost=args.max_cost,
         )
         store.add("experiment_preregistered", contract)
-        return {"preregistered": True, "contract": contract.model_dump(mode="json"),
-                "next": f"epi start --contract {contract.id}"}
+        return {
+            "preregistered": True,
+            "contract": contract.model_dump(mode="json"),
+            "next": f"epi start --contract {contract.id}",
+        }
     if command == "start":
         contract = state.contracts.get(args.contract)
         if contract is None:
@@ -473,9 +509,12 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         require_clean_revision(root, contract.git_revision)
         check_fingerprints(root, contract)
         store.append("experiment_started", {"contract_id": args.contract})
-        return {"started": args.contract, "reserved": contract.max_cost,
-                "next": f"epi record --contract {args.contract} --summary ... --outcome ... "
-                        "--cost ... --metric name=value"}
+        return {
+            "started": args.contract,
+            "reserved": contract.max_cost,
+            "next": f"epi record --contract {args.contract} --summary ... --outcome ... "
+            "--cost ... --metric name=value",
+        }
     if command == "record":
         contract = state.contracts.get(args.contract)
         if contract is None:
@@ -487,56 +526,84 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             metrics, _ = artifact_metrics(root, contract)
         experiment_id, evidence_id = research_id("EXP"), research_id("EV")
         exp = Experiment(
-            id=experiment_id, proposal_id=contract.proposal_id,
-            contract_id=contract.id, summary=args.summary, outcome=args.outcome,
-            actual_cost=args.cost, git_revision=contract.git_revision,
-            config_ref=contract.config_ref, dataset_ref=contract.dataset_ref,
-            seeds=args.seed, metrics=metrics, run_command=args.run_command,
+            id=experiment_id,
+            proposal_id=contract.proposal_id,
+            contract_id=contract.id,
+            summary=args.summary,
+            outcome=args.outcome,
+            actual_cost=args.cost,
+            git_revision=contract.git_revision,
+            config_ref=contract.config_ref,
+            dataset_ref=contract.dataset_ref,
+            seeds=args.seed,
+            metrics=metrics,
+            run_command=args.run_command,
             artifact_refs=[contract.artifact_ref, *args.artifact],
             evidence_id=evidence_id,
         )
         evidence = EvidenceRecord(
-            id=evidence_id, experiment_id=experiment_id,
-            summary=exp.summary, artifact_refs=exp.artifact_refs,
+            id=evidence_id,
+            experiment_id=experiment_id,
+            summary=exp.summary,
+            artifact_refs=exp.artifact_refs,
         )
         store.append(
             "experiment_recorded",
-            {"experiment": exp.model_dump(mode="json"),
-             "evidence": evidence.model_dump(mode="json")},
+            {
+                "experiment": exp.model_dump(mode="json"),
+                "evidence": evidence.model_dump(mode="json"),
+            },
         )
         return {
             "experiment_id": experiment_id,
             "evidence_id": evidence_id,
             "verified": False,
             "spent": state.spent + exp.actual_cost,
-            "overrun": max(0.0, state.spent + exp.actual_cost -
-                           (state.goal.budget if state.goal else 0.0)),
-            "next": ("Investigate infrastructure failure and preregister a new experiment"
-                     if args.outcome == "infrastructure_failure"
-                     else f"epi verify --experiment {experiment_id}"),
+            "overrun": max(
+                0.0, state.spent + exp.actual_cost - (state.goal.budget if state.goal else 0.0)
+            ),
+            "next": (
+                "Investigate infrastructure failure and preregister a new experiment"
+                if args.outcome == "infrastructure_failure"
+                else f"epi verify --experiment {experiment_id}"
+            ),
         }
     if command == "verify":
         return _verify(args, store, root, state)
     if command == "retry":
-        store.append("verification_retried", {
-            "contract_id": args.contract, "reason": args.reason,
-        })
+        store.append(
+            "verification_retried",
+            {
+                "contract_id": args.contract,
+                "reason": args.reason,
+            },
+        )
         return {"resumed": args.contract, "next": "epi verify --experiment EXPERIMENT_ID"}
     if command == "abort":
-        store.append("experiment_aborted", {
-            "contract_id": args.contract, "actual_cost": args.cost, "reason": args.reason,
-        })
+        store.append(
+            "experiment_aborted",
+            {
+                "contract_id": args.contract,
+                "actual_cost": args.cost,
+                "reason": args.reason,
+            },
+        )
         return {"aborted": args.contract, "actual_cost": args.cost}
     if command == "reflect":
         store.append(
             "claim_reviewed",
             {
-                "claim_id": args.claim, "status": ClaimStatus(args.verdict).value,
-                "evidence_id": args.evidence, "rationale": args.rationale,
+                "claim_id": args.claim,
+                "status": ClaimStatus(args.verdict).value,
+                "evidence_id": args.evidence,
+                "rationale": args.rationale,
             },
         )
-        return {"claim": args.claim, "verdict": args.verdict,
-                "note": "Provisional scope-bound claim; not a universal scientific fact"}
+        return {
+            "claim": args.claim,
+            "verdict": args.verdict,
+            "note": "Provisional scope-bound claim; not a universal scientific fact",
+        }
     raise ValueError(f"unknown command: {command}")
 
 

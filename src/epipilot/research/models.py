@@ -249,16 +249,14 @@ class ResearchState(Record):
     @property
     def reserved(self) -> float:
         return sum(
-            item.max_cost for item in self.contracts.values()
+            item.max_cost
+            for item in self.contracts.values()
             if item.status is ContractStatus.RUNNING
         )
 
     @property
     def remaining(self) -> float:
-        return (
-            0.0 if self.goal is None
-            else max(0.0, self.goal.budget - self.spent - self.reserved)
-        )
+        return 0.0 if self.goal is None else max(0.0, self.goal.budget - self.spent - self.reserved)
 
     @property
     def overrun(self) -> float:

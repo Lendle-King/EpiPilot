@@ -21,7 +21,19 @@ _SKIP_DIRS = {
     "dist",
     "build",
 }
-_SUFFIXES = {".py", ".md", ".toml", ".json", ".yaml", ".yml", ".ipynb", ".csv", ".jsonl", ".parquet", ".txt"}
+_SUFFIXES = {
+    ".py",
+    ".md",
+    ".toml",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".ipynb",
+    ".csv",
+    ".jsonl",
+    ".parquet",
+    ".txt",
+}
 _RELEVANT = (
     "readme",
     "research",
@@ -84,7 +96,10 @@ def inspect_repository(root: Path, *, max_files: int = 10000) -> OnboardingSnaps
         relevant_files=sorted(
             relevant,
             key=lambda name: (
-                not any(tag in name.lower() for tag in ("experiment", "result", "metric", "report", "backtest")),
+                not any(
+                    tag in name.lower()
+                    for tag in ("experiment", "result", "metric", "report", "backtest")
+                ),
                 name,
             ),
         )[:200],

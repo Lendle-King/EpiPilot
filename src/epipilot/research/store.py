@@ -29,7 +29,9 @@ from epipilot.research.models import (
 )
 
 
-def _related_evidence(state: ResearchState, evidence_id: str) -> tuple[EvidenceRecord, Experiment, ExperimentContract]:
+def _related_evidence(
+    state: ResearchState, evidence_id: str
+) -> tuple[EvidenceRecord, Experiment, ExperimentContract]:
     evidence = state.evidence.get(evidence_id)
     if evidence is None:
         raise ValueError("unknown evidence")
@@ -152,7 +154,8 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         state.experiments[exp.id] = exp
         state.evidence[evidence.id] = evidence
         proposal_status = (
-            "blocked" if not legacy and exp.outcome == "infrastructure_failure"
+            "blocked"
+            if not legacy and exp.outcome == "infrastructure_failure"
             else "awaiting_verification"
         )
         state.proposals[proposal.id] = proposal.model_copy(update={"status": proposal_status})
@@ -205,8 +208,10 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 raise ValueError("reported improvement contradicts frozen metrics")
             if exp.outcome == "no_gain" and passed:
                 raise ValueError("reported no-gain contradicts frozen metrics")
-            verdict = "inconclusive" if exp.outcome == "inconclusive" else (
-                "supported" if passed else "refuted"
+            verdict = (
+                "inconclusive"
+                if exp.outcome == "inconclusive"
+                else ("supported" if passed else "refuted")
             )
             state.evidence[evidence_id] = evidence.model_copy(
                 update={
@@ -271,7 +276,8 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         if not math.isfinite(cost) or cost < 0 or not str(p.get("reason", "")).strip():
             raise ValueError("aborting an experiment needs actual cost and a reason")
         if contract is None or contract.status not in {
-            ContractStatus.PREREGISTERED, ContractStatus.RUNNING
+            ContractStatus.PREREGISTERED,
+            ContractStatus.RUNNING,
         }:
             raise ValueError("only a pre-registered or running experiment can be aborted")
         state.contracts[contract.id] = contract.model_copy(
@@ -336,7 +342,8 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 or not str(p.get("rationale", "")).strip()
                 or not proposal.claim_ids
                 or any(
-                    evidence_id not in (
+                    evidence_id
+                    not in (
                         state.claims[cid].supporting_evidence_ids
                         + state.claims[cid].contradicting_evidence_ids
                     )
