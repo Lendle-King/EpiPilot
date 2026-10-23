@@ -69,7 +69,7 @@ def test_refuse_path_escape_via_symlink(tmp_path: Path) -> None:
     root = tmp_path / "project"
     root.mkdir()
     (root / ".agents").symlink_to(outside, target_is_directory=True)
-    with pytest.raises(ValueError, match="symlink|escapes"):
+    with pytest.raises(ValueError, match=r"symlink|escapes"):
         install(root, agent="codex")
     assert not (outside / "skills").exists()
 

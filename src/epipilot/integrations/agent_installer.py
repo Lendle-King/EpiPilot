@@ -67,7 +67,7 @@ def _atomic_write(destination: Path, content: str) -> None:
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_path, destination)
+        tmp_path.replace(destination)
     finally:
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
@@ -136,7 +136,10 @@ def install(
         "unchanged": unchanged,
         "installation": "project_skill_and_instructions",
         "native_codex_marketplace_plugin": False,
-        "next": "Open a NEW coding-agent session in the project; verify the installed CLI with epi --help.",
+        "next": (
+            "Start a NEW agent session in the project; "
+            "verify the installed CLI with epi --help."
+        ),
     }
 
 
@@ -157,7 +160,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(outcome, ensure_ascii=False, indent=2))
     else:
         print(
-            f"EpiPilot project skill {'planned' if args.dry_run else 'installed'}: {outcome['project']}"
+            f"EpiPilot skill {'planned' if args.dry_run else 'installed'}: "
+            f"{outcome['project']}"
         )
         for name in outcome["changed_or_pending"]:
             print(f"  updated: {name}")
