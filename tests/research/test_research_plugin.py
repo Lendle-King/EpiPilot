@@ -313,8 +313,12 @@ def test_metric_artifact_mismatch_blocks_verification_until_correction(root: Pat
     assert state.contracts["PRE-1"].status is ContractStatus.BLOCKED
     assert state.evidence["EV-1"].failure_count == 1
     assert main(["--root", str(root), "iterate"]) == 0
-    with pytest.raises(ValueError, match="only an awaiting-verification"):
-        store.append("verification_recorded", {"evidence_id": "EV-1"})
+    with pytest.raises(ValueError, match="experiment is not awaiting verification"):
+        store.append(
+            "verification_recorded",
+            {"evidence_id": "EV-1", "check_argv": [sys.executable],
+             "check_output_sha256": "deadbeef"},
+        )
     store.append(
         "verification_retried",
         {"contract_id": "PRE-1", "reason": "Restored the correct metrics JSON"},

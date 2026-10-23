@@ -1,6 +1,6 @@
 # EpiPilot: Agent-native Research Plugin
 
-**Current branch:** \`main\` (research plugin). Supports Codex, Kimi Code and
+**Current branch:** `main` (research plugin). Supports Codex, Kimi Code and
 other coding agents that can read instructions and invoke a local CLI.
 
 ## Scope
@@ -10,11 +10,11 @@ existing coding agent. The agent remains responsible for interpretation,
 coding, experiment execution and scientific criticism. There is no nested
 autonomous LLM scientist.
 
-The actual components are \`research/models.py\` (contracts),
-\`research/store.py\` (append-only event memory), \`research/planner.py\`
-(two-step heuristic), \`research/onboarding.py\` (bounded inventory),
-\`research/validation.py\` (local git/artifact/verifier checks) and
-\`research/cli.py\` (agent interface).
+The actual components are `research/models.py` (contracts),
+`research/store.py` (append-only event memory), `research/planner.py`
+(two-step heuristic), `research/onboarding.py` (bounded inventory),
+`research/validation.py` (local git/artifact/verifier checks) and
+`research/cli.py` (agent interface).
 
 It supports:
 
@@ -37,24 +37,24 @@ It supports:
 
 Requires Python 3.11+, Git and an existing coding agent:
 
-\`\`\`bash
+```bash
 git clone https://github.com/Lendle-King/EpiPilot.git
 cd EpiPilot
 python -m pip install -e .
 epi --help
-\`\`\`
+```
 
-For Codex, copy \`skills/epipilot-research/SKILL.md\` into the target project's
-\`.agents/skills/epipilot-research/SKILL.md\`. For Kimi Code, ask it to read
-the same file or reference it in the project's \`AGENTS.md\`. The native Codex
-marketplace plugin on \`feat/codex-epistemic-research-plugin\` is a distinct
+For Codex, copy `skills/epipilot-research/SKILL.md` into the target project's
+`.agents/skills/epipilot-research/SKILL.md`. For Kimi Code, ask it to read
+the same file or reference it in the project's `AGENTS.md`. The native Codex
+marketplace plugin on `feat/codex-epistemic-research-plugin` is a distinct
 older integration, **not** a packaging of this research CLI.
 
 ## Example end-to-end session
 
 Execute in a **target Git research repository**:
 
-\`\`\`bash
+```bash
 epi init --goal "Improve task success on a fixed evaluation split" \
   --budget 10 --metric "success rate" --constraint "no evaluation leakage"
 epi onboard
@@ -65,12 +65,12 @@ epi propose --id ACT-1 --title "Matched ranking ablation" --kind explore \
   --acceptance "Frozen controlled success comparison" \
   --unknown UNK-1 --claim CLM-1 --ig 0.8 --gain 0.3 --cost 1
 epi iterate
-\`\`\`
+```
 
 Implement/commit code and experiment configs **before** freezing the study.
 Use project-specific baseline and result files:
 
-\`\`\`bash
+```bash
 epi preregister --proposal ACT-1 --baseline "baseline-v1" \
   --config configs/rank.yaml --dataset data/split-v1.json \
   --control "matched seeds" --control "same compute" \
@@ -80,17 +80,17 @@ epi preregister --proposal ACT-1 --baseline "baseline-v1" \
   --max-cost 1.5 \
   --verifier python -m json.tool {artifact}
 epi start --contract PRE-ID
-\`\`\`
+```
 
 Your coding agent executes the real experiment, which produces an artifact like:
 
-\`\`\`json
+```json
 {"metrics": {"gain": 0.032}}
-\`\`\`
+```
 
 Then record real measurements/cost and validate:
 
-\`\`\`bash
+```bash
 epi record --contract PRE-ID --summary "Controlled ranking comparison" \
   --outcome improved --cost 1.2 --seed 42 --metric gain=0.032
 epi verify --experiment EXP-ID
@@ -100,10 +100,10 @@ epi unknown resolve --id UNK-1 --evidence EV-ID \
   --rationale "The scoped ranking decision has sufficient checked evidence"
 epi review
 epi iterate
-\`\`\`
+```
 
 Replace PRE-ID/EXP-ID/EV-ID with actual CLI-returned IDs. Commands such as
-\`python -m json.tool\` verify only syntactic JSON and **must be replaced**
+`python -m json.tool` verify only syntactic JSON and **must be replaced**
 with domain-appropriate checks for a defensible scientific claim.
 
 ## Evidence and authority limitations
@@ -131,31 +131,31 @@ pre-registration, recording and verification. Local file references are
 SHA-256 pinned when files exist; external version IDs remain opaque and
 must be verified separately. Metric artifacts are required inside the
 repository, relative JSON files with finite numeric metric values. We do not
-store raw verifier output, only its hash; execution uses \`shell=False\` and
+store raw verifier output, only its hash; execution uses `shell=False` and
 cannot bypass the coding agent's ordinary safety approvals.
 
-Legacy v1 \`.research/events.jsonl\` files replay without silent mutation.
+Legacy v1 `.research/events.jsonl` files replay without silent mutation.
 Old "independently verified" evidence is **not** automatically treated as
 measurement-validated v2 evidence; re-run and validate key experiments when
 scientific conclusions depend on them. Do not edit historical event lines.
 
 ## Recovery, budgets and security
 
-- \`epi doctor\` replays the event log, lists in-flight contracts and reports
+- `epi doctor` replays the event log, lists in-flight contracts and reports
   legacy evidence. No background agent runs automatically.
-- \`epi iterate\` surfaces running, preregistered, blocked and
+- `epi iterate` surfaces running, preregistered, blocked and
   awaiting-verification items before choosing a new action.
-- Budget is reserved with \`epi start\`. Running experiments consume a
-  reservation. \`epi record\` books the **actual** cost even if it exceeds the
+- Budget is reserved with `epi start`. Running experiments consume a
+  reservation. `epi record` books the **actual** cost even if it exceeds the
   approved estimate; overspend is visible and blocks new starts.
-- \`epi abort --contract PRE-ID --reason "..." --cost N\` books interrupted
+- `epi abort --contract PRE-ID --reason "..." --cost N` books interrupted
   cost and releases the remaining reservation.
 - Invalid verification marks the contract BLOCKED. Use
-  \`epi retry --contract PRE-ID --reason "specific corrective change"\`
+  `epi retry --contract PRE-ID --reason "specific corrective change"`
   only after making a real correction. Three failed attempts require a
   new proposal and pre-registered experiment.
 - The event store is single-writer. A crashed process may leave a
-  \`.research/.write.lock\`; check for live writers before manual recovery.
+  `.research/.write.lock`; check for live writers before manual recovery.
 - The event file is intentionally visible to Git. Do not save private
   transcripts, secrets, passwords, cookies, private screenshots or raw
   proprietary results. Review before committing it.

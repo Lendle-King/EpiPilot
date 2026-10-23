@@ -49,6 +49,8 @@ _RELEVANT = (
     "evaluation",
 )
 
+_PRIORITIZED = ("experiment", "result", "metric", "report", "backtest")
+
 
 def git_revision(root: Path) -> str:
     """Resolve the current Git revision without running a shell."""
