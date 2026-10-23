@@ -15,9 +15,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from epipilot.research.decision_models import DecisionEstimate, DecisionForecast, DecisionOutcome
-
 from epipilot.core.models import utc_now
+from epipilot.research.decision_models import DecisionEstimate, DecisionForecast, DecisionOutcome
 
 
 def research_id(prefix: str) -> str:

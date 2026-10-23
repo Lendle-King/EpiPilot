@@ -59,16 +59,12 @@ class DecisionEstimate(DecisionRecord):
             raise ValueError("option keys must be unique")
         if not any(option.proposal_id is None for option in self.options):
             raise ValueError("a non-executing stop/defer option is mandatory")
-        if not isclose(
-            sum(branch.probability for branch in self.branches), 1.0, abs_tol=1e-9
-        ):
+        if not isclose(sum(branch.probability for branch in self.branches), 1.0, abs_tol=1e-9):
             raise ValueError("decision probabilities must sum to one")
         for i, option in enumerate(self.options):
             if any(len(branch.utilities) != len(self.options) for branch in self.branches):
                 raise ValueError("decision utility vector length disagrees with option count")
-            expected = sum(
-                branch.probability * branch.utilities[i] for branch in self.branches
-            )
+            expected = sum(branch.probability * branch.utilities[i] for branch in self.branches)
             if not isclose(expected, option.prior_utility, abs_tol=1e-8):
                 raise ValueError("prior utilities must match the frozen joint outcome table")
         return self

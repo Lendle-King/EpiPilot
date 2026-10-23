@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from test_research_plugin import observe, register, root, setup_store, validate  # noqa: F401
 
 from epipilot.research.cli import main
 from epipilot.research.decision_models import (
@@ -26,7 +26,6 @@ from epipilot.research.decision_value import (
 )
 from epipilot.research.models import Proposal, ProposalKind
 from epipilot.research.store import ResearchStore
-from test_research_plugin import observe, register, root, setup_store, validate  # noqa: F401
 
 
 def make_estimate(proposal_id: str = "P", option: str | None = "CHILD") -> DecisionEstimate:
@@ -75,13 +74,13 @@ def test_value_of_information_from_same_joint_table() -> None:
     est = make_estimate()
     assert score_estimate(est) == pytest.approx(0.05)
     assert score_estimate(
-        est, enabled_before=(True, False),
+        est,
+        enabled_before=(True, False),
         enabled_after=((True, True), (True, True), (True, True), (True, False)),
     ) == pytest.approx(0.125)
     # Unaffordable or unavailable follow-ups cannot earn hypothetical value.
     assert score_estimate(
-        est, enabled_before=(True, False),
-        enabled_after=((True, False),) * 4
+        est, enabled_before=(True, False), enabled_after=((True, False),) * 4
     ) == pytest.approx(0)
     # A posterior cannot exploit an option absent from every feasible mask.
     with pytest.raises(ValueError, match="non-executing"):
@@ -91,21 +90,32 @@ def test_value_of_information_from_same_joint_table() -> None:
 def test_cold_start_and_group_isolated_calibration() -> None:
     est = make_estimate()
     score = DecisionScore(
-        proposal_id="P", value_of_information=0.1,
-        normalized_cost=0.1, risk_penalty=0.1, net_value=-0.1,
-        probabilities=(0.25,) * 4, calibration_samples=0,
-        enabled_before=(True, False), enabled_after=((True, True),) * 4,
+        proposal_id="P",
+        value_of_information=0.1,
+        normalized_cost=0.1,
+        risk_penalty=0.1,
+        net_value=-0.1,
+        probabilities=(0.25,) * 4,
+        calibration_samples=0,
+        enabled_before=(True, False),
+        enabled_after=((True, True),) * 4,
     )
     samples = tuple(
         (
             DecisionForecast(
-                contract_id=f"PRE-{i}", git_revision="a" * 40,
-                recorded_at=datetime.now(UTC), estimate=est, score=score
+                contract_id=f"PRE-{i}",
+                git_revision="a" * 40,
+                recorded_at=datetime.now(UTC),
+                estimate=est,
+                score=score,
             ),
             DecisionOutcome(
-                contract_id=f"PRE-{i}", evidence_id=f"EV-{i}",
-                outcome=OutcomeKind.NO_GAIN, actual_cost=1,
-                brier_score=0.75, qualified=True,
+                contract_id=f"PRE-{i}",
+                evidence_id=f"EV-{i}",
+                outcome=OutcomeKind.NO_GAIN,
+                actual_cost=1,
+                brier_score=0.75,
+                qualified=True,
             ),
         )
         for i in range(20)
@@ -189,7 +199,7 @@ def test_cli_register_rank_and_status(root: Path, capsys: pytest.CaptureFixture[
     assert main([*args, "register", "--file", "decision.json"]) == 0
     assert main([*args, "rank"]) == 0
     rank_output = capsys.readouterr().out
-    assert "\"value_of_information\"" in rank_output
+    assert '"value_of_information"' in rank_output
     assert main([*args, "status"]) == 0
     printed = capsys.readouterr().out
     assert '"estimates": [' in printed

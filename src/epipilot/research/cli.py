@@ -499,12 +499,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             return {
                 "estimates": list(state.decision_estimates),
                 "forecasts": [
-                    item.model_dump(mode="json")
-                    for item in state.decision_forecasts.values()
+                    item.model_dump(mode="json") for item in state.decision_forecasts.values()
                 ],
                 "qualified_outcomes": [
-                    item.model_dump(mode="json")
-                    for item in state.decision_outcomes.values()
+                    item.model_dump(mode="json") for item in state.decision_outcomes.values()
                 ],
             }
         if args.limit < 1:
@@ -519,9 +517,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         estimates.sort(key=lambda item: (-item.net_value, item.proposal_id))
         return {
             "policy": "bounded conditional value-of-information heuristic",
-            "ranked": [
-                entry.model_dump(mode="json") for entry in estimates[:args.limit]
-            ],
+            "ranked": [entry.model_dump(mode="json") for entry in estimates[: args.limit]],
             "note": "This is advisory; epi iterate retains evidence-gated cost ranking",
         }
     if command == "preregister":

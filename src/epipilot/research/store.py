@@ -94,8 +94,7 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("decision estimate already registered; create a new proposal")
         if any(
             option.proposal_id is not None
-            and (option.proposal_id == proposed.id
-                 or option.proposal_id not in state.proposals)
+            and (option.proposal_id == proposed.id or option.proposal_id not in state.proposals)
             for option in estimate.options
         ):
             raise ValueError("decision table contains unknown or self-referential options")

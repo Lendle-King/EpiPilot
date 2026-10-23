@@ -65,8 +65,10 @@ def score_estimate(
     enabled_after: tuple[tuple[bool, ...], ...] | None = None,
 ) -> float:
     """EVSI from the SAME calibrated joint table, never from stale prior utilities."""
-    prob = probabilities if probabilities is not None else tuple(
-        branch.probability for branch in estimate.branches
+    prob = (
+        probabilities
+        if probabilities is not None
+        else tuple(branch.probability for branch in estimate.branches)
     )
     before = enabled_before if enabled_before is not None else (True,) * len(estimate.options)
     after = enabled_after if enabled_after is not None else (before,) * len(prob)
@@ -89,15 +91,15 @@ def score_estimate(
         if len(mask) != len(before) or not any(mask):
             raise ValueError("each outcome must preserve a non-executing feasible option")
         posterior += probability * max(
-            utility
-            for utility, enabled in zip(branch.utilities, mask, strict=True)
-            if enabled
+            utility for utility, enabled in zip(branch.utilities, mask, strict=True) if enabled
         )
     return posterior - prior_best
 
 
 def _option_available(
-    state: ResearchState, experiment: Proposal, option_id: str | None,
+    state: ResearchState,
+    experiment: Proposal,
+    option_id: str | None,
     outcome: OutcomeKind | None,
 ) -> bool:
     if option_id is None:
@@ -118,9 +120,11 @@ def _option_available(
 
 
 def rank_decision(
-    state: ResearchState, estimate: DecisionEstimate,
+    state: ResearchState,
+    estimate: DecisionEstimate,
     *,
-    minimum_samples: int = 20, prior_strength: float = 20.0,
+    minimum_samples: int = 20,
+    prior_strength: float = 20.0,
 ) -> DecisionScore:
     """Score only a directly budget-feasible Proposal with a frozen decision table."""
     proposal = state.proposals.get(estimate.proposal_id)
@@ -135,8 +139,7 @@ def rank_decision(
         estimate, samples, minimum_samples=minimum_samples, prior_strength=prior_strength
     )
     before = tuple(
-        _option_available(state, proposal, option.proposal_id, None)
-        for option in estimate.options
+        _option_available(state, proposal, option.proposal_id, None) for option in estimate.options
     )
     after = tuple(
         tuple(
@@ -162,7 +165,9 @@ def rank_decision(
 
 
 def record_outcome(
-    state: ResearchState, contract_id: str, evidence_id: str,
+    state: ResearchState,
+    contract_id: str,
+    evidence_id: str,
 ) -> DecisionOutcome | None:
     """Derive a forecast outcome ONLY from validated, matching v2 evidence."""
     forecast = state.decision_forecasts.get(contract_id)
