@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from epipilot.core.models import utc_now
 from epipilot.research.decision_models import DecisionEstimate, DecisionForecast, DecisionOutcome
+from epipilot.research.scout_models import ScoutCandidate, ScoutOperation, ScoutStatus
 
 
 def research_id(prefix: str) -> str:
@@ -244,11 +245,15 @@ class ResearchState(Record):
     experiments: dict[str, Experiment] = Field(default_factory=dict)
     evidence: dict[str, EvidenceRecord] = Field(default_factory=dict)
     onboarding: list[OnboardingSnapshot] = Field(default_factory=list)
+    scout_runs: dict[str, ScoutOperation] = Field(default_factory=dict)
+    scout_candidates: dict[str, ScoutCandidate] = Field(default_factory=dict)
 
     @property
     def spent(self) -> float:
-        return sum(item.actual_cost for item in self.experiments.values()) + sum(
-            item.aborted_cost for item in self.contracts.values()
+        return (
+            sum(item.actual_cost for item in self.experiments.values())
+            + sum(item.aborted_cost for item in self.contracts.values())
+            + sum(item.actual_cost for item in self.scout_runs.values())
         )
 
     @property
@@ -257,6 +262,10 @@ class ResearchState(Record):
             item.max_cost
             for item in self.contracts.values()
             if item.status is ContractStatus.RUNNING
+        ) + sum(
+            item.reserved_cost
+            for item in self.scout_runs.values()
+            if item.status is ScoutStatus.RUNNING
         )
 
     @property

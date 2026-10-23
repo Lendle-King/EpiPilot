@@ -13,6 +13,7 @@ not a blanket endorsement of autonomous research quality.
 | [#13](https://github.com/Lendle-King/EpiPilot/pull/13) | Project-level Codex/Kimi research skill installer | No Codex marketplace plugin or background executor |
 | [#14](https://github.com/Lendle-King/EpiPilot/pull/14) | Scout-style four-outcome conditional value-of-information and frozen/calibrated forecasts | Advisory; default `epi iterate` heuristic unchanged; not full Scout agent |
 | [#16](https://github.com/Lendle-King/EpiPilot/pull/16) | Source-anchored semantic onboarding, manual import, explicit opt-in remote extraction | Human-reviewed candidate notes only; scientific fact promotion forbidden |
+| Scout v2 extension | Budget-reserved, agent-supplied source-grounded Unknown/Proposal discovery and explicit human review | No autonomous researcher, source authenticity is not scientific evidence |
 
 The `main` stream remains `.research/events.jsonl` schema-v2, with read-only
 replay of schema-v1 histories. The UI stages its separate local SQLite
@@ -42,10 +43,11 @@ base/head or a branch with unique, unreviewed commits.
 
 ## Deferred work / acceptance gates
 
-1. **Full Scout compatibility:** review the remaining source-discovery,
-   canonical semantic graph, experiment runner and outcome-management
-   code in `epipilot/research-scout-v1`; migrate by typed adapter and
-   evidence-gated tests rather than overwriting the CLI.
+1. **Full Scout compatibility:** bounded source-grounded Scout intake is available,
+   but public literature retrieval, automatic semantic knowledge graphs,
+   domain-specific experiment runners and complete old outcome management
+   remain separate. Continue selective typed, evidence-gated migration; do not
+   overwrite the canonical v2 CLI.
 2. **Codex native packaging:** if a real MCP marketplace installation is
    required, port PR #6's bounded tool surface to v2 contracts; never
    claim that project-local `epipilot-install-agent` does this.

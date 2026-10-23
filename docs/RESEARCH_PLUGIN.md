@@ -162,6 +162,13 @@ scientific conclusions depend on them. Do not edit historical event lines.
 
 ## Research-policy limitations
 
+For source-grounded discovery, see [Bounded Research Scout v2](SCOUT_V2.md).
+It reserves the same budget as experiments, validates exact Git source lines,
+stages provisional hypotheses for explicit review and prevents repeated
+no-op searches. It does **not** classify quoted historical reports as
+scientifically verified evidence.
+
+
 The current policy is a deterministic two-step heuristic. It is **not** MCTS,
 a trained policy, a calibrated causal inference model or a generic autonomous
 science system. Information gain, improvement, novelty and risk remain

@@ -30,6 +30,13 @@ from epipilot.research.models import (
 )
 from epipilot.research.onboarding import inspect_repository
 from epipilot.research.planner import rank_proposals, research_phase
+from epipilot.research.scout_core import frontier_fingerprint, validate_source
+from epipilot.research.scout_models import (
+    ScoutCandidateStatus,
+    ScoutOperation,
+    ScoutStatus,
+    ScoutSubmission,
+)
 from epipilot.research.store import ResearchStore
 from epipilot.research.validation import (
     artifact_metrics,
@@ -99,6 +106,26 @@ def _parser() -> argparse.ArgumentParser:
     plan = sub.add_parser("plan", help="compile context for a proposal")
     plan.add_argument("--id", required=True)
     sub.add_parser("iterate", help="return the next blocked, pending or runnable action")
+
+    scout = sub.add_parser("scout", help="reserve, submit and review sourced research leads")
+    scout_sub = scout.add_subparsers(dest="action", required=True)
+    scout_sub.add_parser(
+        "prepare", help="read-only pinned knowledge frontier and Scout instructions"
+    )
+    scout_start = scout_sub.add_parser("start", help="reserve budget before research discovery")
+    scout_start.add_argument("--operation")
+    scout_start.add_argument("--reserve", type=float, required=True)
+    scout_start.add_argument("--max-candidates", type=int, default=5)
+    scout_start.add_argument("--max-sources", type=int, default=3)
+    scout_submit = scout_sub.add_parser("submit", help="validate and stage source-anchored leads")
+    scout_submit.add_argument("--file", type=Path, required=True)
+    scout_review = scout_sub.add_parser(
+        "review", help="explicitly accept/reject one unverified lead"
+    )
+    scout_review.add_argument("--candidate", required=True)
+    scout_review.add_argument("--decision", choices=["accepted", "rejected"], required=True)
+    scout_review.add_argument("--reason", required=True)
+    scout_sub.add_parser("status", help="review Scout reservations, costs and candidate statuses")
 
     decision = sub.add_parser("decision", help="inspect or register bounded Scout decision tables")
     decision_sub = decision.add_subparsers(dest="action", required=True)
@@ -194,6 +221,11 @@ def _status(state: ResearchState) -> dict[str, object]:
         "decision_estimates": len(state.decision_estimates),
         "decision_forecasts": len(state.decision_forecasts),
         "qualified_forecast_outcomes": len(state.decision_outcomes),
+        "scout_runs": len(state.scout_runs),
+        "scout_cost": sum(run.actual_cost for run in state.scout_runs.values()),
+        "scout_pending_candidates": sum(
+            item.status is ScoutCandidateStatus.PENDING for item in state.scout_candidates.values()
+        ),
         "validated_evidence": sum(item.measurement_validated for item in state.evidence.values()),
         "pending": {
             key: item.status.value
@@ -279,6 +311,16 @@ def _safe_verifier(parts: list[str]) -> list[str]:
 
 def _next_action(state: ResearchState) -> dict[str, object]:
     """Prioritize resuming one in-flight run over launching additional experiments."""
+    active_scout = next(
+        (run for run in state.scout_runs.values() if run.status is ScoutStatus.RUNNING), None
+    )
+    if active_scout is not None:
+        return {
+            "status": "scout_running",
+            "operation": active_scout.model_dump(mode="json"),
+            "guidance": "Submit Scout results or report failure with actual cost.",
+        }
+
     for status, label, guidance in (
         (ContractStatus.RUNNING, "running", "Resume or abort the in-flight experiment."),
         (ContractStatus.AWAITING_VERIFICATION, "verify", "Run epi verify on its observation."),
@@ -420,6 +462,11 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             "recent_evidence": [
                 x.model_dump(mode="json") for x in list(state.evidence.values())[-10:]
             ],
+            "scout_candidates": [
+                item.model_dump(mode="json")
+                for item in state.scout_candidates.values()
+                if item.status is ScoutCandidateStatus.PENDING
+            ][:20],
             "top_proposals": [
                 {"id": x.proposal.id, "score": x.score, "reason": x.rationale}
                 for x in rank_proposals(state, limit=5)
@@ -484,6 +531,106 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         return _plan(state, args.id)
     if command == "iterate":
         return _next_action(state)
+    if command == "scout":
+        if args.action == "status":
+            return {
+                "operations": [run.model_dump(mode="json") for run in state.scout_runs.values()],
+                "candidates": [
+                    lead.model_dump(mode="json") for lead in state.scout_candidates.values()
+                ],
+                "remaining_budget": state.remaining,
+            }
+        if state.goal is None:
+            raise ValueError("Scout requires an explicit authorized research goal")
+        if args.action == "prepare":
+            revision = require_clean_revision(root)
+            return {
+                "state_version": sequence,
+                "git_revision": revision,
+                "research_epoch": frontier_fingerprint(state),
+                "budget_remaining": state.remaining,
+                "open_unknowns": [
+                    item.model_dump(mode="json")
+                    for item in state.unknowns.values()
+                    if item.status == "open"
+                ][:20],
+                "active_claims": [item.model_dump(mode="json") for item in state.claims.values()][
+                    :20
+                ],
+                "validated_evidence": [
+                    item.id for item in state.evidence.values() if item.measurement_validated
+                ][-20:],
+                "suggested_documents": (
+                    state.onboarding[-1].relevant_files[:30] if state.onboarding else []
+                ),
+                "instructions": (
+                    "Use the existing authorized coding agent to investigate source-grounded "
+                    "unknowns, mechanisms and competing experiments. First reserve cost with "
+                    "epi scout start. Submit at most five provisional leads across three "
+                    "exactly cited, committed text sources. Scout text is not scientific proof."
+                ),
+            }
+        if args.action == "start":
+            revision = require_clean_revision(root)
+            operation = ScoutOperation(
+                id=args.operation or research_id("SCOUT"),
+                git_revision=revision,
+                epoch=frontier_fingerprint(state),
+                based_on_version=sequence,
+                reserved_cost=args.reserve,
+                max_candidates=args.max_candidates,
+                max_sources=args.max_sources,
+            )
+            store.add("scout_started", operation)
+            return {
+                "operation": operation.model_dump(mode="json"),
+                "next": "epi scout submit --file PATH_TO_SCOUT_SUBMISSION_JSON",
+            }
+        if args.action == "submit":
+            location = (root / args.file).resolve()
+            if not location.is_relative_to(root) or not location.is_file():
+                raise ValueError("Scout submission must be an existing repository-local JSON file")
+            if location.stat().st_size > 128 * 1024:
+                raise ValueError("Scout submission exceeds maximum JSON size")
+            submission = ScoutSubmission.model_validate_json(location.read_bytes())
+            submitted_scout = state.scout_runs.get(submission.operation_id)
+            if submitted_scout is None or submitted_scout.status is not ScoutStatus.RUNNING:
+                raise ValueError("Scout submission does not match a running submitted_scout")
+            require_clean_revision(root, submitted_scout.git_revision)
+            for candidate in submission.candidates:
+                validate_source(root, submitted_scout.git_revision, candidate.source)
+            store.append("scout_submitted", submission.model_dump(mode="json"))
+            return {
+                "operation_id": submitted_scout.id,
+                "recorded_actual_cost": submission.actual_cost,
+                "pending_candidate_ids": [item.id for item in submission.candidates],
+                "warning": "All leads remain unverified until explicitly reviewed.",
+                "next": "epi scout review --candidate ID --decision accepted --reason TEXT",
+            }
+        if args.action == "review":
+            decision = ScoutCandidateStatus(args.decision)
+            store.append(
+                "scout_candidate_reviewed",
+                {
+                    "candidate_id": args.candidate,
+                    "decision": decision.value,
+                    "rationale": args.reason,
+                },
+            )
+            return {
+                "candidate": args.candidate,
+                "decision": decision.value,
+                "new_entities": (
+                    {
+                        "unknown_id": f"UNK-{args.candidate}",
+                        "claim_id": f"CLM-{args.candidate}",
+                        "proposal_id": f"ACT-{args.candidate}",
+                    }
+                    if decision is ScoutCandidateStatus.ACCEPTED
+                    else {}
+                ),
+                "scientific_evidence": False,
+            }
     if command == "decision":
         if args.action == "register":
             location = (root / args.file).resolve()

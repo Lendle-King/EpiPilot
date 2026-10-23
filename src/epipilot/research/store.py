@@ -24,10 +24,18 @@ from epipilot.research.models import (
     ExperimentContract,
     OnboardingSnapshot,
     Proposal,
+    ProposalKind,
     ResearchEvent,
     ResearchGoal,
     ResearchState,
     Unknown,
+)
+from epipilot.research.scout_core import frontier_fingerprint
+from epipilot.research.scout_models import (
+    ScoutCandidateStatus,
+    ScoutOperation,
+    ScoutStatus,
+    ScoutSubmission,
 )
 
 
@@ -99,6 +107,134 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         ):
             raise ValueError("decision table contains unknown or self-referential options")
         state.decision_estimates[proposed.id] = estimate
+    elif kind == "scout_started":
+        if legacy or state.goal is None:
+            raise ValueError("Scout requires a v2 research goal")
+        operation = ScoutOperation.model_validate(p)
+        if (
+            operation.id in state.scout_runs
+            or operation.based_on_version != event.sequence - 1
+            or operation.status is not ScoutStatus.RUNNING
+            or operation.actual_cost != 0
+            or operation.candidate_ids
+        ):
+            raise ValueError("Scout requires a fresh reserved operation and exact state version")
+        if operation.epoch != frontier_fingerprint(state):
+            raise ValueError("Scout research epoch differs from the current scientific frontier")
+        if any(run.status is ScoutStatus.RUNNING for run in state.scout_runs.values()):
+            raise ValueError("finish the prior Scout before starting another")
+        if any(
+            run.epoch == operation.epoch and run.git_revision == operation.git_revision
+            for run in state.scout_runs.values()
+        ):
+            raise ValueError("unchanged Scout frontier already explored; review evidence first")
+        if operation.reserved_cost > state.remaining + 1e-9:
+            raise ValueError("Scout reservation exceeds remaining experiment budget")
+        state.scout_runs[operation.id] = operation
+    elif kind == "scout_submitted":
+        if legacy:
+            raise ValueError("Scout submissions require v2 events")
+        submission = ScoutSubmission.model_validate(p)
+        submitted_scout = state.scout_runs.get(submission.operation_id)
+        if submitted_scout is None or submitted_scout.status is not ScoutStatus.RUNNING:
+            raise ValueError("Scout submission requires a running reserved submitted_scout")
+        if len(submission.candidates) > submitted_scout.max_candidates:
+            raise ValueError("Scout exceeded its frozen candidate limit")
+        paths = {candidate.source.path for candidate in submission.candidates}
+        if len(paths) > submitted_scout.max_sources:
+            raise ValueError("Scout exceeded its frozen source limit")
+        ids = [candidate.id for candidate in submission.candidates]
+        if len(ids) != len(set(ids)) or any(cid in state.scout_candidates for cid in ids):
+            raise ValueError("Scout candidate IDs must be unique across research history")
+        for candidate in submission.candidates:
+            state.scout_candidates[candidate.id] = candidate
+        next_status = (
+            ScoutStatus.COMPLETED if submission.status == "completed" else ScoutStatus.FAILED
+        )
+        state.scout_runs[submitted_scout.id] = submitted_scout.model_copy(
+            update={
+                "status": next_status,
+                "actual_cost": submission.actual_cost,
+                "candidate_ids": ids,
+                "summary": submission.summary,
+            }
+        )
+    elif kind == "scout_candidate_reviewed":
+        if legacy:
+            raise ValueError("Scout review requires a v2 event")
+        reviewed_lead = state.scout_candidates.get(str(p["candidate_id"]))
+        decision = ScoutCandidateStatus(str(p["decision"]))
+        rationale = str(p.get("rationale", "")).strip()
+        if (
+            reviewed_lead is None
+            or reviewed_lead.status is not ScoutCandidateStatus.PENDING
+            or decision is ScoutCandidateStatus.PENDING
+            or len(rationale) < 8
+        ):
+            raise ValueError("Scout review requires a pending reviewed_lead and explicit reasoning")
+        if decision is ScoutCandidateStatus.ACCEPTED:
+            if any(
+                existing.question.casefold() == reviewed_lead.question.casefold()
+                for existing in state.unknowns.values()
+            ):
+                raise ValueError("Scout question duplicates an existing research unknown")
+            if any(
+                existing.statement.casefold() == reviewed_lead.hypothesis.casefold()
+                and existing.scope.casefold() == reviewed_lead.scope.casefold()
+                for existing in state.claims.values()
+            ):
+                raise ValueError("Scout hypothesis duplicates an existing scoped claim")
+            if any(
+                existing.title.casefold() == reviewed_lead.title.casefold()
+                and existing.status != "aborted"
+                for existing in state.proposals.values()
+            ):
+                raise ValueError("Scout proposal duplicates an existing experiment")
+            unknown_id, claim_id, proposal_id = (
+                f"UNK-{reviewed_lead.id}",
+                f"CLM-{reviewed_lead.id}",
+                f"ACT-{reviewed_lead.id}",
+            )
+            if (
+                unknown_id in state.unknowns
+                or claim_id in state.claims
+                or proposal_id in state.proposals
+            ):
+                raise ValueError("Scout-generated stable IDs collide with existing research IDs")
+            source_operation = state.scout_runs[reviewed_lead.operation_id]
+            source = reviewed_lead.source
+            anchor = (
+                f"scout_source=git:{source_operation.git_revision}:{source.path}:{source.line}"
+                f";sha256={source.sha256};source_text_is_not_scientific_evidence"
+            )
+            state.unknowns[unknown_id] = Unknown(
+                id=unknown_id,
+                question=reviewed_lead.question,
+                importance=reviewed_lead.importance,
+                decision_sensitivity=reviewed_lead.decision_sensitivity,
+            )
+            state.claims[claim_id] = Claim(
+                id=claim_id,
+                statement=reviewed_lead.hypothesis,
+                scope=reviewed_lead.scope,
+                assumptions=[anchor],
+            )
+            state.proposals[proposal_id] = Proposal(
+                id=proposal_id,
+                title=reviewed_lead.title,
+                kind=ProposalKind(reviewed_lead.kind),
+                rationale=reviewed_lead.rationale,
+                acceptance=reviewed_lead.acceptance,
+                unknown_ids=[unknown_id],
+                claim_ids=[claim_id],
+                information_gain=reviewed_lead.information_gain,
+                expected_improvement=reviewed_lead.expected_improvement,
+                estimated_cost=reviewed_lead.estimated_cost,
+                risk=reviewed_lead.risk,
+            )
+        state.scout_candidates[reviewed_lead.id] = reviewed_lead.model_copy(
+            update={"status": decision, "review_rationale": rationale}
+        )
     elif kind == "experiment_preregistered":
         registration = ExperimentContract.model_validate(p)
         if state.goal is None:
@@ -350,12 +486,12 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             contradict.append(evidence_id)
         else:
             inconclusive.append(evidence_id)
-        next_status = verdict
+        claim_status = verdict
         if support and contradict:
-            next_status = ClaimStatus.INCONCLUSIVE
+            claim_status = ClaimStatus.INCONCLUSIVE
         state.claims[claim.id] = claim.model_copy(
             update={
-                "status": next_status,
+                "status": claim_status,
                 "supporting_evidence_ids": support,
                 "contradicting_evidence_ids": contradict,
                 "inconclusive_evidence_ids": inconclusive,
@@ -453,6 +589,12 @@ class ResearchStore:
     def add(
         self,
         kind: str,
-        record: ResearchGoal | Unknown | Claim | Proposal | OnboardingSnapshot | ExperimentContract,
+        record: ResearchGoal
+        | Unknown
+        | Claim
+        | Proposal
+        | OnboardingSnapshot
+        | ExperimentContract
+        | ScoutOperation,
     ) -> ResearchEvent:
         return self.append(kind, record.model_dump(mode="json"))
