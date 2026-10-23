@@ -137,8 +137,7 @@ def install(
         "installation": "project_skill_and_instructions",
         "native_codex_marketplace_plugin": False,
         "next": (
-            "Start a NEW agent session in the project; "
-            "verify the installed CLI with epi --help."
+            "Start a NEW agent session in the project; verify the installed CLI with epi --help."
         ),
     }
 
@@ -159,10 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(outcome, ensure_ascii=False, indent=2))
     else:
-        print(
-            f"EpiPilot skill {'planned' if args.dry_run else 'installed'}: "
-            f"{outcome['project']}"
-        )
+        print(f"EpiPilot skill {'planned' if args.dry_run else 'installed'}: {outcome['project']}")
         for name in outcome["changed_or_pending"]:
             print(f"  updated: {name}")
         for name in outcome["unchanged"]:
