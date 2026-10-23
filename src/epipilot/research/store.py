@@ -104,7 +104,9 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("only a pre-registered experiment can start")
         if started_contract.max_cost > state.remaining + 1e-9:
             raise ValueError("insufficient budget to reserve experiment cost")
-        state.contracts[started_contract.id] = started_contract.model_copy(update={"status": ContractStatus.RUNNING})
+        state.contracts[started_contract.id] = started_contract.model_copy(
+            update={"status": ContractStatus.RUNNING}
+        )
         proposal = state.proposals[started_contract.proposal_id]
         state.proposals[proposal.id] = proposal.model_copy(update={"status": "running"})
     elif kind == "experiment_recorded":
