@@ -26,6 +26,7 @@ dependencies = [
 
 [project.scripts]
 epi = "epipilot.research.cli:main"
+epipilot-install-agent = "epipilot.integrations.agent_installer:main"
 
 [project.urls]
 Repository = "https://github.com/Lendle-King/EpiPilot"

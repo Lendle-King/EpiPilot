@@ -6,6 +6,7 @@ canonical evidence, execute remote GitHub/Notion actions, or place trades.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from subprocess import TimeoutExpired
@@ -16,6 +17,8 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 from epipilot.workspace.onboarding import WorkspaceStore
+from epipilot.workspace.remote_model import ThirdPartyChatModel, model_configuration
+from epipilot.workspace.research_agent import ResearchOnboardingAgent, experience_digest
 
 app = FastAPI(title="EpiPilot Research Workspace", version="0.1.0")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
@@ -126,3 +129,91 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+class SemanticRunInput(BaseModel):
+    model: str | None = Field(default=None, min_length=1, max_length=160)
+    max_documents: int = Field(default=4, ge=1, le=12)
+    # Explicit human consent is needed before any research excerpts leave this machine.
+    consent: Literal[True]
+
+
+class SemanticImportInput(BaseModel):
+    source_path: str = Field(min_length=1, max_length=500)
+    response_json: str = Field(min_length=2, max_length=70_000)
+
+
+class SemanticReviewInput(BaseModel):
+    decision: Literal["accepted_note", "rejected"]
+
+
+@app.get("/api/research-model/config")
+def research_model_config() -> dict[str, object]:
+    """Only non-secret configuration crosses the local HTTP boundary."""
+    return model_configuration()
+
+
+@app.get("/api/projects/{project_id}/research-agent")
+def research_report(project_id: str) -> dict[str, object]:
+    try:
+        return ResearchOnboardingAgent(_store()).report(project_id)
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.get("/api/projects/{project_id}/research-agent/digest")
+def research_digest(project_id: str) -> dict[str, object]:
+    try:
+        return experience_digest(ResearchOnboardingAgent(_store()).report(project_id))
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.get("/api/projects/{project_id}/research-agent/chat-packet")
+def research_chat_packet(project_id: str, max_documents: int = 2) -> dict[str, object]:
+    try:
+        return ResearchOnboardingAgent(_store()).chat_packet(project_id, max_documents)
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-agent/run")
+async def run_research_agent(project_id: str, body: SemanticRunInput) -> dict[str, object]:
+    """Human opt-in API call. The model returns only reviewable, sourced candidates."""
+    try:
+        model = ThirdPartyChatModel.from_environment(body.model)
+        provider = model_configuration()["provider_host"]
+        return await asyncio.to_thread(
+            ResearchOnboardingAgent(_store()).run_model,
+            project_id,
+            model,
+            f"third_party:{provider}:{model.model}",
+            body.max_documents,
+        )
+    except (KeyError, ValueError, OSError, RuntimeError, TimeoutExpired) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-agent/chat-import")
+def import_research_chat(project_id: str, body: SemanticImportInput) -> dict[str, object]:
+    try:
+        return ResearchOnboardingAgent(_store()).import_chat_batch(
+            project_id, body.source_path, body.response_json
+        )
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/research-agent/claims/{claim_id}/review")
+def review_research_claim(
+    project_id: str, claim_id: str, body: SemanticReviewInput
+) -> dict[str, object]:
+    try:
+        return ResearchOnboardingAgent(_store()).review(project_id, claim_id, body.decision)
+    except (KeyError, ValueError, OSError) as error:
+        _raise(error)
+    return {}
