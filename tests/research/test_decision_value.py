@@ -103,7 +103,7 @@ def test_value_of_information_from_same_joint_table() -> None:
         est, enabled_before=(True, False), enabled_after=((True, False),) * 4
     ) == pytest.approx(0)
     # A posterior cannot exploit an option absent from every feasible mask.
-    with pytest.raises(ValueError, match="non-executing"):
+    with pytest.raises(ValueError, match="feasibility dimensions"):
         score_estimate(est, enabled_before=(False, False))
 
 
