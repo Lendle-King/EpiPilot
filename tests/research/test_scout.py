@@ -32,9 +32,12 @@ def repo(tmp_path: Path) -> Path:
     (root / "docs").mkdir()
     (root / "docs" / "results.md").write_text(DOC, encoding="utf-8")
     subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-qm", "pinned source"], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "pinned source"], cwd=root, check=True, capture_output=True
+    )
     ResearchStore(root / ".research").add(
-        "goal_set", ResearchGoal(statement="Identify and test the dominant failure mechanism", budget=2)
+        "goal_set",
+        ResearchGoal(statement="Identify and test the dominant failure mechanism", budget=2),
     )
     return root
 
@@ -68,18 +71,24 @@ def candidate(operation: str, *, anchor: dict[str, object] | None = None) -> dic
 
 
 def put_submission(
-    root: Path, operation: str, *, leads: list[dict[str, object]] | None = None,
-    cost: float = 0.3, status: str = "completed",
+    root: Path,
+    operation: str,
+    *,
+    leads: list[dict[str, object]] | None = None,
+    cost: float = 0.3,
+    status: str = "completed",
 ) -> Path:
     path = root / "scout-submission.json"
     path.write_text(
-        json.dumps({
-            "operation_id": operation,
-            "actual_cost": cost,
-            "status": status,
-            "summary": "Reviewed pinned source and independently considered alternatives",
-            "candidates": leads if leads is not None else [candidate(operation)],
-        }),
+        json.dumps(
+            {
+                "operation_id": operation,
+                "actual_cost": cost,
+                "status": status,
+                "summary": "Reviewed pinned source and independently considered alternatives",
+                "candidates": leads if leads is not None else [candidate(operation)],
+            }
+        ),
         encoding="utf-8",
     )
     return path
@@ -106,15 +115,25 @@ def test_scout_lifecycle_is_budgeted_and_review_is_not_evidence(repo: Path) -> N
     assert state.scout_runs["S1"].status is ScoutStatus.COMPLETED
     assert state.scout_candidates["ranking-mechanism"].status is ScoutCandidateStatus.PENDING
     assert not state.claims and not state.evidence
-    assert cmd(
-        repo, "review", "--candidate", "ranking-mechanism",
-        "--decision", "accepted", "--reason", "Novel and cheaply testable ranking mechanism",
-    ) == 0
+    assert (
+        cmd(
+            repo,
+            "review",
+            "--candidate",
+            "ranking-mechanism",
+            "--decision",
+            "accepted",
+            "--reason",
+            "Novel and cheaply testable ranking mechanism",
+        )
+        == 0
+    )
     state, last = store.load()
     assert last == 4
     assert state.claims["CLM-ranking-mechanism"].status is ClaimStatus.HYPOTHESIS
-    assert "source_text_is_not_scientific_evidence" in (
-        state.claims["CLM-ranking-mechanism"].assumptions[0]
+    assert (
+        "source_text_is_not_scientific_evidence"
+        in (state.claims["CLM-ranking-mechanism"].assumptions[0])
     )
     assert state.proposals["ACT-ranking-mechanism"].status == "proposed"
     assert not state.evidence
@@ -166,15 +185,33 @@ def test_duplicate_review_cannot_mutate_claims_twice(repo: Path) -> None:
     assert cmd(repo, "start", "--operation", "S1", "--reserve", "0.5") == 0
     put_submission(repo, "S1")
     assert cmd(repo, "submit", "--file", "scout-submission.json") == 0
-    assert cmd(
-        repo, "review", "--candidate", "ranking-mechanism",
-        "--decision", "accepted", "--reason", "Explicit human acceptance",
-    ) == 0
+    assert (
+        cmd(
+            repo,
+            "review",
+            "--candidate",
+            "ranking-mechanism",
+            "--decision",
+            "accepted",
+            "--reason",
+            "Explicit human acceptance",
+        )
+        == 0
+    )
     version = store.load()[1]
-    assert cmd(
-        repo, "review", "--candidate", "ranking-mechanism",
-        "--decision", "accepted", "--reason", "Duplicate replayed acceptance",
-    ) == 2
+    assert (
+        cmd(
+            repo,
+            "review",
+            "--candidate",
+            "ranking-mechanism",
+            "--decision",
+            "accepted",
+            "--reason",
+            "Duplicate replayed acceptance",
+        )
+        == 2
+    )
     assert store.load()[1] == version
     assert len(store.load()[0].claims) == 1
 
@@ -185,10 +222,19 @@ def test_reject_keeps_research_frontier_unchanged(repo: Path) -> None:
     assert cmd(repo, "start", "--operation", "S1", "--reserve", "0.5") == 0
     put_submission(repo, "S1")
     assert cmd(repo, "submit", "--file", "scout-submission.json") == 0
-    assert cmd(
-        repo, "review", "--candidate", "ranking-mechanism",
-        "--decision", "rejected", "--reason", "Historical context is too weak",
-    ) == 0
+    assert (
+        cmd(
+            repo,
+            "review",
+            "--candidate",
+            "ranking-mechanism",
+            "--decision",
+            "rejected",
+            "--reason",
+            "Historical context is too weak",
+        )
+        == 0
+    )
     assert store.load()[0].scout_candidates["ranking-mechanism"].status is (
         ScoutCandidateStatus.REJECTED
     )
@@ -207,7 +253,9 @@ def test_stale_operation_source_and_invalid_anchor_fail_closed(repo: Path) -> No
     # A tracked checkout change is not scientific evidence. Restore the pinned source.
     subprocess.run(
         ["git", "checkout", "--", "docs/results.md"],
-        cwd=repo, check=True, capture_output=True,
+        cwd=repo,
+        check=True,
+        capture_output=True,
     )
     forged = candidate("S1", anchor={**source(), "path": "../outside.md"})
     put_submission(repo, "S1", leads=[forged])

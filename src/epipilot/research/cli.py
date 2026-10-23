@@ -12,13 +12,6 @@ from pydantic import ValidationError
 
 from epipilot.research.decision_models import DecisionEstimate
 from epipilot.research.decision_value import rank_decision
-from epipilot.research.scout_core import frontier_fingerprint, validate_source
-from epipilot.research.scout_models import (
-    ScoutCandidateStatus,
-    ScoutOperation,
-    ScoutStatus,
-    ScoutSubmission,
-)
 from epipilot.research.models import (
     Claim,
     ClaimStatus,
@@ -37,6 +30,13 @@ from epipilot.research.models import (
 )
 from epipilot.research.onboarding import inspect_repository
 from epipilot.research.planner import rank_proposals, research_phase
+from epipilot.research.scout_core import frontier_fingerprint, validate_source
+from epipilot.research.scout_models import (
+    ScoutCandidateStatus,
+    ScoutOperation,
+    ScoutStatus,
+    ScoutSubmission,
+)
 from epipilot.research.store import ResearchStore
 from epipilot.research.validation import (
     artifact_metrics,
@@ -109,7 +109,9 @@ def _parser() -> argparse.ArgumentParser:
 
     scout = sub.add_parser("scout", help="reserve, submit and review sourced research leads")
     scout_sub = scout.add_subparsers(dest="action", required=True)
-    scout_sub.add_parser("prepare", help="read-only pinned knowledge frontier and Scout instructions")
+    scout_sub.add_parser(
+        "prepare", help="read-only pinned knowledge frontier and Scout instructions"
+    )
     scout_start = scout_sub.add_parser("start", help="reserve budget before research discovery")
     scout_start.add_argument("--operation")
     scout_start.add_argument("--reserve", type=float, required=True)
@@ -117,7 +119,9 @@ def _parser() -> argparse.ArgumentParser:
     scout_start.add_argument("--max-sources", type=int, default=3)
     scout_submit = scout_sub.add_parser("submit", help="validate and stage source-anchored leads")
     scout_submit.add_argument("--file", type=Path, required=True)
-    scout_review = scout_sub.add_parser("review", help="explicitly accept/reject one unverified lead")
+    scout_review = scout_sub.add_parser(
+        "review", help="explicitly accept/reject one unverified lead"
+    )
     scout_review.add_argument("--candidate", required=True)
     scout_review.add_argument("--decision", choices=["accepted", "rejected"], required=True)
     scout_review.add_argument("--reason", required=True)
@@ -220,8 +224,7 @@ def _status(state: ResearchState) -> dict[str, object]:
         "scout_runs": len(state.scout_runs),
         "scout_cost": sum(run.actual_cost for run in state.scout_runs.values()),
         "scout_pending_candidates": sum(
-            item.status is ScoutCandidateStatus.PENDING
-            for item in state.scout_candidates.values()
+            item.status is ScoutCandidateStatus.PENDING for item in state.scout_candidates.values()
         ),
         "validated_evidence": sum(item.measurement_validated for item in state.evidence.values()),
         "pending": {
@@ -460,11 +463,11 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
                 x.model_dump(mode="json") for x in list(state.evidence.values())[-10:]
             ],
             "scout_candidates": [
-            item.model_dump(mode="json")
-            for item in state.scout_candidates.values()
-            if item.status is ScoutCandidateStatus.PENDING
-        ][:20],
-        "top_proposals": [
+                item.model_dump(mode="json")
+                for item in state.scout_candidates.values()
+                if item.status is ScoutCandidateStatus.PENDING
+            ][:20],
+            "top_proposals": [
                 {"id": x.proposal.id, "score": x.score, "reason": x.rationale}
                 for x in rank_proposals(state, limit=5)
             ],
@@ -548,12 +551,12 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
                 "budget_remaining": state.remaining,
                 "open_unknowns": [
                     item.model_dump(mode="json")
-                    for item in state.unknowns.values() if item.status == "open"
+                    for item in state.unknowns.values()
+                    if item.status == "open"
                 ][:20],
-                "active_claims": [
-                    item.model_dump(mode="json")
-                    for item in state.claims.values()
-                ][:20],
+                "active_claims": [item.model_dump(mode="json") for item in state.claims.values()][
+                    :20
+                ],
                 "validated_evidence": [
                     item.id for item in state.evidence.values() if item.measurement_validated
                 ][-20:],
@@ -623,7 +626,8 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
                         "claim_id": f"CLM-{args.candidate}",
                         "proposal_id": f"ACT-{args.candidate}",
                     }
-                    if decision is ScoutCandidateStatus.ACCEPTED else {}
+                    if decision is ScoutCandidateStatus.ACCEPTED
+                    else {}
                 ),
                 "scientific_evidence": False,
             }

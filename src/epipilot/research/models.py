@@ -258,17 +258,14 @@ class ResearchState(Record):
 
     @property
     def reserved(self) -> float:
-        return (
-            sum(
-                item.max_cost
-                for item in self.contracts.values()
-                if item.status is ContractStatus.RUNNING
-            )
-            + sum(
-                item.reserved_cost
-                for item in self.scout_runs.values()
-                if item.status is ScoutStatus.RUNNING
-            )
+        return sum(
+            item.max_cost
+            for item in self.contracts.values()
+            if item.status is ContractStatus.RUNNING
+        ) + sum(
+            item.reserved_cost
+            for item in self.scout_runs.values()
+            if item.status is ScoutStatus.RUNNING
         )
 
     @property

@@ -24,8 +24,12 @@ def frontier_fingerprint(state: ResearchState) -> str:
         ],
         "claims": [
             (
-                item.id, item.statement, item.scope, item.status.value,
-                item.supporting_evidence_ids, item.contradicting_evidence_ids,
+                item.id,
+                item.statement,
+                item.scope,
+                item.status.value,
+                item.supporting_evidence_ids,
+                item.contradicting_evidence_ids,
             )
             for item in sorted(state.claims.values(), key=lambda x: x.id)
         ],
@@ -38,9 +42,7 @@ def frontier_fingerprint(state: ResearchState) -> str:
             for item in sorted(state.evidence.values(), key=lambda x: x.id)
             if item.measurement_validated
         ],
-        "onboarding_revision": (
-            state.onboarding[-1].git_revision if state.onboarding else None
-        ),
+        "onboarding_revision": (state.onboarding[-1].git_revision if state.onboarding else None),
     }
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

@@ -51,7 +51,10 @@ class ScoutSource(ScoutRecord):
             or ".." in path.parts
             or path.suffix.lower() not in {".md", ".txt", ".json", ".yaml", ".yml", ".csv"}
             or any(part.startswith(".") for part in path.parts)
-            or any(part.lower() in {"secrets", "credentials", "private", "tokens"} for part in path.parts)
+            or any(
+                part.lower() in {"secrets", "credentials", "private", "tokens"}
+                for part in path.parts
+            )
         ):
             raise ValueError("Scout source must be a safe nonprivate research-document path")
         return value

@@ -15,13 +15,6 @@ from typing import Any
 
 from epipilot.research.decision_models import DecisionEstimate, DecisionForecast
 from epipilot.research.decision_value import rank_decision, record_outcome
-from epipilot.research.scout_core import frontier_fingerprint
-from epipilot.research.scout_models import (
-    ScoutCandidateStatus,
-    ScoutOperation,
-    ScoutStatus,
-    ScoutSubmission,
-)
 from epipilot.research.models import (
     Claim,
     ClaimStatus,
@@ -36,6 +29,13 @@ from epipilot.research.models import (
     ResearchGoal,
     ResearchState,
     Unknown,
+)
+from epipilot.research.scout_core import frontier_fingerprint
+from epipilot.research.scout_models import (
+    ScoutCandidateStatus,
+    ScoutOperation,
+    ScoutStatus,
+    ScoutSubmission,
 )
 
 
@@ -191,7 +191,9 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             ):
                 raise ValueError("Scout proposal duplicates an existing experiment")
             unknown_id, claim_id, proposal_id = (
-                f"UNK-{candidate.id}", f"CLM-{candidate.id}", f"ACT-{candidate.id}"
+                f"UNK-{candidate.id}",
+                f"CLM-{candidate.id}",
+                f"ACT-{candidate.id}",
             )
             if (
                 unknown_id in state.unknowns
@@ -212,17 +214,23 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 decision_sensitivity=candidate.decision_sensitivity,
             )
             state.claims[claim_id] = Claim(
-                id=claim_id, statement=candidate.hypothesis,
-                scope=candidate.scope, assumptions=[anchor],
+                id=claim_id,
+                statement=candidate.hypothesis,
+                scope=candidate.scope,
+                assumptions=[anchor],
             )
             state.proposals[proposal_id] = Proposal(
-                id=proposal_id, title=candidate.title,
+                id=proposal_id,
+                title=candidate.title,
                 kind=ProposalKind(candidate.kind),
-                rationale=candidate.rationale, acceptance=candidate.acceptance,
-                unknown_ids=[unknown_id], claim_ids=[claim_id],
+                rationale=candidate.rationale,
+                acceptance=candidate.acceptance,
+                unknown_ids=[unknown_id],
+                claim_ids=[claim_id],
                 information_gain=candidate.information_gain,
                 expected_improvement=candidate.expected_improvement,
-                estimated_cost=candidate.estimated_cost, risk=candidate.risk,
+                estimated_cost=candidate.estimated_cost,
+                risk=candidate.risk,
             )
         state.scout_candidates[candidate.id] = candidate.model_copy(
             update={"status": decision, "review_rationale": rationale}
@@ -581,6 +589,12 @@ class ResearchStore:
     def add(
         self,
         kind: str,
-        record: ResearchGoal | Unknown | Claim | Proposal | OnboardingSnapshot | ExperimentContract | ScoutOperation,
+        record: ResearchGoal
+        | Unknown
+        | Claim
+        | Proposal
+        | OnboardingSnapshot
+        | ExperimentContract
+        | ScoutOperation,
     ) -> ResearchEvent:
         return self.append(kind, record.model_dump(mode="json"))
