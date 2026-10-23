@@ -109,16 +109,16 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         state.proposals[proposal.id] = proposal.model_copy(update={"status": "running"})
     elif kind == "experiment_recorded":
         exp = Experiment.model_validate(p["experiment"])
-        recorded_evidence = EvidenceRecord.model_validate(p["recorded_evidence"])
+        recorded_evidence = EvidenceRecord.model_validate(p["evidence"])
         if state.goal is None:
             raise ValueError("project has no user goal")
         if exp.id in state.experiments or recorded_evidence.id in state.evidence:
-            raise ValueError("duplicate experiment or recorded_evidence id")
+            raise ValueError("duplicate experiment or evidence id")
         proposal = state.proposals.get(exp.proposal_id)
         if proposal is None:
             raise ValueError("experiment references an unknown proposal")
         if recorded_evidence.experiment_id != exp.id or exp.evidence_id != recorded_evidence.id:
-            raise ValueError("experiment and recorded_evidence links disagree")
+            raise ValueError("experiment and evidence links disagree")
         if recorded_evidence.independently_verified or recorded_evidence.measurement_validated:
             raise ValueError("executor may only record unverified observations")
         if legacy:

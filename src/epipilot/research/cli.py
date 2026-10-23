@@ -499,8 +499,8 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         store.add("experiment_preregistered", registration)
         return {
             "preregistered": True,
-            "registration": registration.model_dump(mode="json"),
-            "next": f"epi start --registration {registration.id}",
+            "contract": registration.model_dump(mode="json"),
+            "next": f"epi start --contract {registration.id}",
         }
     if command == "start":
         contract = state.contracts.get(args.contract)
