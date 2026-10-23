@@ -114,14 +114,14 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("pre-registration must link a claim or a research unknown")
         if registration.max_cost > state.remaining + 1e-9:
             raise ValueError("pre-registered experiment exceeds remaining budget")
-        estimate = state.decision_estimates.get(proposal.id)
-        if estimate is not None:
-            frozen_score = rank_decision(state, estimate)
+        registered_estimate = state.decision_estimates.get(proposal.id)
+        if registered_estimate is not None:
+            frozen_score = rank_decision(state, registered_estimate)
             state.decision_forecasts[registration.id] = DecisionForecast(
                 contract_id=registration.id,
                 git_revision=registration.git_revision,
                 recorded_at=event.created_at,
-                estimate=estimate,
+                estimate=registered_estimate,
                 score=frozen_score,
             )
         state.contracts[registration.id] = registration
