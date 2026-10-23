@@ -18,6 +18,17 @@ spawn another coding agent or pretend that the CLI runs experiments autonomously
 4. Run `epi onboard`; inspect actual source, historical reports, run configs and
    artifacts. Inventory is NOT evidence. Register major Unknowns and falsifiable,
    scoped Claims. Cite actual results, including negative and contradictory runs.
+4a. When the research space is still poorly understood, use the optional
+   bounded Scout protocol: run **epi scout prepare** read-only, then reserve
+   explicit cost with **epi scout start --operation ID --reserve UNITS** before
+   searching. Inspect committed, nonprivate source lines and alternative
+   mechanisms. Submit an actual-cost JSON via **epi scout submit --file FILE**,
+   using exact blob SHA-256 and line text for each candidate. An explicitly
+   authorized reviewer must use **epi scout review --candidate ID
+   --decision accepted|rejected --reason TEXT**. Accepted leads become
+   *hypotheses*, never validated experiments or facts. Avoid redundant Scout
+   epochs and stop when no decision-relevant novelty remains.
+   See docs/SCOUT_V2.md for submission schema and limits.
 5. Use `epi propose` to add useful discriminative experiments (including controls,
    risk, estimated cost, information gain and likely follow-on value). Estimates
    are heuristics, not calibrated probabilities.

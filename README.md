@@ -151,6 +151,26 @@ Detailed contracts and examples: [Research plugin documentation](https://github.
 
 ## Optional Scout-inspired decision analysis
 
+EpiPilot now also supports **source-grounded, cost-reserved Scout discovery**,
+driven by the **same coding agent**, with bounded committed-document anchors:
+
+~~~bash
+epi onboard
+epi scout prepare
+epi scout start --operation SCOUT-1 --reserve 0.5
+# The coding agent studies real committed reports and writes a JSON submission.
+epi scout submit --file scout-submission.json
+epi scout review --candidate CANDIDATE-ID --decision accepted \
+  --reason "Novel, falsifiable and within the approved experiment budget"
+epi iterate
+~~~
+
+A review merely creates an unverified Unknown/Claim/Proposal; it cannot
+bypass frozen experiment contracts or independent measurement validation.
+The same frontier cannot be scouted again merely by renaming a failed/no-op
+operation. See [Scout v2 protocol](docs/SCOUT_V2.md).
+
+
 After registering a `Proposal`, a coding agent can prepare a **four-outcome
 decision table** as local JSON (`improved / no_gain / inconclusive /
 infrastructure_failure`) containing normalized conditional utilities,
