@@ -414,30 +414,30 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         }
     if command == "unknown":
         if args.action == "add":
-            item = Unknown(
+            new_unknown = Unknown(
                 id=args.id or research_id("UNK"),
                 question=args.question,
                 importance=args.importance,
                 decision_sensitivity=args.sensitivity,
             )
-            store.add("unknown_added", item)
-            return item.model_dump(mode="json")
+            store.add("unknown_added", new_unknown)
+            return new_unknown.model_dump(mode="json")
         store.append(
             "unknown_resolved",
             {"unknown_id": args.id, "evidence_id": args.evidence, "rationale": args.rationale},
         )
         return {"resolved": args.id, "evidence_id": args.evidence}
     if command == "claim":
-        item = Claim(
+        new_claim = Claim(
             id=args.id or research_id("CLM"),
             statement=args.statement,
             scope=args.scope,
             assumptions=args.assumption,
         )
-        store.add("claim_added", item)
-        return item.model_dump(mode="json")
+        store.add("claim_added", new_claim)
+        return new_claim.model_dump(mode="json")
     if command == "propose":
-        item = Proposal(
+        new_proposal = Proposal(
             id=args.id or research_id("ACT"),
             title=args.title,
             kind=ProposalKind(args.kind),
@@ -453,8 +453,8 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             estimated_cost=args.cost,
             risk=args.risk,
         )
-        store.add("proposal_added", item)
-        return item.model_dump(mode="json")
+        store.add("proposal_added", new_proposal)
+        return new_proposal.model_dump(mode="json")
     if command == "next":
         return [
             {
@@ -479,7 +479,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             raise ValueError("unknown proposal")
         if args.max_cost < proposal.estimated_cost:
             raise ValueError("max-cost must cover the proposal's estimated cost")
-        contract = ExperimentContract(
+        registration = ExperimentContract(
             id=research_id("PRE"),
             proposal_id=args.proposal,
             git_revision=revision,
@@ -496,11 +496,11 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             verifier_argv=verifier,
             max_cost=args.max_cost,
         )
-        store.add("experiment_preregistered", contract)
+        store.add("experiment_preregistered", registration)
         return {
             "preregistered": True,
-            "contract": contract.model_dump(mode="json"),
-            "next": f"epi start --contract {contract.id}",
+            "registration": registration.model_dump(mode="json"),
+            "next": f"epi start --registration {registration.id}",
         }
     if command == "start":
         contract = state.contracts.get(args.contract)

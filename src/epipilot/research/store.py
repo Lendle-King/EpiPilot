@@ -52,74 +52,74 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("goal already exists; goal changes need explicit user authorization")
         state.goal = ResearchGoal.model_validate(p)
     elif kind == "unknown_added":
-        item = Unknown.model_validate(p)
-        if item.id in state.unknowns:
+        new_unknown = Unknown.model_validate(p)
+        if new_unknown.id in state.unknowns:
             raise ValueError("duplicate unknown id")
-        state.unknowns[item.id] = item
+        state.unknowns[new_unknown.id] = new_unknown
     elif kind == "claim_added":
-        item = Claim.model_validate(p)
-        if item.id in state.claims:
+        new_claim = Claim.model_validate(p)
+        if new_claim.id in state.claims:
             raise ValueError("duplicate claim id")
-        state.claims[item.id] = item
+        state.claims[new_claim.id] = new_claim
     elif kind == "proposal_added":
-        item = Proposal.model_validate(p)
-        if item.id in state.proposals:
+        new_proposal = Proposal.model_validate(p)
+        if new_proposal.id in state.proposals:
             raise ValueError("duplicate proposal id")
-        if set(item.depends_on) - state.proposals.keys():
+        if set(new_proposal.depends_on) - state.proposals.keys():
             raise ValueError("proposal dependencies must exist")
-        if set(item.unknown_ids) - state.unknowns.keys():
+        if set(new_proposal.unknown_ids) - state.unknowns.keys():
             raise ValueError("proposal references unknown unknowns")
-        if set(item.claim_ids) - state.claims.keys():
+        if set(new_proposal.claim_ids) - state.claims.keys():
             raise ValueError("proposal references unknown claims")
         if not legacy and any(
-            previous.title.strip().casefold() == item.title.strip().casefold()
-            and previous.kind == item.kind
-            and previous.unknown_ids == item.unknown_ids
-            and previous.claim_ids == item.claim_ids
+            previous.title.strip().casefold() == new_proposal.title.strip().casefold()
+            and previous.kind == new_proposal.kind
+            and previous.unknown_ids == new_proposal.unknown_ids
+            and previous.claim_ids == new_proposal.claim_ids
             and previous.status != "aborted"
             for previous in state.proposals.values()
         ):
             raise ValueError("duplicate research proposal; supply a genuinely revised hypothesis")
-        state.proposals[item.id] = item
+        state.proposals[new_proposal.id] = new_proposal
     elif kind == "experiment_preregistered":
-        item = ExperimentContract.model_validate(p)
+        registration = ExperimentContract.model_validate(p)
         if state.goal is None:
             raise ValueError("research goal required before pre-registration")
-        if item.id in state.contracts:
+        if registration.id in state.contracts:
             raise ValueError("duplicate experiment contract")
-        proposal = state.proposals.get(item.proposal_id)
+        proposal = state.proposals.get(registration.proposal_id)
         if proposal is None or proposal.status != "proposed":
             raise ValueError("pre-registration requires an available proposal")
         if any(state.proposals[parent].status != "completed" for parent in proposal.depends_on):
             raise ValueError("pre-registration dependencies not completed")
         if not proposal.unknown_ids and not proposal.claim_ids:
             raise ValueError("pre-registration must link a claim or a research unknown")
-        if item.max_cost > state.remaining + 1e-9:
+        if registration.max_cost > state.remaining + 1e-9:
             raise ValueError("pre-registered experiment exceeds remaining budget")
-        state.contracts[item.id] = item
+        state.contracts[registration.id] = registration
         state.proposals[proposal.id] = proposal.model_copy(update={"status": "preregistered"})
     elif kind == "experiment_started":
-        item = state.contracts.get(str(p["contract_id"]))
-        if item is None or item.status is not ContractStatus.PREREGISTERED:
+        started_contract = state.contracts.get(str(p["contract_id"]))
+        if started_contract is None or started_contract.status is not ContractStatus.PREREGISTERED:
             raise ValueError("only a pre-registered experiment can start")
-        if item.max_cost > state.remaining + 1e-9:
+        if started_contract.max_cost > state.remaining + 1e-9:
             raise ValueError("insufficient budget to reserve experiment cost")
-        state.contracts[item.id] = item.model_copy(update={"status": ContractStatus.RUNNING})
-        proposal = state.proposals[item.proposal_id]
+        state.contracts[started_contract.id] = started_contract.model_copy(update={"status": ContractStatus.RUNNING})
+        proposal = state.proposals[started_contract.proposal_id]
         state.proposals[proposal.id] = proposal.model_copy(update={"status": "running"})
     elif kind == "experiment_recorded":
         exp = Experiment.model_validate(p["experiment"])
-        evidence = EvidenceRecord.model_validate(p["evidence"])
+        recorded_evidence = EvidenceRecord.model_validate(p["recorded_evidence"])
         if state.goal is None:
             raise ValueError("project has no user goal")
-        if exp.id in state.experiments or evidence.id in state.evidence:
-            raise ValueError("duplicate experiment or evidence id")
+        if exp.id in state.experiments or recorded_evidence.id in state.evidence:
+            raise ValueError("duplicate experiment or recorded_evidence id")
         proposal = state.proposals.get(exp.proposal_id)
         if proposal is None:
             raise ValueError("experiment references an unknown proposal")
-        if evidence.experiment_id != exp.id or exp.evidence_id != evidence.id:
-            raise ValueError("experiment and evidence links disagree")
-        if evidence.independently_verified or evidence.measurement_validated:
+        if recorded_evidence.experiment_id != exp.id or exp.evidence_id != recorded_evidence.id:
+            raise ValueError("experiment and recorded_evidence links disagree")
+        if recorded_evidence.independently_verified or recorded_evidence.measurement_validated:
             raise ValueError("executor may only record unverified observations")
         if legacy:
             if proposal.status != "proposed":
@@ -152,7 +152,7 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             )
             state.contracts[contract.id] = contract.model_copy(update={"status": contract_status})
         state.experiments[exp.id] = exp
-        state.evidence[evidence.id] = evidence
+        state.evidence[recorded_evidence.id] = recorded_evidence
         proposal_status = (
             "blocked"
             if not legacy and exp.outcome == "infrastructure_failure"
@@ -325,9 +325,9 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             }
         )
     elif kind == "unknown_resolved":
-        item = state.unknowns.get(str(p["unknown_id"]))
+        unresolved = state.unknowns.get(str(p["unknown_id"]))
         evidence_id = str(p["evidence_id"])
-        if item is None or item.status != "open":
+        if unresolved is None or unresolved.status != "open":
             raise ValueError("unknown is missing or already resolved")
         evidence = state.evidence.get(evidence_id)
         if evidence is None or not evidence.independently_verified:
@@ -336,7 +336,7 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             _, _, contract = _related_evidence(state, evidence_id)
             proposal = state.proposals[contract.proposal_id]
             if (
-                item.id not in proposal.unknown_ids
+                unresolved.id not in proposal.unknown_ids
                 or not evidence.measurement_validated
                 or evidence.scientific_verdict == "inconclusive"
                 or not str(p.get("rationale", "")).strip()
@@ -351,7 +351,7 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 )
             ):
                 raise ValueError("unknown resolution needs linked, conclusive reviewed claims")
-        state.unknowns[item.id] = item.model_copy(
+        state.unknowns[unresolved.id] = unresolved.model_copy(
             update={"status": "resolved", "resolution_evidence_ids": [evidence_id]}
         )
     elif kind == "onboarding_recorded":
