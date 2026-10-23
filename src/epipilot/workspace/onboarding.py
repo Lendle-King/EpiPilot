@@ -228,6 +228,57 @@ class WorkspaceStore:
             )
         return self.get(item.id)
 
+    def repin_snapshot(self, project_id: str) -> str:
+        """Explicitly adopt the current Git HEAD; preserve historical review events."""
+        with self._db() as conn:
+            project = conn.execute(
+                "SELECT repository_path, git_commit FROM projects WHERE id=?",
+                (project_id,),
+            ).fetchone()
+        if project is None:
+            raise KeyError("Unknown project")
+        path = project["repository_path"]
+        if path is None:
+            raise ValueError("Only adopted Git repositories can be repinned")
+        root, new_commit, branch = self._resolve_repo(str(path))
+        if new_commit == project["git_commit"]:
+            return new_commit
+        notes = scan_history(root, new_commit)
+        with self._db() as conn:
+            present = conn.execute(
+                "SELECT git_commit FROM projects WHERE id=?",
+                (project_id,),
+            ).fetchone()
+            if present is None or present["git_commit"] != project["git_commit"]:
+                raise ValueError("Project revision changed concurrently; retry adoption")
+            conn.execute(
+                "UPDATE projects SET git_commit=?, git_branch=? WHERE id=?",
+                (new_commit, branch, project_id),
+            )
+            conn.execute("DELETE FROM candidates WHERE project_id=?", (project_id,))
+            conn.executemany(
+                "INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        note["id"], project_id, note["kind"], note["text"],
+                        note["source_path"], note["line"], note["source_sha256"],
+                        note["git_commit"],
+                    )
+                    for note in notes
+                ],
+            )
+            self._event(
+                conn,
+                project_id,
+                "snapshot_repinned",
+                {
+                    "previous_commit": project["git_commit"],
+                    "git_commit": new_commit,
+                    "candidate_count": len(notes),
+                },
+            )
+        return new_commit
+
     def get(self, project_id: str) -> dict[str, Any]:
         with self._db() as conn:
             project = conn.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
