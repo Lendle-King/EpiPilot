@@ -7,7 +7,27 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from test_research_plugin import observe, register, root, setup_store, validate  # noqa: F401
+from test_research_plugin import observe, register, setup_store, validate
+
+
+@pytest.fixture
+def root(tmp_path: Path) -> Path:
+    import subprocess
+
+    repo = tmp_path / "research"
+    repo.mkdir()
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "test@example.com"],
+        ["config", "user.name", "Test User"],
+    ):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    (repo / "config.json").write_text('{"seed":42}', encoding="utf-8")
+    (repo / "data.json").write_text('{"split":"train"}', encoding="utf-8")
+    (repo / "README.md").write_text("Synthetic research repository", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True, capture_output=True)
+    return repo
 
 from epipilot.research.cli import main
 from epipilot.research.decision_models import (
