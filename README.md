@@ -43,10 +43,12 @@ The research skill/CLI currently provides:
 - **Persistent research memory:** goals, constraints, unknowns, scoped claims, proposals, experiments, and linked evidence in a replay-validated append-only log.
 - **Cost-aware prioritization:** explicit information-gain, expected-improvement, cost, risk, novelty, and dependency signals; a deterministic two-step heuristic with a discounted follow-on value.
 - **Exploration-to-optimization balance:** heuristic phase selection based on remaining uncertainty and independently checked evidence, not a fixed number of iterations.
-- **Evidence gates:** experimental observations remain unverified until a separate argv-based check passes; checked evidence still requires scientific interpretation before updating a claim.
+- **Frozen experimental protocols:** preregister metrics, thresholds, controls, Git revision, config/data fingerprints, cost ceiling and verifier argv before execution. Reserve budget at start; record actual costs even after overruns.
+- **Layered evidence gates:** confirm reproducible artifacts, independently parse measured metrics and run the frozen checker; the linked, conclusive result may then support a provisional claim. Syntax checks alone are not scientific proof.
+- **Failure recovery:** surface blocked, running and awaiting-verification studies, require a recorded corrective strategy for retries, and limit repeated failures.
 - **Agent-native operation:** no second autonomous agent or separate LLM backend is required. Your coding agent executes the research work using its normal tools and approval boundaries.
 
-**Maturity:** This is an MVP. The ranking policy is **not** a trained MCTS or a calibrated probabilistic value-of-information model. Automatic historical scientific synthesis, autonomous experiment execution, and demonstrated performance gains over baseline research policies are **not** claimed. See the [research plugin design and limitations](https://github.com/Lendle-King/EpiPilot/blob/main/docs/RESEARCH_PLUGIN.md).
+**Maturity:** This is an MVP. Metric-threshold validation is a protocol safeguard, **not independent proof of causal or statistical validity**. Existing v1 event histories can be replayed but their old verification flags do not qualify as v2 measurement-validated evidence. The ranking policy is **not** a trained MCTS or a calibrated probabilistic value-of-information model. Automatic historical scientific synthesis, autonomous experiment execution, and demonstrated performance gains over baseline research policies are **not** claimed. See the [research plugin design and limitations](https://github.com/Lendle-King/EpiPilot/blob/main/docs/RESEARCH_PLUGIN.md).
 
 ## Install on Codex or Kimi Code (recommended research skill)
 
@@ -109,6 +111,15 @@ epi init --goal "Identify the bottlenecks and improve this algorithm" --budget 2
   --constraint "do not use held-out results for model selection"
 epi onboard
 epi status
+# Then register a scoped Unknown, Claim, and experiment Proposal.
+# After preparing and committing the actual research code/config:
+# epi preregister --proposal ACT-ID ... --metric-rule score:at_least:0.8 \
+#   --artifact results/metrics.json --max-cost 2 \
+#   --verifier python -m json.tool {artifact}
+# epi start --contract PRE-ID
+# The coding agent runs the experiment and writes the frozen metrics JSON.
+# epi record --contract PRE-ID --summary ... --outcome improved --cost 1
+# epi verify --experiment EXP-ID
 ~~~
 
 `--budget` uses **experiment cost units defined by your project**; it is not an automatic dollar/token meter. `onboard` inventories files, but your coding agent must inspect actual code, metrics, and artifacts before creating trustworthy research claims.
@@ -117,7 +128,7 @@ Then tell Codex or Kimi Code:
 
 > Read `.agents/skills/epipilot-research/SKILL.md`. Use EpiPilot to analyze this repository and its past experiments. Register the important unknowns and falsifiable claims, propose controlled experiments with explicit costs and acceptance checks, select the next cost-effective action with `epi iterate`, execute it yourself, verify the evidence independently, update the claim memory, and repeat within the approved budget. Do not invent results or bypass the project's existing safety and validation requirements.
 
-The CLI supports `epi unknown add`, `epi claim`, `epi propose`, `epi next`, `epi plan`, `epi iterate`, `epi record`, `epi verify`, `epi reflect`, and `epi review`. Use `epi --root /path/to/research/repo <command>` when outside the target repository.
+The CLI supports `epi unknown add`, `epi claim`, `epi propose`, `epi preregister`, `epi start`, `epi record`, `epi verify`, `epi retry`, `epi abort`, `epi reflect`, `epi unknown resolve`, `epi review`, `epi doctor`, `epi next`, `epi plan`, and `epi iterate`. Research actions that spend resources must first have a frozen experiment contract and budget reservation. Use `epi --root /path/to/research/repo <command>` when outside the target repository.
 
 **Research state:** written to `.research/events.jsonl` in the **target repository**. This file is intentionally Git-visible and single-writer; review its contents for credentials, personal information, or private traces before committing it. Do not run concurrent EpiPilot writers against the same research state.
 

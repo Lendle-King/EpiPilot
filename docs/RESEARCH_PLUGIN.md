@@ -1,96 +1,176 @@
-# Agent-native Research Plugin (MVP)
+# EpiPilot: Agent-native Research Plugin
 
-Branch: `main` (original development branch: `feat/research-plugin-cost-aware-tree-search`)
+**Current branch:** \`main\` (research plugin). Supports Codex, Kimi Code and
+other coding agents that can read instructions and invoke a local CLI.
 
 ## Scope
 
-This is a LIGHTWEIGHT project-local research decision and memory layer. Codex,
-Kimi Code, or another coding agent performs semantic analysis, edits code, runs
-experiments and chooses appropriate independent verification commands.
+The plugin is a **durable, evidence-aware research decision layer** above an
+existing coding agent. The agent remains responsible for interpretation,
+coding, experiment execution and scientific criticism. There is no nested
+autonomous LLM scientist.
 
-The plugin currently implements:
-- strict research goal/claim/unknown/proposal/experiment/evidence contracts;
-- append-only, replay-validated repository-local event memory;
-- cost-aware scoring with uncertainty-dependent exploration/optimization weights,
-  dependency gates, budget gates and one-step lookahead;
-- repository inventory onboarding (NOT automated historical science synthesis);
-- an agent-facing plan and iteration interface; and
-- explicit independent argv checks required before reviewing claims.
+The actual components are \`research/models.py\` (contracts),
+\`research/store.py\` (append-only event memory), \`research/planner.py\`
+(two-step heuristic), \`research/onboarding.py\` (bounded inventory),
+\`research/validation.py\` (local git/artifact/verifier checks) and
+\`research/cli.py\` (agent interface).
 
-It is NOT a separately-running scientist, a trainable MCTS policy, a complete
-research-space model, or an autonomous experiment executor. The semantic
-identification of unknowns and hypotheses remains with the coding agent.
+It supports:
+
+1. Research goals, unknowns and scoped defeasible claims.
+2. Project-local event replay, including reading historical v1 streams.
+3. Cost-aware candidate ranking with dependencies, feasible lookahead and
+   cautious same-kind cost calibration from validated measurements.
+4. Pre-registered experimental baselines, controls, metric rules, frozen Git
+   revision/config/data references, metric artifact and verifier command.
+5. Budget reservation **before** execution and actual-cost accounting even
+   if a run overruns its reservation.
+6. Explicit running/awaiting-verification/blocked/completed/aborted states;
+   corrective retries are recorded, bounded and auditable.
+7. Independently re-reading artifact metrics, SHA-256 fingerprints and a frozen
+   local argv verifier; checking the recorded metrics against frozen thresholds.
+8. Linked, conclusive and explicitly reasoned Claim reviews and Unknown
+   resolutions; inconclusive experiments cannot close an Unknown.
 
 ## Install
 
-From EpiPilot source: python -m pip install -e .
+Requires Python 3.11+, Git and an existing coding agent:
 
-Run inside your research repository or pass --root path/to/research/repo.
-State is stored in .research/events.jsonl, intentionally visible to Git. Inspect
-for sensitive data before committing, and do not store private raw traces.
-Single-writer execution only; no shared remote queue or parallel write sessions.
+\`\`\`bash
+git clone https://github.com/Lendle-King/EpiPilot.git
+cd EpiPilot
+python -m pip install -e .
+epi --help
+\`\`\`
 
-Use python -m epipilot.research in place of epi if console scripts are unavailable.
-Copy skills/epipilot-research/SKILL.md into the target coding agent's supported
-skills directory, or copy its operating loop into that project's AGENTS.md.
-The latter approach is portable across agents with repository instructions.
+For Codex, copy \`skills/epipilot-research/SKILL.md\` into the target project's
+\`.agents/skills/epipilot-research/SKILL.md\`. For Kimi Code, ask it to read
+the same file or reference it in the project's \`AGENTS.md\`. The native Codex
+marketplace plugin on \`feat/codex-epistemic-research-plugin\` is a distinct
+older integration, **not** a packaging of this research CLI.
 
-## Example
+## Example end-to-end session
 
-    epi init --goal "Study deployable ETF strategy improvements" --budget 30 \
-      --metric "out-of-sample return and drawdown" \
-      --constraint "no future information in historical feature construction"
+Execute in a **target Git research repository**:
 
-    epi onboard
-    epi unknown add --id UNK-1 --question "Does global ranking suppress diversification?" \
-      --importance 0.9 --sensitivity 0.9
-    epi claim --id CLM-1 --statement "Cross-category ranking may cause slot competition" \
-      --scope "ETF universe, frozen research protocol"
-    epi propose --id ACT-1 --title "Matched ranking ablation" --kind explore \
-      --rationale "Discriminate competition from position sizing" \
-      --acceptance "Reproducible run with frozen data and matched costs" \
-      --unknown UNK-1 --claim CLM-1 --ig 0.9 --gain 0.2 \
-      --unlock 0.7 --novelty 0.6 --cost 1 --risk 0.2
+\`\`\`bash
+epi init --goal "Improve task success on a fixed evaluation split" \
+  --budget 10 --metric "success rate" --constraint "no evaluation leakage"
+epi onboard
+epi unknown add --id UNK-1 --question "Does ranking cause failures?"
+epi claim --id CLM-1 --statement "Better ranking improves success" --scope "split-v1"
+epi propose --id ACT-1 --title "Matched ranking ablation" --kind explore \
+  --rationale "Isolate ranking from action policy" \
+  --acceptance "Frozen controlled success comparison" \
+  --unknown UNK-1 --claim CLM-1 --ig 0.8 --gain 0.3 --cost 1
+epi iterate
+\`\`\`
 
-    epi next
-    epi iterate
+Implement/commit code and experiment configs **before** freezing the study.
+Use project-specific baseline and result files:
 
-The CODING AGENT executes the returned plan with the real project harness,
-then records actual measurements:
+\`\`\`bash
+epi preregister --proposal ACT-1 --baseline "baseline-v1" \
+  --config configs/rank.yaml --dataset data/split-v1.json \
+  --control "matched seeds" --control "same compute" \
+  --decision-rule "gain >= 0.02 supports the scoped prediction" \
+  --falsification "gain < 0.02 refutes the scoped prediction" \
+  --metric-rule gain:at_least:0.02 --artifact runs/rank/metrics.json \
+  --max-cost 1.5 \
+  --verifier python -m json.tool {artifact}
+epi start --contract PRE-ID
+\`\`\`
 
-    epi record --proposal ACT-1 --summary "Measured ranking comparison" \
-      --outcome inconclusive --cost 0.5 \
-      --config configs/rank-ablation.yaml --dataset "ETF data snapshot and split V1" \
-      --seed 42 --metric "delta_return=0.001" --artifact runs/rank-ablation.json
+Your coding agent executes the real experiment, which produces an artifact like:
 
-The command returns an EXP id and EV id, each of which is immutable and
-automatically linked. For example (substitute your returned ID):
+\`\`\`json
+{"metrics": {"gain": 0.032}}
+\`\`\`
 
-    epi verify --experiment EXP-ID --check python -m pytest tests/test_rank.py
-    epi reflect --claim CLM-1 --verdict inconclusive --evidence EV-ID
+Then record real measurements/cost and validate:
 
-Note: a passing pytest command only independently checks what that test
-actually asserts. It does NOT independently establish a causal finding or
-generalizable Alpha. Review validity, confounders, leakage, random seeds,
-sample size and multiple testing before updating a Claim.
+\`\`\`bash
+epi record --contract PRE-ID --summary "Controlled ranking comparison" \
+  --outcome improved --cost 1.2 --seed 42 --metric gain=0.032
+epi verify --experiment EXP-ID
+epi reflect --claim CLM-1 --verdict supported --evidence EV-ID \
+  --rationale "Metric passed the frozen rule under the matched protocol"
+epi unknown resolve --id UNK-1 --evidence EV-ID \
+  --rationale "The scoped ranking decision has sufficient checked evidence"
+epi review
+epi iterate
+\`\`\`
 
-    epi review
-    epi iterate
+Replace PRE-ID/EXP-ID/EV-ID with actual CLI-returned IDs. Commands such as
+\`python -m json.tool\` verify only syntactic JSON and **must be replaced**
+with domain-appropriate checks for a defensible scientific claim.
 
-## Limits and next steps
+## Evidence and authority limitations
 
-The planner currently performs deterministic 2-step heuristic ranking, not
-probabilistic tree search. The information-gain and improvement estimates are
-agent-supplied ordinal estimates with no empirical calibration. True cost-aware
-search should add experiment outcome likelihoods, learned cost distributions,
-conditional value of information, and deeper budgeted lookahead AFTER real
-research trajectories have been collected.
+These are three distinct layers:
 
-Repository inventory is bounded and never treats document titles as verified
-facts. Agent-led onboarding must interpret historical experiment reports and
-identify evidence; that semantic extraction is not yet automated in the CLI.
+- **Execution check:** a frozen verifier exits successfully. The command may
+  still be a weak or irrelevant check.
+- **Measurement check:** EpiPilot verifies artifact existence/fingerprint and
+  independently parses numeric metrics against pre-registered thresholds and
+  agent-reported values. This detects protocol mismatch, but cannot prove data
+  wasn't fabricated or leaked.
+- **Scientific interpretation:** the decision rule is explicit and the linked
+  provisional Claim can be reviewed. Real validity still requires appropriate
+  baselines, variance, causal assumptions, data provenance and independent
+  scientific reasoning.
 
-When experiments are expensive, evaluate effectiveness at equal compute budget
-against random exploration, greedy optimization, and static task priority.
-Reserve independent held-out evaluation and never select models on held-out
-data. Never silently migrate or repair an invalid event stream.
+The metric threshold only evaluates the **predeclared bounded prediction**.
+Even a supported Claim is *not* a canonical universal Fact. Avoid interpreting
+single-run differences as scientific conclusions when statistical power is
+inadequate or distribution shift is likely.
+
+Git status checks require a committed, clean tracked worktree at
+pre-registration, recording and verification. Local file references are
+SHA-256 pinned when files exist; external version IDs remain opaque and
+must be verified separately. Metric artifacts are required inside the
+repository, relative JSON files with finite numeric metric values. We do not
+store raw verifier output, only its hash; execution uses \`shell=False\` and
+cannot bypass the coding agent's ordinary safety approvals.
+
+Legacy v1 \`.research/events.jsonl\` files replay without silent mutation.
+Old "independently verified" evidence is **not** automatically treated as
+measurement-validated v2 evidence; re-run and validate key experiments when
+scientific conclusions depend on them. Do not edit historical event lines.
+
+## Recovery, budgets and security
+
+- \`epi doctor\` replays the event log, lists in-flight contracts and reports
+  legacy evidence. No background agent runs automatically.
+- \`epi iterate\` surfaces running, preregistered, blocked and
+  awaiting-verification items before choosing a new action.
+- Budget is reserved with \`epi start\`. Running experiments consume a
+  reservation. \`epi record\` books the **actual** cost even if it exceeds the
+  approved estimate; overspend is visible and blocks new starts.
+- \`epi abort --contract PRE-ID --reason "..." --cost N\` books interrupted
+  cost and releases the remaining reservation.
+- Invalid verification marks the contract BLOCKED. Use
+  \`epi retry --contract PRE-ID --reason "specific corrective change"\`
+  only after making a real correction. Three failed attempts require a
+  new proposal and pre-registered experiment.
+- The event store is single-writer. A crashed process may leave a
+  \`.research/.write.lock\`; check for live writers before manual recovery.
+- The event file is intentionally visible to Git. Do not save private
+  transcripts, secrets, passwords, cookies, private screenshots or raw
+  proprietary results. Review before committing it.
+
+## Research-policy limitations
+
+The current policy is a deterministic two-step heuristic. It is **not** MCTS,
+a trained policy, a calibrated causal inference model or a generic autonomous
+science system. Information gain, improvement, novelty and risk remain
+agent-supplied ordinal estimates. After at least two validated runs of the
+same proposal kind, the policy softly calibrates estimated costs toward the
+median measured costs. Outcome likelihoods, deeper conditional VoI, causal
+knowledge extraction and cross-project semantic retrieval are future research.
+
+At equal total experimental cost, compare against Agent-only, memory-only,
+random proposal selection and greedy optimization. Evaluate held-out outcomes,
+repeated experiments, inaccurate scientific conclusions and recovery quality.
+No improvement benchmark has been established solely by unit-test passage.

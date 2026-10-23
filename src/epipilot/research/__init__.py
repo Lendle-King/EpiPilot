@@ -2,8 +2,12 @@
 
 from epipilot.research.models import (
     Claim,
+    ClaimStatus,
+    ContractStatus,
     EvidenceRecord,
     Experiment,
+    ExperimentContract,
+    MetricRule,
     Proposal,
     ResearchGoal,
     ResearchState,
@@ -14,8 +18,12 @@ from epipilot.research.store import ResearchStore
 
 __all__ = [
     "Claim",
+    "ClaimStatus",
+    "ContractStatus",
     "EvidenceRecord",
     "Experiment",
+    "ExperimentContract",
+    "MetricRule",
     "Proposal",
     "ResearchGoal",
     "ResearchState",
