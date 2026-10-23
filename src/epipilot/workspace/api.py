@@ -130,6 +130,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+
 class SemanticRunInput(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=160)
     max_documents: int = Field(default=4, ge=1, le=12)
