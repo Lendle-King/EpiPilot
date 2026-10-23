@@ -13,6 +13,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from epipilot.research.decision_models import DecisionEstimate, DecisionForecast
+from epipilot.research.decision_value import rank_decision, record_outcome
 from epipilot.research.models import (
     Claim,
     ClaimStatus,
@@ -81,6 +83,23 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         ):
             raise ValueError("duplicate research proposal; supply a genuinely revised hypothesis")
         state.proposals[new_proposal.id] = new_proposal
+    elif kind == "decision_estimate_registered":
+        if legacy:
+            raise ValueError("decision estimates require schema v2")
+        estimate = DecisionEstimate.model_validate(p)
+        proposed = state.proposals.get(estimate.proposal_id)
+        if proposed is None or proposed.status != "proposed":
+            raise ValueError("decision estimate requires a proposed research action")
+        if estimate.proposal_id in state.decision_estimates:
+            raise ValueError("decision estimate already registered; create a new proposal")
+        if any(
+            option.proposal_id is not None
+            and (option.proposal_id == proposed.id
+                 or option.proposal_id not in state.proposals)
+            for option in estimate.options
+        ):
+            raise ValueError("decision table contains unknown or self-referential options")
+        state.decision_estimates[proposed.id] = estimate
     elif kind == "experiment_preregistered":
         registration = ExperimentContract.model_validate(p)
         if state.goal is None:
@@ -96,6 +115,16 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("pre-registration must link a claim or a research unknown")
         if registration.max_cost > state.remaining + 1e-9:
             raise ValueError("pre-registered experiment exceeds remaining budget")
+        estimate = state.decision_estimates.get(proposal.id)
+        if estimate is not None:
+            frozen_score = rank_decision(state, estimate)
+            state.decision_forecasts[registration.id] = DecisionForecast(
+                contract_id=registration.id,
+                git_revision=registration.git_revision,
+                recorded_at=event.created_at,
+                estimate=estimate,
+                score=frozen_score,
+            )
         state.contracts[registration.id] = registration
         state.proposals[proposal.id] = proposal.model_copy(update={"status": "preregistered"})
     elif kind == "experiment_started":
@@ -230,6 +259,9 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             state.contracts[contract.id] = contract.model_copy(
                 update={"status": ContractStatus.COMPLETED}
             )
+            forecast_outcome = record_outcome(state, contract.id, evidence_id)
+            if forecast_outcome is not None:
+                state.decision_outcomes[contract.id] = forecast_outcome
             proposal = state.proposals[contract.proposal_id]
             state.proposals[proposal.id] = proposal.model_copy(update={"status": "completed"})
     elif kind == "verification_failed":

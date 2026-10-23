@@ -15,6 +15,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from epipilot.research.decision_models import DecisionEstimate, DecisionForecast, DecisionOutcome
+
 from epipilot.core.models import utc_now
 
 
@@ -237,6 +239,9 @@ class ResearchState(Record):
     claims: dict[str, Claim] = Field(default_factory=dict)
     proposals: dict[str, Proposal] = Field(default_factory=dict)
     contracts: dict[str, ExperimentContract] = Field(default_factory=dict)
+    decision_estimates: dict[str, DecisionEstimate] = Field(default_factory=dict)
+    decision_forecasts: dict[str, DecisionForecast] = Field(default_factory=dict)
+    decision_outcomes: dict[str, DecisionOutcome] = Field(default_factory=dict)
     experiments: dict[str, Experiment] = Field(default_factory=dict)
     evidence: dict[str, EvidenceRecord] = Field(default_factory=dict)
     onboarding: list[OnboardingSnapshot] = Field(default_factory=list)
