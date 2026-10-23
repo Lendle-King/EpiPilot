@@ -10,6 +10,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from epipilot.research.decision_models import DecisionEstimate
+from epipilot.research.decision_value import rank_decision
 from epipilot.research.models import (
     Claim,
     ClaimStatus,
@@ -98,6 +100,14 @@ def _parser() -> argparse.ArgumentParser:
     plan.add_argument("--id", required=True)
     sub.add_parser("iterate", help="return the next blocked, pending or runnable action")
 
+    decision = sub.add_parser("decision", help="inspect or register bounded Scout decision tables")
+    decision_sub = decision.add_subparsers(dest="action", required=True)
+    decision_register = decision_sub.add_parser("register")
+    decision_register.add_argument("--file", required=True, type=Path)
+    decision_rank = decision_sub.add_parser("rank")
+    decision_rank.add_argument("--limit", type=int, default=5)
+    decision_sub.add_parser("status")
+
     prereg = sub.add_parser("preregister", help="freeze experiment protocol before execution")
     prereg.add_argument("--proposal", required=True)
     prereg.add_argument("--baseline", required=True)
@@ -181,6 +191,9 @@ def _status(state: ResearchState) -> dict[str, object]:
         "proposals": len(state.proposals),
         "contracts": len(state.contracts),
         "experiments": len(state.experiments),
+        "decision_estimates": len(state.decision_estimates),
+        "decision_forecasts": len(state.decision_forecasts),
+        "qualified_forecast_outcomes": len(state.decision_outcomes),
         "validated_evidence": sum(item.measurement_validated for item in state.evidence.values()),
         "pending": {
             key: item.status.value
@@ -471,6 +484,42 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         return _plan(state, args.id)
     if command == "iterate":
         return _next_action(state)
+    if command == "decision":
+        if args.action == "register":
+            location = (root / args.file).resolve()
+            if not location.is_relative_to(root) or not location.is_file():
+                raise ValueError("decision estimate must be a repository-local JSON file")
+            estimate = DecisionEstimate.model_validate_json(location.read_bytes())
+            store.append("decision_estimate_registered", estimate.model_dump(mode="json"))
+            return {
+                "registered": estimate.proposal_id,
+                "warning": "Heuristic uncalibrated forecast; not scientific evidence",
+            }
+        if args.action == "status":
+            return {
+                "estimates": list(state.decision_estimates),
+                "forecasts": [
+                    item.model_dump(mode="json") for item in state.decision_forecasts.values()
+                ],
+                "qualified_outcomes": [
+                    item.model_dump(mode="json") for item in state.decision_outcomes.values()
+                ],
+            }
+        if args.limit < 1:
+            raise ValueError("decision rank limit must be positive")
+        estimates = []
+        for registered in state.decision_estimates.values():
+            try:
+                score = rank_decision(state, registered)
+            except ValueError:
+                continue
+            estimates.append(score)
+        estimates.sort(key=lambda item: (-item.net_value, item.proposal_id))
+        return {
+            "policy": "bounded conditional value-of-information heuristic",
+            "ranked": [entry.model_dump(mode="json") for entry in estimates[: args.limit]],
+            "note": "This is advisory; epi iterate retains evidence-gated cost ranking",
+        }
     if command == "preregister":
         revision = require_clean_revision(root)
         verifier = _safe_verifier(args.verifier)
