@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/research-plugin-cost-aware-tree-search]
   pull_request:
 
 permissions:

@@ -4,7 +4,7 @@
 
 EpiPilot is a lightweight research plugin for **Codex, Kimi Code, and other coding agents**. Keep your existing coding agent as the executor: it reads code, reasons about mechanisms, implements changes, and runs experiments. EpiPilot supplies a **durable claim/unknown/evidence memory**, a **budget-aware research-action selector**, and an **independent verification gate**, so a long-running optimization project can learn from both successful and failed experiments instead of repeatedly starting over.
 
-> **Where is the plugin?** The current cross-agent research skill and CLI live on [`feat/research-plugin-cost-aware-tree-search`](https://github.com/Lendle-King/EpiPilot/tree/feat/research-plugin-cost-aware-tree-search). The default `main` branch currently contains the earlier EpiPilot V0 framework, **not** this CLI. Follow the branch-specific installation below. An **independent Codex-native Agent Plugin** is also available on [`feat/codex-epistemic-research-plugin`](https://github.com/Lendle-King/EpiPilot/tree/feat/codex-epistemic-research-plugin).
+> **Default branch:** `main` now includes the lightweight research CLI, agent skill, and the underlying EpiPilot framework. The previous V0-only main snapshot is preserved at [`legacy/main-before-research-plugin`](https://github.com/Lendle-King/EpiPilot/tree/legacy/main-before-research-plugin). A **separate Codex-native Agent Plugin** remains available on [`feat/codex-epistemic-research-plugin`](https://github.com/Lendle-King/EpiPilot/tree/feat/codex-epistemic-research-plugin).
 
 ## Why use EpiPilot?
 
@@ -46,7 +46,7 @@ The research skill/CLI currently provides:
 - **Evidence gates:** experimental observations remain unverified until a separate argv-based check passes; checked evidence still requires scientific interpretation before updating a claim.
 - **Agent-native operation:** no second autonomous agent or separate LLM backend is required. Your coding agent executes the research work using its normal tools and approval boundaries.
 
-**Maturity:** This is an MVP. The ranking policy is **not** a trained MCTS or a calibrated probabilistic value-of-information model. Automatic historical scientific synthesis, autonomous experiment execution, and demonstrated performance gains over baseline research policies are **not** claimed. See the [research plugin design and limitations](https://github.com/Lendle-King/EpiPilot/blob/feat/research-plugin-cost-aware-tree-search/docs/RESEARCH_PLUGIN.md).
+**Maturity:** This is an MVP. The ranking policy is **not** a trained MCTS or a calibrated probabilistic value-of-information model. Automatic historical scientific synthesis, autonomous experiment execution, and demonstrated performance gains over baseline research policies are **not** claimed. See the [research plugin design and limitations](https://github.com/Lendle-King/EpiPilot/blob/main/docs/RESEARCH_PLUGIN.md).
 
 ## Install on Codex or Kimi Code (recommended research skill)
 
@@ -56,10 +56,10 @@ The **same lightweight research CLI + skill** works with either coding agent; th
 
 ### 1. Install the EpiPilot research CLI
 
-Clone the branch containing the current research plugin (not `main`):
+Clone the default `main` branch, which contains the research plugin:
 
 ~~~bash
-git clone --branch feat/research-plugin-cost-aware-tree-search --single-branch https://github.com/Lendle-King/EpiPilot.git
+git clone https://github.com/Lendle-King/EpiPilot.git
 cd EpiPilot
 python -m pip install -e .
 epi --help
@@ -121,7 +121,7 @@ The CLI supports `epi unknown add`, `epi claim`, `epi propose`, `epi next`, `epi
 
 **Research state:** written to `.research/events.jsonl` in the **target repository**. This file is intentionally Git-visible and single-writer; review its contents for credentials, personal information, or private traces before committing it. Do not run concurrent EpiPilot writers against the same research state.
 
-Detailed contracts and examples: [Research plugin documentation](https://github.com/Lendle-King/EpiPilot/blob/feat/research-plugin-cost-aware-tree-search/docs/RESEARCH_PLUGIN.md) · [Research skill source](https://github.com/Lendle-King/EpiPilot/blob/feat/research-plugin-cost-aware-tree-search/skills/epipilot-research/SKILL.md).
+Detailed contracts and examples: [Research plugin documentation](https://github.com/Lendle-King/EpiPilot/blob/main/docs/RESEARCH_PLUGIN.md) · [Research skill source](https://github.com/Lendle-King/EpiPilot/blob/main/skills/epipilot-research/SKILL.md).
 
 ## Alternative: native Codex Agent Plugin (separate integration)
 
@@ -154,7 +154,7 @@ Its core principles are:
 4. **No blind retries.** A failed experiment must be informed by new evidence or a changed strategy before repetition.
 5. **Independent acceptance.** A passing process check proves only what that check actually validates; it is not by itself a general scientific conclusion.
 
-The default `main` branch currently houses V0 contracts for requirements, decisions, event storage/replay, task DAGs, evidence-gated verification, scheduler policy, memory, context compilation, and a Pi executor. The broader orchestration/UI/runtime roadmap is **not a prerequisite** for using the research skill branch.
+The `main` branch combines the lightweight research plugin with the earlier V0 framework contracts for requirements, decisions, event storage/replay, task DAGs, evidence-gated verification, scheduler policy, memory, context compilation, and a Pi executor. The pre-plugin main snapshot remains available on [`legacy/main-before-research-plugin`](https://github.com/Lendle-King/EpiPilot/tree/legacy/main-before-research-plugin). The broader orchestration/UI/runtime roadmap is **not a prerequisite** for using the research skill.
 
 Architecture and contributor references:
 
@@ -171,7 +171,7 @@ mypy src
 pytest
 ~~~
 
-Select the branch you intend to develop/test before running these commands.
+Run these commands from `main` (or from the feature branch you are actively developing).
 
 ## License
 
