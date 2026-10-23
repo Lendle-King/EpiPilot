@@ -149,16 +149,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="print machine-readable result")
     args = parser.parse_args(argv)
     try:
-        outcome = install(
-            args.project, agent=args.agent, force=args.force, dry_run=args.dry_run
-        )
+        outcome = install(args.project, agent=args.agent, force=args.force, dry_run=args.dry_run)
     except (OSError, ValueError, UnicodeError) as exc:
         print(f"epipilot-install-agent: {exc}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(outcome, ensure_ascii=False, indent=2))
     else:
-        print(f"EpiPilot project skill {'planned' if args.dry_run else 'installed'}: {outcome['project']}")
+        print(
+            f"EpiPilot project skill {'planned' if args.dry_run else 'installed'}: {outcome['project']}"
+        )
         for name in outcome["changed_or_pending"]:
             print(f"  updated: {name}")
         for name in outcome["unchanged"]:
