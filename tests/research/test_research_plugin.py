@@ -232,17 +232,28 @@ def test_conflicting_validated_evidence_reopens_uncertainty(root: Path) -> None:
     store.add(
         "proposal_added",
         Proposal(
-            id="P2", title="Counterexample on same frozen split",
-            kind=ProposalKind.EXPLORE, rationale="Seek counterevidence",
-            acceptance="Bounded reverse result", unknown_ids=["U"], claim_ids=["C"],
-            information_gain=0.9, expected_improvement=0.1,
-            estimated_cost=1, risk=0.1,
+            id="P2",
+            title="Counterexample on same frozen split",
+            kind=ProposalKind.EXPLORE,
+            rationale="Seek counterevidence",
+            acceptance="Bounded reverse result",
+            unknown_ids=["U"],
+            claim_ids=["C"],
+            information_gain=0.9,
+            expected_improvement=0.1,
+            estimated_cost=1,
+            risk=0.1,
         ),
     )
     register(store, root, contract_id="PRE-2", proposal_id="P2")
     observe(
-        store, root, score=0.4, outcome="no_gain",
-        contract_id="PRE-2", experiment_id="EXP-2", evidence_id="EV-2",
+        store,
+        root,
+        score=0.4,
+        outcome="no_gain",
+        contract_id="PRE-2",
+        experiment_id="EXP-2",
+        evidence_id="EV-2",
     )
     assert validate(root, "EXP-2") == 0
     reflect(store, verdict="refuted", evidence_id="EV-2")

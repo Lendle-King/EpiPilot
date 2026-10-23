@@ -348,10 +348,9 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 or not str(p.get("rationale", "")).strip()
                 or not proposal.claim_ids
                 or any(
-                    state.claims[cid].status not in {
-                        ClaimStatus.SUPPORTED, ClaimStatus.REFUTED
-                    }
-                    or evidence_id not in (
+                    state.claims[cid].status not in {ClaimStatus.SUPPORTED, ClaimStatus.REFUTED}
+                    or evidence_id
+                    not in (
                         state.claims[cid].supporting_evidence_ids
                         + state.claims[cid].contradicting_evidence_ids
                     )
