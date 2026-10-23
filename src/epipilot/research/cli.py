@@ -593,15 +593,15 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             if location.stat().st_size > 128 * 1024:
                 raise ValueError("Scout submission exceeds maximum JSON size")
             submission = ScoutSubmission.model_validate_json(location.read_bytes())
-            operation = state.scout_runs.get(submission.operation_id)
-            if operation is None or operation.status is not ScoutStatus.RUNNING:
-                raise ValueError("Scout submission does not match a running operation")
-            require_clean_revision(root, operation.git_revision)
+            submitted_scout = state.scout_runs.get(submission.operation_id)
+            if submitted_scout is None or submitted_scout.status is not ScoutStatus.RUNNING:
+                raise ValueError("Scout submission does not match a running submitted_scout")
+            require_clean_revision(root, submitted_scout.git_revision)
             for candidate in submission.candidates:
-                validate_source(root, operation.git_revision, candidate.source)
+                validate_source(root, submitted_scout.git_revision, candidate.source)
             store.append("scout_submitted", submission.model_dump(mode="json"))
             return {
-                "operation_id": operation.id,
+                "operation_id": submitted_scout.id,
                 "recorded_actual_cost": submission.actual_cost,
                 "pending_candidate_ids": [item.id for item in submission.candidates],
                 "warning": "All leads remain unverified until explicitly reviewed.",

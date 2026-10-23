@@ -135,13 +135,13 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         if legacy:
             raise ValueError("Scout submissions require v2 events")
         submission = ScoutSubmission.model_validate(p)
-        operation = state.scout_runs.get(submission.operation_id)
-        if operation is None or operation.status is not ScoutStatus.RUNNING:
-            raise ValueError("Scout submission requires a running reserved operation")
-        if len(submission.candidates) > operation.max_candidates:
+        submitted_scout = state.scout_runs.get(submission.operation_id)
+        if submitted_scout is None or submitted_scout.status is not ScoutStatus.RUNNING:
+            raise ValueError("Scout submission requires a running reserved submitted_scout")
+        if len(submission.candidates) > submitted_scout.max_candidates:
             raise ValueError("Scout exceeded its frozen candidate limit")
         paths = {candidate.source.path for candidate in submission.candidates}
-        if len(paths) > operation.max_sources:
+        if len(paths) > submitted_scout.max_sources:
             raise ValueError("Scout exceeded its frozen source limit")
         ids = [candidate.id for candidate in submission.candidates]
         if len(ids) != len(set(ids)) or any(cid in state.scout_candidates for cid in ids):
@@ -151,7 +151,7 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         next_status = (
             ScoutStatus.COMPLETED if submission.status == "completed" else ScoutStatus.FAILED
         )
-        state.scout_runs[operation.id] = operation.model_copy(
+        state.scout_runs[submitted_scout.id] = submitted_scout.model_copy(
             update={
                 "status": next_status,
                 "actual_cost": submission.actual_cost,
@@ -162,38 +162,38 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
     elif kind == "scout_candidate_reviewed":
         if legacy:
             raise ValueError("Scout review requires a v2 event")
-        candidate = state.scout_candidates.get(str(p["candidate_id"]))
+        reviewed_lead = state.scout_candidates.get(str(p["candidate_id"]))
         decision = ScoutCandidateStatus(str(p["decision"]))
         rationale = str(p.get("rationale", "")).strip()
         if (
-            candidate is None
-            or candidate.status is not ScoutCandidateStatus.PENDING
+            reviewed_lead is None
+            or reviewed_lead.status is not ScoutCandidateStatus.PENDING
             or decision is ScoutCandidateStatus.PENDING
             or len(rationale) < 8
         ):
-            raise ValueError("Scout review requires a pending candidate and explicit reasoning")
+            raise ValueError("Scout review requires a pending reviewed_lead and explicit reasoning")
         if decision is ScoutCandidateStatus.ACCEPTED:
             if any(
-                existing.question.casefold() == candidate.question.casefold()
+                existing.question.casefold() == reviewed_lead.question.casefold()
                 for existing in state.unknowns.values()
             ):
                 raise ValueError("Scout question duplicates an existing research unknown")
             if any(
-                existing.statement.casefold() == candidate.hypothesis.casefold()
-                and existing.scope.casefold() == candidate.scope.casefold()
+                existing.statement.casefold() == reviewed_lead.hypothesis.casefold()
+                and existing.scope.casefold() == reviewed_lead.scope.casefold()
                 for existing in state.claims.values()
             ):
                 raise ValueError("Scout hypothesis duplicates an existing scoped claim")
             if any(
-                existing.title.casefold() == candidate.title.casefold()
+                existing.title.casefold() == reviewed_lead.title.casefold()
                 and existing.status != "aborted"
                 for existing in state.proposals.values()
             ):
                 raise ValueError("Scout proposal duplicates an existing experiment")
             unknown_id, claim_id, proposal_id = (
-                f"UNK-{candidate.id}",
-                f"CLM-{candidate.id}",
-                f"ACT-{candidate.id}",
+                f"UNK-{reviewed_lead.id}",
+                f"CLM-{reviewed_lead.id}",
+                f"ACT-{reviewed_lead.id}",
             )
             if (
                 unknown_id in state.unknowns
@@ -201,38 +201,38 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 or proposal_id in state.proposals
             ):
                 raise ValueError("Scout-generated stable IDs collide with existing research IDs")
-            operation = state.scout_runs[candidate.operation_id]
-            source = candidate.source
+            source_operation = state.scout_runs[reviewed_lead.operation_id]
+            source = reviewed_lead.source
             anchor = (
-                f"scout_source=git:{operation.git_revision}:{source.path}:{source.line}"
+                f"scout_source=git:{source_operation.git_revision}:{source.path}:{source.line}"
                 f";sha256={source.sha256};source_text_is_not_scientific_evidence"
             )
             state.unknowns[unknown_id] = Unknown(
                 id=unknown_id,
-                question=candidate.question,
-                importance=candidate.importance,
-                decision_sensitivity=candidate.decision_sensitivity,
+                question=reviewed_lead.question,
+                importance=reviewed_lead.importance,
+                decision_sensitivity=reviewed_lead.decision_sensitivity,
             )
             state.claims[claim_id] = Claim(
                 id=claim_id,
-                statement=candidate.hypothesis,
-                scope=candidate.scope,
+                statement=reviewed_lead.hypothesis,
+                scope=reviewed_lead.scope,
                 assumptions=[anchor],
             )
             state.proposals[proposal_id] = Proposal(
                 id=proposal_id,
-                title=candidate.title,
-                kind=ProposalKind(candidate.kind),
-                rationale=candidate.rationale,
-                acceptance=candidate.acceptance,
+                title=reviewed_lead.title,
+                kind=ProposalKind(reviewed_lead.kind),
+                rationale=reviewed_lead.rationale,
+                acceptance=reviewed_lead.acceptance,
                 unknown_ids=[unknown_id],
                 claim_ids=[claim_id],
-                information_gain=candidate.information_gain,
-                expected_improvement=candidate.expected_improvement,
-                estimated_cost=candidate.estimated_cost,
-                risk=candidate.risk,
+                information_gain=reviewed_lead.information_gain,
+                expected_improvement=reviewed_lead.expected_improvement,
+                estimated_cost=reviewed_lead.estimated_cost,
+                risk=reviewed_lead.risk,
             )
-        state.scout_candidates[candidate.id] = candidate.model_copy(
+        state.scout_candidates[reviewed_lead.id] = reviewed_lead.model_copy(
             update={"status": decision, "review_rationale": rationale}
         )
     elif kind == "experiment_preregistered":
@@ -486,12 +486,12 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             contradict.append(evidence_id)
         else:
             inconclusive.append(evidence_id)
-        next_status = verdict
+        claim_status = verdict
         if support and contradict:
-            next_status = ClaimStatus.INCONCLUSIVE
+            claim_status = ClaimStatus.INCONCLUSIVE
         state.claims[claim.id] = claim.model_copy(
             update={
-                "status": next_status,
+                "status": claim_status,
                 "supporting_evidence_ids": support,
                 "contradicting_evidence_ids": contradict,
                 "inconclusive_evidence_ids": inconclusive,
