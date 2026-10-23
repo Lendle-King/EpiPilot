@@ -67,7 +67,12 @@ def _immediate_score(proposal: Proposal, state: ResearchState, phase: str) -> fl
     )
     unresolved = any(state.unknowns[uid].status == "open" for uid in proposal.unknown_ids)
     verified_claim = any(
-        state.claims[cid].status is ClaimStatus.SUPPORTED for cid in proposal.claim_ids
+        state.claims[cid].status is ClaimStatus.SUPPORTED
+        and any(
+            evidence_id in state.evidence and state.evidence[evidence_id].measurement_validated
+            for evidence_id in state.claims[cid].supporting_evidence_ids
+        )
+        for cid in proposal.claim_ids
     )
     if proposal.kind is ProposalKind.EXPLORE and not unresolved:
         value *= 0.7

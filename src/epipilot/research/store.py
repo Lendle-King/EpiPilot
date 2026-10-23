@@ -310,12 +310,15 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 raise ValueError("claim verdict must match validated, linked experiment")
         support = list(claim.supporting_evidence_ids)
         contradict = list(claim.contradicting_evidence_ids)
-        if evidence_id in support or evidence_id in contradict:
+        inconclusive = list(claim.inconclusive_evidence_ids)
+        if evidence_id in support or evidence_id in contradict or evidence_id in inconclusive:
             raise ValueError("evidence already reviewed for this claim")
         if verdict == ClaimStatus.SUPPORTED:
             support.append(evidence_id)
         elif verdict == ClaimStatus.REFUTED:
             contradict.append(evidence_id)
+        else:
+            inconclusive.append(evidence_id)
         next_status = verdict
         if support and contradict:
             next_status = ClaimStatus.INCONCLUSIVE
@@ -324,6 +327,7 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 "status": next_status,
                 "supporting_evidence_ids": support,
                 "contradicting_evidence_ids": contradict,
+                "inconclusive_evidence_ids": inconclusive,
             }
         )
     elif kind == "unknown_resolved":
@@ -344,8 +348,10 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 or not str(p.get("rationale", "")).strip()
                 or not proposal.claim_ids
                 or any(
-                    evidence_id
-                    not in (
+                    state.claims[cid].status not in {
+                        ClaimStatus.SUPPORTED, ClaimStatus.REFUTED
+                    }
+                    or evidence_id not in (
                         state.claims[cid].supporting_evidence_ids
                         + state.claims[cid].contradicting_evidence_ids
                     )

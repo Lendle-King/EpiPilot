@@ -202,6 +202,7 @@ def test_inconclusive_measurements_cannot_close_an_unknown(root: Path) -> None:
     observe(store, root, outcome="inconclusive")
     assert validate(root) == 0
     reflect(store, verdict="inconclusive")
+    assert "EV-1" in store.load()[0].claims["C"].inconclusive_evidence_ids
     with pytest.raises(ValueError, match="conclusive reviewed claims"):
         store.append(
             "unknown_resolved",
@@ -220,6 +221,40 @@ def test_refuting_result_is_scoped_and_reviewed(root: Path) -> None:
         reflect(store, verdict="supported")
     reflect(store, verdict="refuted")
     assert store.load()[0].claims["C"].status is ClaimStatus.REFUTED
+
+
+def test_conflicting_validated_evidence_reopens_uncertainty(root: Path) -> None:
+    store = setup_store(root)
+    register(store, root)
+    observe(store, root)
+    assert validate(root) == 0
+    reflect(store)
+    store.add(
+        "proposal_added",
+        Proposal(
+            id="P2", title="Counterexample on same frozen split",
+            kind=ProposalKind.EXPLORE, rationale="Seek counterevidence",
+            acceptance="Bounded reverse result", unknown_ids=["U"], claim_ids=["C"],
+            information_gain=0.9, expected_improvement=0.1,
+            estimated_cost=1, risk=0.1,
+        ),
+    )
+    register(store, root, contract_id="PRE-2", proposal_id="P2")
+    observe(
+        store, root, score=0.4, outcome="no_gain",
+        contract_id="PRE-2", experiment_id="EXP-2", evidence_id="EV-2",
+    )
+    assert validate(root, "EXP-2") == 0
+    reflect(store, verdict="refuted", evidence_id="EV-2")
+    state, _ = store.load()
+    assert state.claims["C"].status is ClaimStatus.INCONCLUSIVE
+    assert state.claims["C"].supporting_evidence_ids == ["EV-1"]
+    assert state.claims["C"].contradicting_evidence_ids == ["EV-2"]
+    with pytest.raises(ValueError, match="conclusive reviewed claims"):
+        store.append(
+            "unknown_resolved",
+            {"unknown_id": "U", "evidence_id": "EV-2", "rationale": "Contradiction remains"},
+        )
 
 
 def test_unrelated_evidence_cannot_validate_a_different_claim(root: Path) -> None:

@@ -82,6 +82,7 @@ class Claim(Record):
     assumptions: list[str] = Field(default_factory=list)
     supporting_evidence_ids: list[str] = Field(default_factory=list)
     contradicting_evidence_ids: list[str] = Field(default_factory=list)
+    inconclusive_evidence_ids: list[str] = Field(default_factory=list)
     superseded_by: str | None = None
 
 
@@ -96,8 +97,8 @@ class Proposal(Record):
     depends_on: list[str] = Field(default_factory=list)
     information_gain: float = Field(ge=0, le=1, allow_inf_nan=False)
     expected_improvement: float = Field(ge=0, le=1, allow_inf_nan=False)
-    unlock_value: float = Field(ge=0, le=1, allow_inf_nan=False)
-    novelty: float = Field(ge=0, le=1, allow_inf_nan=False)
+    unlock_value: float = Field(default=0.0, ge=0, le=1, allow_inf_nan=False)
+    novelty: float = Field(default=0.0, ge=0, le=1, allow_inf_nan=False)
     estimated_cost: float = Field(gt=0, allow_inf_nan=False)
     risk: float = Field(ge=0, le=1, allow_inf_nan=False)
     status: str = Field(
