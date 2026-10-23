@@ -316,8 +316,11 @@ def test_metric_artifact_mismatch_blocks_verification_until_correction(root: Pat
     with pytest.raises(ValueError, match="experiment is not awaiting verification"):
         store.append(
             "verification_recorded",
-            {"evidence_id": "EV-1", "check_argv": [sys.executable],
-             "check_output_sha256": "deadbeef"},
+            {
+                "evidence_id": "EV-1",
+                "check_argv": [sys.executable],
+                "check_output_sha256": "deadbeef",
+            },
         )
     store.append(
         "verification_retried",
