@@ -47,6 +47,7 @@ def root(tmp_path: Path) -> Path:
     subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True, capture_output=True)
     return repo
 
+
 def make_estimate(proposal_id: str = "P", option: str | None = "CHILD") -> DecisionEstimate:
     return DecisionEstimate(
         proposal_id=proposal_id,
