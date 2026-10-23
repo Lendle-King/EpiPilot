@@ -1,3 +1,4 @@
+import SemanticOnboarding from './SemanticOnboarding';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { ReactFlow, Background, Controls, type Edge, type Node, Position } from '@xyflow/react';
 import {
@@ -24,7 +25,7 @@ type Project = {
   created_at: string; candidates: Candidate[]; events: EventRecord[]; git: GitState;
 };
 type Summary = Pick<Project, 'id' | 'name' | 'goal' | 'mode'>;
-type View = 'overview' | 'evidence' | 'graph' | 'git' | 'activity';
+type View = 'overview' | 'evidence' | 'graph' | 'git' | 'activity' | 'semantic';
 
 async function api<T>(path: string, method = 'GET', body?: object): Promise<T> {
   const response = await fetch('/api' + path, {
@@ -43,7 +44,8 @@ const nav: { view: View; name: string; icon: typeof Activity }[] = [
   { view: 'evidence', name: 'Observations & knowledge', icon: Lightbulb },
   { view: 'graph', name: 'Research graph', icon: GitBranch },
   { view: 'git', name: 'Git workspace', icon: FolderGit2 },
-  { view: 'activity', name: 'Activity timeline', icon: Clock3 }
+  { view: 'activity', name: 'Activity timeline', icon: Clock3 },
+  { view: 'semantic', name: 'Semantic onboarding', icon: BookOpen }
 ];
 
 function Badge({ children, tone = '' }: { children: ReactNode; tone?: string }) {
@@ -333,6 +335,7 @@ export default function App() {
           {view === 'graph' && <Graph project={project}/>}
           {view === 'git' && <GitPanel project={project}/>}
           {view === 'activity' && <Timeline project={project}/>}
+          {view === 'semantic' && <SemanticOnboarding projectId={project.id} projectName={project.name}/>}
           <footer className="footer"><GitCommitHorizontal size={14}/> Local Git is read-only · Observations are unverified · No trading</footer>
         </> : <div className="welcome"><div className="welcome-icon"><Sparkles size={29}/></div><span className="eyebrow">WELCOME TO EPIPILOT</span>
           <h1>Your research, with a memory.</h1>
