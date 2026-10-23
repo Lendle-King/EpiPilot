@@ -318,7 +318,7 @@ def _next_action(state: ResearchState) -> dict[str, object]:
         return {
             "status": "scout_running",
             "operation": active_scout.model_dump(mode="json"),
-            "guidance": "Complete the research Scout submission or mark it failed with actual cost.",
+            "guidance": "Submit Scout results or report failure with actual cost.",
         }
 
     for status, label, guidance in (
@@ -605,7 +605,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
                 "recorded_actual_cost": submission.actual_cost,
                 "pending_candidate_ids": [item.id for item in submission.candidates],
                 "warning": "All leads remain unverified until explicitly reviewed.",
-                "next": "epi scout review --candidate ID --decision accepted|rejected --reason TEXT",
+                "next": "epi scout review --candidate ID --decision accepted --reason TEXT",
             }
         if args.action == "review":
             decision = ScoutCandidateStatus(args.decision)
