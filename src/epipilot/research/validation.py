@@ -46,25 +46,53 @@ def optional_fingerprint(root: Path, reference: str) -> str | None:
     return hash_file(_in_root(root, reference))
 
 
-def require_clean_revision(root: Path, expected: str | None = None) -> str:
-    """Require pinned committed source; ignore generated, untracked result artifacts."""
-    revision = git_revision(root)
-    if len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
-        raise ValueError("research repository requires a valid committed Git HEAD")
-    if expected is not None and revision != expected:
-        raise ValueError("Git HEAD differs from the frozen experiment revision")
+def _source_differs(root: Path, *revisions: str) -> bool:
+    """Compare tracked research SOURCE, excluding the append-only EpiPilot state.
+
+    A frozen experiment binds source/config/data, while .research/events.jsonl
+    continues changing (and may be committed) throughout the experiment.
+    Comparing raw HEADs would make versioning the event log incompatible with
+    starting, recording or verifying that same experiment.
+    """
     try:
         result = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+            [
+                "git",
+                "-C",
+                str(root),
+                "diff",
+                "--quiet",
+                "--no-ext-diff",
+                *revisions,
+                "--",
+                ".",
+                ":(exclude).research/**",
+            ],
             check=False,
             capture_output=True,
-            text=True,
             timeout=15,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ValueError("could not inspect tracked Git worktree") from exc
-    if result.returncode != 0 or result.stdout.strip():
+        raise ValueError("could not compare pinned research source") from exc
+    if result.returncode not in (0, 1):
+        raise ValueError("could not compare pinned research source")
+    return result.returncode == 1
+
+
+def require_clean_revision(root: Path, expected: str | None = None) -> str:
+    """Require a committed source snapshot and unchanged tracked source files.
+
+    The Git SHA identifies the preregistered snapshot. Commits affecting ONLY
+    .research state may advance HEAD, but changes to any tracked source outside
+    that directory remain forbidden; config/data fingerprints are checked too.
+    """
+    revision = git_revision(root)
+    if len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
+        raise ValueError("research repository requires a valid committed Git HEAD")
+    if _source_differs(root, "HEAD"):
         raise ValueError("commit tracked code/config changes before pre-registration or validation")
+    if expected is not None and revision != expected and _source_differs(root, expected, revision):
+        raise ValueError("Git source differs from the frozen experiment revision")
     return revision
 
 

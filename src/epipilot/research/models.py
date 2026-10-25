@@ -74,6 +74,7 @@ class Unknown(Record):
     decision_sensitivity: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
     status: str = Field(default="open", pattern=r"^(open|resolved)$")
     resolution_evidence_ids: list[str] = Field(default_factory=list)
+    reopening_evidence_ids: list[str] = Field(default_factory=list)
 
 
 class Claim(Record):

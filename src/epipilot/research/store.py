@@ -497,6 +497,34 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 "inconclusive_evidence_ids": inconclusive,
             }
         )
+        # A later counterexample must invalidate conclusions that relied on
+        # this claim. Keep original resolution provenance and record which
+        # newly reviewed evidence forced the Unknown back into the frontier.
+        # Do not retroactively reinterpret schema-v1 historical streams.
+        if not legacy and claim_status is ClaimStatus.INCONCLUSIVE:
+            for unknown_id, resolved_unknown in state.unknowns.items():
+                if resolved_unknown.status != "resolved":
+                    continue
+                for resolution_id in resolved_unknown.resolution_evidence_ids:
+                    old_evidence = state.evidence.get(resolution_id)
+                    if old_evidence is None:
+                        continue
+                    old_experiment = state.experiments.get(old_evidence.experiment_id)
+                    if old_experiment is None:
+                        continue
+                    old_proposal = state.proposals.get(old_experiment.proposal_id)
+                    if old_proposal is None or claim.id not in old_proposal.claim_ids:
+                        continue
+                    state.unknowns[unknown_id] = resolved_unknown.model_copy(
+                        update={
+                            "status": "open",
+                            "reopening_evidence_ids": [
+                                *resolved_unknown.reopening_evidence_ids,
+                                evidence_id,
+                            ],
+                        }
+                    )
+                    break
     elif kind == "unknown_resolved":
         unresolved = state.unknowns.get(str(p["unknown_id"]))
         evidence_id = str(p["evidence_id"])
