@@ -26,8 +26,10 @@ class ResourceRefusal(RuntimeError):
 @dataclass(frozen=True)
 class GuardPolicy:
     max_rss_mib: int = 1024
-    min_free_gib: float = 2.0
-    min_free_fraction: float = 0.18
+    # User-approved 95%-usage ceiling: reserve >=5% of physical RAM at runtime.
+    # A new child must additionally fit its full RSS cap + 0.5 GiB buffer.
+    min_free_gib: float = 0.0
+    min_free_fraction: float = 0.05
     max_initial_cpu_percent: float = 80.0
     max_running_cpu_percent: float = 90.0
     max_processes: int = 12
@@ -36,10 +38,10 @@ class GuardPolicy:
     def validate(self) -> None:
         if not 128 <= self.max_rss_mib <= 2048:
             raise ValueError("per-process-tree RSS cap must be in [128,2048] MiB")
-        if not 1.0 <= self.min_free_gib <= 8.0:
-            raise ValueError("free-memory reserve must lie in [1,8] GiB")
-        if not 0.1 <= self.min_free_fraction <= 0.4:
-            raise ValueError("free-memory fraction must lie in [0.1,0.4]")
+        if not 0.0 <= self.min_free_gib <= 8.0:
+            raise ValueError("free-memory reserve must lie in [0,8] GiB")
+        if not 0.05 <= self.min_free_fraction <= 0.4:
+            raise ValueError("free-memory fraction must lie in [0.05,0.4]")
         if not 30 <= self.max_initial_cpu_percent <= 95:
             raise ValueError("initial CPU percentage guard outside accepted range")
         if not 50 <= self.max_running_cpu_percent <= 100:
