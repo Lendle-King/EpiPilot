@@ -32,6 +32,7 @@ from experiments.researchbench_t1.t1 import canonical, normalize_candidate
 
 T1 = Path(__file__).resolve().parent / "t1.py"
 MODEL_TIMEOUT = 150
+REQUIRED_MODEL = "gpt-6-luna(max)"
 ALLOWED_PROVIDERS = ("codex_chatgpt", "ccswitch_codex")
 ALLOWED_MODES = ("diagnose", "resource_probe", "offline_smoke", "pilot_one_cell")
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
@@ -42,9 +43,10 @@ class MacRunBlocked(RuntimeError):
 
 
 def _model_name(model: str) -> str:
-    if model != "default" and not MODEL_RE.fullmatch(model):
-        raise MacRunBlocked("invalid model selector (no shell commands are accepted)")
-    return model
+    """Never use a default, alternate, or provider-fallback model for T1."""
+    if model != REQUIRED_MODEL:
+        raise MacRunBlocked(f"T1 permits only the exact Codex model {REQUIRED_MODEL}")
+    return REQUIRED_MODEL
 
 
 def parse_frozen_candidate_reply(raw: str) -> tuple[dict[str, Any], str]:
@@ -94,7 +96,7 @@ def _codex() -> str:
 def _check_chatgpt_login(codex: str) -> bool:
     """Check authentication without retaining or displaying the CLI response."""
     try:
-        outcome = guarded_run([codex, "login", "status"], timeout=15, max_rss_mib=512)
+        outcome = guarded_run([codex, "login", "status"], timeout=15)
     except (OSError, subprocess.TimeoutExpired, ResourceRefusal):
         return False
     return outcome.returncode == 0
@@ -104,7 +106,7 @@ def _run(
     argv: list[str], *, timeout: int, cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> str:
     """Run frozen argv without shell interpolation or raw tool-output logging."""
-    process = guarded_run(argv, cwd=cwd, env=env, timeout=timeout, max_rss_mib=1024)
+    process = guarded_run(argv, cwd=cwd, env=env, timeout=timeout)
     if process.returncode != 0:
         raise MacRunBlocked("a local command failed; inspect the runner configuration")
     if len(process.stdout) > 200_000:
@@ -244,13 +246,13 @@ def one_cell(root: Path, provider: str, model: str, confirm: str, seed: int = 42
     command = [
         codex,
         "exec",
+        "--model",
+        REQUIRED_MODEL,
         "--sandbox",
         "read-only",
         "--output-last-message",
         str(response),
     ]
-    if model != "default":
-        command.extend(["--model", model])
     command.append(request)
     # The guard itself writes the attempt marker only after the OS starts Codex.
     before = time.monotonic()
@@ -259,7 +261,6 @@ def one_cell(root: Path, provider: str, model: str, confirm: str, seed: int = 42
         cwd=agent_dir,
         env=_redacted_agent_env(),
         timeout=MODEL_TIMEOUT,
-        max_rss_mib=1536,
         started_marker=root / "agent_attempt.started",
     )
     elapsed = time.monotonic() - before
@@ -308,7 +309,8 @@ def one_cell(root: Path, provider: str, model: str, confirm: str, seed: int = 42
     return {
         "model_calls": 1,
         "model_attempt_wall_seconds": round(elapsed, 3),
-        "codex_peak_rss_mib": outcome.peak_rss_mib,
+        "peak_mac_memory_used_percent": outcome.peak_mac_used_percent,
+        "minimum_mac_available_gib": outcome.minimum_mac_available_gib,
         "backend": provider,
         "requested_model": model,
         "model_output_format": reply_format,
@@ -379,28 +381,25 @@ def run(
         raise MacRunBlocked("Python 3.11+ is required")
     if mode == "resource_probe":
         sample = inspect_host()
-        codex_needed = round(sample.required_free_gib + 1.5 + 0.5, 2)
-        worker_needed = round(sample.required_free_gib + 1.0 + 0.5, 2)
         return {
             "model_calls": 0,
+            "required_model": REQUIRED_MODEL,
             "total_memory_gib": sample.total_gib,
             "available_memory_gib": sample.available_gib,
-            "required_free_memory_gib": sample.required_free_gib,
-            "cpu_percent": sample.cpu_percent,
-            "codex_launch_requires_gib": codex_needed,
-            "worker_launch_requires_gib": worker_needed,
-            "codex_launch_eligible": sample.available_gib >= codex_needed,
-            "worker_launch_eligible": sample.available_gib >= worker_needed,
+            "minimum_available_gib": sample.required_free_gib,
+            "host_memory_used_percent": sample.used_percent,
+            "host_memory_limit_percent": sample.max_used_percent,
+            "codex_launch_eligible": True,
             "resource_guard": "ready",
-            "qualification": "No model/training subprocess run during this preflight",
+            "qualification": "Only global Mac RAM checked; no model/ML subprocess run",
         }
     if mode == "offline_smoke":
         return offline_smoke(root)
     if confirm != "RUN_ONE_CELL":
         raise MacRunBlocked("one-cell agent invocation requires explicit RUN_ONE_CELL")
-    # Refuse before paid inference, T1 initialization, or a Codex auth process.
-    # 1.5 GiB worst-case Codex RSS + a 0.5 GiB uncertainty buffer are reserved.
-    inspect_host(planned_rss_mib=1536)
+    # Refuse before paid inference if physical RAM use already exceeds 95%.
+    # No per-process RSS, CPU, or process-count caps apply.
+    inspect_host()
     return one_cell(root, provider, model, confirm, seed)
 
 
@@ -408,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=ALLOWED_MODES, required=True)
     parser.add_argument("--provider", choices=ALLOWED_PROVIDERS, default="codex_chatgpt")
-    parser.add_argument("--model", default="default")
+    parser.add_argument("--model", choices=[REQUIRED_MODEL], default=REQUIRED_MODEL)
     parser.add_argument("--confirm", default="")
     parser.add_argument("--seed", type=int, choices=[42, 137], default=42)
     parser.add_argument("--results", type=Path, required=True)
@@ -421,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
         "mode": args.mode,
         "provider": args.provider,
         "requested_model": args.model,
+        "required_model": REQUIRED_MODEL,
         "started_at_utc": started,
         "status": "blocked",
         "provider_request_count": "not_observable",
