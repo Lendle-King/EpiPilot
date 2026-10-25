@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from experiments.researchbench_t1.t1 import (
     STAGES,
     BenchmarkError,
