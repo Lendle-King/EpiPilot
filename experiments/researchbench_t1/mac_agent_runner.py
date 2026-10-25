@@ -40,6 +40,39 @@ def _model_name(model: str) -> str:
     return model
 
 
+def parse_frozen_candidate_reply(raw: str) -> tuple[dict[str, Any], str]:
+    """Accept exactly one allowlisted JSON candidate, never executable instructions."""
+    message = raw.strip()
+    if not message or len(raw.encode("utf-8")) > 4096:
+        raise ValueError("missing or oversized model reply")
+    try:
+        return normalize_candidate(json.loads(message)), "strict_json"
+    except (ValueError, TypeError):
+        pass
+
+    fenced = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", message, flags=re.DOTALL)
+    if fenced is not None:
+        try:
+            return normalize_candidate(json.loads(fenced.group(1))), "fenced_json"
+        except (ValueError, TypeError):
+            pass
+
+    decoder = json.JSONDecoder()
+    candidates: list[dict[str, Any]] = []
+    for index, character in enumerate(message):
+        if character != "{":
+            continue
+        try:
+            parsed, _end = decoder.raw_decode(message[index:])
+            candidate = normalize_candidate(parsed)
+        except (ValueError, TypeError):
+            continue
+        candidates.append(candidate)
+    if len(candidates) != 1:
+        raise ValueError("no unique allowlisted candidate in output")
+    return candidates[0], "embedded_json"
+
+
 def _python_ready() -> bool:
     return sys.version_info >= (3, 11)
 
@@ -186,7 +219,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
         str(vault),
         timeout=90,
     )
-    task = _run(
+    _run(
         [
             sys.executable,
             str(T1),
@@ -206,10 +239,19 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
     agent_dir.mkdir(mode=0o700)
     _run(["git", "init", "-q", str(agent_dir)], timeout=10)
     request = (
-        "This is a single-call bounded research qualification. You MUST NOT browse, "
-        "run commands, inspect hidden data, or use tools. Return ONLY one JSON object "
-        "containing a T1-allowlisted candidate, with no markdown, explanations, "
-        "or surrounding text. Do not ask for additional model calls.\n\n" + task
+        "Select ONE safe hyperparameter candidate for a bounded experiment on Wisconsin "
+        "Breast Cancer Diagnostic, binary classification. Optimize development AUROC; "
+        "the held-out test remains sealed. Do not browse, run tools, execute commands, "
+        "explain, or add markdown. Your entire answer MUST be a single JSON object. "
+        "Choose either "
+        '{"model":"logistic","feature_mode":"all","C":1.0,"class_weight":"none"} '
+        "(C must be 0.01 to 10) or "
+        '{"model":"forest","feature_mode":"all","n_estimators":64,'
+        '"max_depth":7,"min_samples_leaf":2,"class_weight":"balanced"} '
+        "(20 <= n_estimators <= 120, 2 <= max_depth <= 16, "
+        "1 <= min_samples_leaf <= 10). "
+        "feature_mode may be all or numeric_only, class_weight none or balanced. "
+        "No other keys or text; this is a ONE-TRY pilot with a fixed budget."
     )
     response = root / "codex_response_PRIVATE.txt"
     command = [
@@ -249,9 +291,10 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
     if response.stat().st_size > 4096:
         raise MacRunBlocked("model proposal exceeded 4 KiB")
     try:
-        candidate = normalize_candidate(json.loads(response.read_text(encoding="utf-8")))
+        raw_response = response.read_text(encoding="utf-8")
+        candidate, reply_format = parse_frozen_candidate_reply(raw_response)
     except (ValueError, TypeError, UnicodeError) as exc:
-        raise MacRunBlocked("model output is not a valid frozen T1 candidate JSON") from exc
+        raise MacRunBlocked("model output has no unique allowlisted candidate JSON") from exc
     candidate_path = root / "selected_candidate_PRIVATE.json"
     candidate_path.write_text(json.dumps(candidate, sort_keys=True), encoding="utf-8")
     trial = _t1(
@@ -288,6 +331,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
         "backend": provider,
         "requested_model": model,
         "candidate_sha256": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+        "model_output_format": reply_format,
         "trial_completed": True,
         "submission_id": submission.get("id", "recorded"),
         "development_cost_seconds": trial.get("charged_seconds"),
@@ -345,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         summary["elapsed_wall_seconds"] = round(time.monotonic() - began, 3)
         summary["model_attempt_started"] = (root / "agent_attempt.started").exists()
+        summary["codex_process_attempts"] = int(summary["model_attempt_started"])
         (root / "summary.json").write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
