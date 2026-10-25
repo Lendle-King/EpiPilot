@@ -396,6 +396,8 @@ def run(
         }
     if mode == "offline_smoke":
         return offline_smoke(root)
+    if confirm != "RUN_ONE_CELL":
+        raise MacRunBlocked("one-cell agent invocation requires explicit RUN_ONE_CELL")
     # Refuse before paid inference, T1 initialization, or a Codex auth process.
     # 1.5 GiB worst-case Codex RSS + a 0.5 GiB uncertainty buffer are reserved.
     inspect_host(planned_rss_mib=1536)
