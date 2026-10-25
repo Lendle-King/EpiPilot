@@ -298,8 +298,8 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             contract is None
             or contract.status is not ContractStatus.RUNNING
             or finished_launch is None
-            or finished_finished_launch.id != finished_receipt.id
-            or finished_finished_launch.started_at != finished_receipt.started_at
+            or finished_launch.id != finished_receipt.id
+            or finished_launch.started_at != finished_receipt.started_at
             or finished_receipt.contract_id in state.run_receipts
             or finished_receipt.argv != contract.runner_argv
             or finished_receipt.source_revision != contract.git_revision
