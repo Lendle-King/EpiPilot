@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -702,8 +703,23 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         runner_sha = None
         if args.runner_spec is not None:
             path = (root / args.runner_spec).resolve()
-            if not path.is_relative_to(root) or not path.is_file():
-                raise ValueError("runner spec must be a repository-local committed JSON file")
+            relative_spec = Path(args.runner_spec)
+            if (
+                relative_spec.is_absolute()
+                or ".." in relative_spec.parts
+                or relative_spec.parts[0] == ".research"
+                or not path.is_relative_to(root)
+                or not path.is_file()
+            ):
+                raise ValueError("runner spec must be a safe repository-local JSON file")
+            tracked = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "--error-unmatch", "--", args.runner_spec],
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            if tracked.returncode != 0:
+                raise ValueError("runner spec must be committed to the research repository")
             if path.stat().st_size > 16000:
                 raise ValueError("runner spec exceeds 16 KB")
             runner_spec = RunnerSpec.model_validate_json(path.read_bytes())
@@ -779,7 +795,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             "next": (
                 "epi record --contract ID --outcome improved|no_gain --cost ACTUAL"
                 if receipt.exit_code == 0 and receipt.artifact_sha256
-                else "Record infrastructure_failure with real cost or abort; do not rerun this contract"
+                else (
+                    "Record infrastructure_failure with real cost or abort; "
+                    "do not rerun this contract"
+                )
             ),
         }
     if command == "record":
