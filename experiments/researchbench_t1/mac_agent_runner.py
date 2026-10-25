@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -21,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from experiments.researchbench_t1.t1 import normalize_candidate
+from experiments.researchbench_t1.t1 import canonical, normalize_candidate
 
 T1 = Path(__file__).resolve().parent / "t1.py"
 MODEL_TIMEOUT = 150
@@ -325,20 +326,60 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
         "42",
         timeout=20,
     )
+    measured = validated_development_metrics(trial, submission, candidate)
     return {
         "model_calls": 1,
         "model_attempt_wall_seconds": round(elapsed, 3),
         "backend": provider,
         "requested_model": model,
-        "candidate_sha256": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
         "model_output_format": reply_format,
         "trial_completed": True,
-        "submission_id": submission.get("id", "recorded"),
-        "development_cost_seconds": trial.get("charged_seconds"),
+        **measured,
         "qualification": (
-            "ONE agent_only development cell; no final test, "
-            "no four-policy comparison, no provider billing attestation"
+            "ONE agent_only development cell; no final test, no four-policy comparison. "
+            "A Codex CLI invocation can issue multiple unobserved provider API requests."
         ),
+    }
+
+
+def validated_development_metrics(
+    trial: dict[str, Any], submission: dict[str, Any], candidate: dict[str, Any]
+) -> dict[str, object]:
+    """Require real T1 run and submitted candidate to agree before reporting numbers."""
+    score = trial.get("dev_auroc")
+    seconds = trial.get("seconds")
+    selected = submission.get("dev_auroc")
+    run_id = trial.get("id")
+    if (
+        trial.get("exit_code") != 0
+        or not isinstance(run_id, str)
+        or not run_id.startswith("trial-")
+        or submission.get("run_id") != run_id
+        or submission.get("arm") != "agent_only"
+        or submission.get("dataset") != "wdbc"
+        or type(submission.get("seed")) is not int
+        or submission.get("seed") != 42
+    ):
+        raise MacRunBlocked("submitted benchmark record disagrees with the real trial")
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        for value in (score, selected, seconds)
+    ):
+        raise MacRunBlocked("invalid development metric or runtime in T1 receipt")
+    if not 0 <= score <= 1 or not 0 <= selected <= 1 or seconds < 0:
+        raise MacRunBlocked("development metric or charged seconds out of valid range")
+    if not math.isclose(score, selected, rel_tol=0, abs_tol=1e-12):
+        raise MacRunBlocked("development AUROC differs between trial and submission")
+    expected_sha = hashlib.sha256(canonical(candidate)).hexdigest()
+    if submission.get("candidate_sha256") != expected_sha:
+        raise MacRunBlocked("submitted candidate hash differs from frozen model selection")
+    return {
+        "trial_id": run_id,
+        "candidate_sha256": expected_sha,
+        "development_auroc": float(score),
+        "development_cost_seconds": round(float(seconds), 6),
     }
 
 
@@ -375,7 +416,7 @@ def main(argv: list[str] | None = None) -> int:
         "requested_model": args.model,
         "started_at_utc": started,
         "status": "blocked",
-        "model_calls_confirmed": 0,
+        "provider_request_count": "not_observable",
         "paid_provider_cost": "not_metered",
     }
     try:
