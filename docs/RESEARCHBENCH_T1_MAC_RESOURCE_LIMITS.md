@@ -1,70 +1,63 @@
-# T1 Mac resource-safe staged qualification
+# ResearchBench-T1: 95%-only whole-Mac memory guard and locked model
 
-## Intent and evidence boundary
+## User-approved execution settings
 
-This experimental extension protects a user's **active macOS workstation**
-while evaluating EpiPilot. The limits are intentionally conservative and
-triggered *before* model inference. A resource-blocked task is not a failed
-scientific hypothesis and does not justify another automatic model call.
-It is not a statistically valid comparison of four research policies.
+For the experimental macOS self-hosted runner, **only global physical memory
+usage is a resource hard limit**. The limit is **95% used**; on a 24-GiB Mac,
+the agent must leave at least **1.2 GiB available** at sampling points.
 
-## Default safety limits
+We have removed all of the former resource thresholds for:
+- Per-process or subprocess-tree RSS (no 1-GiB/1.5-GiB limits).
+- Expected peak RSS + extra 0.5-GiB free-memory reserve.
+- CPU utilization (no 80%-launch or 90%-sustained refusal).
+- Child process count.
 
-| Dimension | Bounded behavior |
-| --- | --- |
-| Scheduling | One T1 GitHub Actions run at a time via a single concurrency group, plus an exclusive local file lock |
-| Host free memory before run | **5%** of physical RAM (user-approved overall memory use up to **95%**) |
-| Prelaunch headroom | ALSO reserve the full permitted process-tree RSS (1 or 1.5 GiB) and an extra **0.5 GiB** *before* launching |
-| Host CPU at launch | Refuse if measured utilization exceeds **80%** |
-| Sustained CPU during run | Terminate monitored group after **4 consecutive samples above 90%** |
-| T1/Python training subtree RSS | Maximum **1024 MiB** (including descendants) |
-| Codex subtree RSS | Maximum **1536 MiB** (including descendants) |
-| Process count | Maximum **12** in each launched subprocess tree |
-| Scheduling priority | `nice -n 10` for child commands |
-| Numerical thread count | `OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, `VECLIB_MAXIMUM_THREADS=1`, `NUMEXPR_NUM_THREADS=1`; tokenizers parallelism off |
-| Model inference | Maximum one Codex CLI invocation, **150 seconds**, no retry/fallback |
-| CPU development evaluation | Frozen pilot T1 trial timeout **15 seconds**, at most 2 candidates per seed and no GPU |
-| Holdout | **Never** revealed or evaluated by the bounded Agent-runner mode |
-| Extra software | `psutil` optional `[t1]` dependency installed only in disposable `uv` environment |
-| Task evidence | Upload sanitized summary; never upload raw Codex output, auth state, private vault, or arbitrary system logs |
+We retain a single-job lock, fixed task timeouts, and the benchmark's
+frozen trial protocol so two research jobs cannot overlap and model usage
+cannot increase without a new explicit request. Low CPU scheduling priority
+and deterministic single-threaded ML trial settings are not independent
+resource-usage refusal thresholds.
 
-**Important:** psutil uses sampled RSS, not kernel memory cgroups. A
-subprocess can briefly exceed the cap between samples; OS-level global memory
-pressure and other users' processes are external to this monitor. macOS does
-not provide the same reliable RLIMIT_AS behavior as Linux cgroups. For
-high-stakes workloads use an isolated VM with enforced memory/CPU quotas.
-Monitor other non-EpiPilot jobs separately; this controller cannot prevent
-other tasks from saturating the Mac.
+## Whole-machine memory-only monitor
 
-On 2026-10-25 the user explicitly increased the *whole-Mac* physical-memory
-usage ceiling to **95%**. For a 24-GiB Mac this sets a 1.2-GiB runtime
-available-memory floor. Before launching Codex, the guard still reserves its
-full 1.5-GiB per-process-tree RSS cap **plus 0.5 GiB uncertainty**, requiring
-at least **3.2 GiB** available. Training requires 1.2 + 1 + 0.5 = **2.7 GiB**
-available before launching. The recent 5.84/5.87-GiB readings would pass this
-new threshold if other resources remain comparable, but the runner checks the
-**actual current readings again** before every subprocess; old measurements
-never authorize a new call. The `resource_probe` reports whether each
-type of launch can fit. User-approved 95% is an upper utilization ceiling,
-**not** a target to fill available memory.
+Before launching each subprocess, `psutil.virtual_memory()` is checked:
+`available_bytes / total_bytes >= 0.05`. During execution the monitor
+samples the same whole-machine metric every 0.35 seconds. If total memory
+usage rises above 95% while the child process group is running, the group
+is terminated. The sanitized receipt reports maximum sampled whole-Mac
+used percentage and minimum sampled free GiB. No process RSS is polled.
 
-A research step blocked by CPU, memory, missing psutil, unknown process,
-invalid telemetry, or time limit **must not be automatically rerun**. Keep
-the failure reason and cost separately; inspect the Mac resource pressure
-before scheduling a new, explicitly bounded step.
+This monitor is **best-effort and sampled**. Short overshoots may happen
+between samples, and `available` is an operating-system estimate rather
+than a kernel-enforced private memory quota. Do not rely on it to guarantee
+that swap pressure can never occur.
 
-## Small incremental strategy trial
+## Strict Codex model selection
 
-First dispatch **resource_probe**: no model request, no ML training. Only if
-headroom passes, dispatch at most **one** agent-only pilot seed `137`.
-Existing prior agent-only seed 42 and this additional seed are **not** a
-completed comparison: former sanitized artifacts omitted raw development
-metrics, there is no blind final test, and actual provider-request count/
-billing is not observable from the Codex CLI process.
+Every T1 Codex command MUST specify exactly `--model 'gpt-6-luna(max)'`
+in its argv. The T1 CLI rejects `default`, `gpt-6`, any other name, and
+omission is resolved only to the locked model. Remote-Control's request
+validator also requires that exact model identifier. If the Codex version
+or configured provider does not support this identifier, the experiment
+fails closed: **no fallback or substitution**.
 
-For meaningful comparisons, keep T1 work state and history isolated by
-arm, implement genuine policy compliance for memory-only and two EpiPilot
-routing arms (the existing Mac runner supports agent_only qualification
-only), record all failures, then run the sealed final evaluator under a
-different account/security boundary. Advance to that stage only after
-the resource-safe one-cell qualification is independently reviewed.
+The literal model identifier has not been verified against a published
+Codex model catalog; acceptance must be confirmed using an actual pinned
+Mac run. CC Switch or any upstream gateway could remap names without
+revealing the true backend. A CLI exit code alone therefore establishes
+only that the requested model name was accepted by the local Codex path,
+not independent proof of the underlying model identity.
+
+## Cost and research-validity boundaries
+
+A paid step permits at most ONE Codex CLI process, with its own bounded
+wall timeout and no automatic retry; provider-side API request count and
+billing remain unobservable. The workflow runs on the single private
+`epipilot-t1` Mac runner and exports sanitized metrics only. It does not
+expose the final holdout. The four-arm experiment remains incomplete; any
+results from previously executed Codex `default` runs are
+**not comparable as same-model results** to the locked-model protocol.
+
+No full 36-cell study is launched automatically. A failure in authentication,
+model availability, memory budget, result schema, or execution is a stop
+condition, not permission to downgrade the model.
