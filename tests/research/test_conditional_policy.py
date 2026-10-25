@@ -90,9 +90,7 @@ def test_inflight_work_preempts_optional_policy(tmp_path: Path) -> None:
         decision_rule="predeclared outcome",
         falsification_rule="result not reached",
         artifact_ref="results/metrics.json",
-        metric_rules=[
-            MetricRule(name="score", direction=MetricDirection.AT_LEAST, threshold=0.8)
-        ],
+        metric_rules=[MetricRule(name="score", direction=MetricDirection.AT_LEAST, threshold=0.8)],
         verifier_argv=["python", "-m", "json.tool", "{artifact}"],
         max_cost=1,
         status=ContractStatus.AWAITING_VERIFICATION,
