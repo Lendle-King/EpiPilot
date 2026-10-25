@@ -52,9 +52,7 @@ def test_exact_p_value_and_raw_pair_consistency(artifact: Path) -> None:
 
 
 @pytest.mark.parametrize("invalid", ["metric", "p_value", "duplicate", "nonbinary", "split"])
-def test_invalid_or_misleading_paired_result_is_rejected(
-    artifact: Path, invalid: str
-) -> None:
+def test_invalid_or_misleading_paired_result_is_rejected(artifact: Path, invalid: str) -> None:
     data = paired_result()
     metrics = data["metrics"]
     assert isinstance(metrics, dict)
@@ -86,7 +84,7 @@ def test_insufficient_pairs_and_duplicate_json_fields_fail(artifact: Path) -> No
         verify_paired_binary(artifact)
 
 
-def test_main_module_can_run_as_frozen_argv(artifact: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_module_can_run_as_frozen_argv(artifact: Path) -> None:
     import subprocess
 
     result = subprocess.run(
