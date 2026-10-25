@@ -379,17 +379,26 @@ def run(
         raise MacRunBlocked("Python 3.11+ is required")
     if mode == "resource_probe":
         sample = inspect_host()
+        codex_needed = round(sample.required_free_gib + 1.5 + 0.5, 2)
+        worker_needed = round(sample.required_free_gib + 1.0 + 0.5, 2)
         return {
             "model_calls": 0,
             "total_memory_gib": sample.total_gib,
             "available_memory_gib": sample.available_gib,
             "required_free_memory_gib": sample.required_free_gib,
             "cpu_percent": sample.cpu_percent,
+            "codex_launch_requires_gib": codex_needed,
+            "worker_launch_requires_gib": worker_needed,
+            "codex_launch_eligible": sample.available_gib >= codex_needed,
+            "worker_launch_eligible": sample.available_gib >= worker_needed,
             "resource_guard": "ready",
             "qualification": "No model/training subprocess run during this preflight",
         }
     if mode == "offline_smoke":
         return offline_smoke(root)
+    # Refuse before paid inference, T1 initialization, or a Codex auth process.
+    # 1.5 GiB worst-case Codex RSS + a 0.5 GiB uncertainty buffer are reserved.
+    inspect_host(planned_rss_mib=1536)
     return one_cell(root, provider, model, confirm, seed)
 
 
