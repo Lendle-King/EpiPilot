@@ -28,8 +28,8 @@ from epipilot.research.models import (
     ResearchGoal,
     ResearchState,
     RunLaunch,
-    RunReceipt,
     RunnerSpec,
+    RunReceipt,
     Unknown,
     research_id,
 )
