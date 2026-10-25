@@ -753,6 +753,7 @@ def test_onboarding_includes_report_artifacts_without_promoting_claims(root: Pat
     assert "artifacts/experiment-results.json" in state.onboarding[0].relevant_files
     assert ".env" not in state.onboarding[0].relevant_files
 
+
 def test_versioned_event_log_preserves_frozen_source_after_log_only_commit(root: Path) -> None:
     """Research event commits must not invalidate the code/config snapshot."""
     store = setup_store(root)
@@ -761,7 +762,9 @@ def test_versioned_event_log_preserves_frozen_source_after_log_only_commit(root:
     )
     subprocess.run(
         ["git", "commit", "-qm", "track scientific history"],
-        cwd=root, check=True, capture_output=True,
+        cwd=root,
+        check=True,
+        capture_output=True,
     )
     contract = register(store, root)
     # Pre-registration writes to the tracked event file without changing source.
@@ -772,7 +775,9 @@ def test_versioned_event_log_preserves_frozen_source_after_log_only_commit(root:
     )
     subprocess.run(
         ["git", "commit", "-qm", "record preregistration"],
-        cwd=root, check=True, capture_output=True,
+        cwd=root,
+        check=True,
+        capture_output=True,
     )
     assert require_clean_revision(root, contract.git_revision)
     observe(store, root)
@@ -783,12 +788,12 @@ def test_frozen_source_rejects_committed_code_change_even_with_versioned_log(roo
     store = setup_store(root)
     contract = register(store, root)
     (root / "README.md").write_text("Changed actual research code/docs", encoding="utf-8")
-    subprocess.run(
-        ["git", "add", "README.md"], cwd=root, check=True, capture_output=True
-    )
+    subprocess.run(["git", "add", "README.md"], cwd=root, check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-qm", "modify pinned source"],
-        cwd=root, check=True, capture_output=True,
+        cwd=root,
+        check=True,
+        capture_output=True,
     )
     with pytest.raises(ValueError, match="source differs"):
         require_clean_revision(root, contract.git_revision)
@@ -828,8 +833,13 @@ def test_counterevidence_reopens_resolved_unknown_and_restores_research_frontier
     )
     register(store, root, contract_id="PRE-2", proposal_id="P2")
     observe(
-        store, root, score=0.4, outcome="no_gain",
-        contract_id="PRE-2", experiment_id="EXP-2", evidence_id="EV-2",
+        store,
+        root,
+        score=0.4,
+        outcome="no_gain",
+        contract_id="PRE-2",
+        experiment_id="EXP-2",
+        evidence_id="EV-2",
     )
     assert validate(root, "EXP-2") == 0
     reflect(store, verdict="refuted", evidence_id="EV-2")

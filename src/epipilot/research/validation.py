@@ -57,8 +57,16 @@ def _source_differs(root: Path, *revisions: str) -> bool:
     try:
         result = subprocess.run(
             [
-                "git", "-C", str(root), "diff", "--quiet", "--no-ext-diff",
-                *revisions, "--", ".", ":(exclude).research/**",
+                "git",
+                "-C",
+                str(root),
+                "diff",
+                "--quiet",
+                "--no-ext-diff",
+                *revisions,
+                "--",
+                ".",
+                ":(exclude).research/**",
             ],
             check=False,
             capture_output=True,
@@ -83,9 +91,7 @@ def require_clean_revision(root: Path, expected: str | None = None) -> str:
         raise ValueError("research repository requires a valid committed Git HEAD")
     if _source_differs(root, "HEAD"):
         raise ValueError("commit tracked code/config changes before pre-registration or validation")
-    if expected is not None and revision != expected and _source_differs(
-        root, expected, revision
-    ):
+    if expected is not None and revision != expected and _source_differs(root, expected, revision):
         raise ValueError("Git source differs from the frozen experiment revision")
     return revision
 
