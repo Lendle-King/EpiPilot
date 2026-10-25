@@ -106,6 +106,40 @@ Replace PRE-ID/EXP-ID/EV-ID with actual CLI-returned IDs. Commands such as
 `python -m json.tool` verify only syntactic JSON and **must be replaced**
 with domain-appropriate checks for a defensible scientific claim.
 
+## Optional controlled-run receipt
+
+For research steps that should bind their metric file to a real EpiPilot-invoked
+process, commit a bounded JSON runner specification alongside your code:
+
+```json
+{"argv": ["python", "scripts/train.py", "--config", "configs/rank.yaml"], "timeout_seconds": 3600}
+```
+
+Pass `--runner-spec runner.json` **before** `--verifier` in
+`epi preregister` (the verifier consumes the remaining argv), then:
+
+```bash
+epi start --contract PRE-ID
+epi execute --contract PRE-ID
+epi record --contract PRE-ID --summary "controlled run" --outcome improved --cost 1
+epi verify --experiment EXP-ID
+```
+
+The host Codex/Kimi session invokes the CLI; EpiPilot does not launch another
+research agent. `execute` runs the **frozen** argv with `shell=False` and
+records a run-start event before launching, a run receipt afterward, wall
+time, exit code, combined output hash and metric-artifact hash. The metrics
+path must not exist before launch, and its bytes must match the receipt
+during record and verify. An interrupted start with no receipt is reported by
+`epi doctor`; it cannot be replayed blindly. Use explicit recovery/abort
+with actual cost. This is opt-in: existing agent-managed executions continue
+to work without a runner specification.
+
+The receipt establishes what this CLI process attempted and which output it
+observed; it is **not** tamperproof attestation, an isolated sandbox,
+statistical validity, or a guarantee about external remote jobs. Keep the
+existing coding-agent approvals and use a domain-specific verifier.
+
 ## Evidence and authority limitations
 
 These are three distinct layers:

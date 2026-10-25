@@ -98,10 +98,13 @@ def require_clean_revision(root: Path, expected: str | None = None) -> str:
 
 def check_fingerprints(root: Path, contract: ExperimentContract) -> None:
     """Reject changed local config/data, including deletion of a previously present file."""
-    for ref, old_digest in (
+    references = [
         (contract.config_ref, contract.config_sha256),
         (contract.dataset_ref, contract.dataset_sha256),
-    ):
+    ]
+    if contract.runner_spec_ref is not None:
+        references.append((contract.runner_spec_ref, contract.runner_spec_sha256))
+    for ref, old_digest in references:
         if optional_fingerprint(root, ref) != old_digest:
             raise ValueError("frozen config or dataset has changed since pre-registration")
 

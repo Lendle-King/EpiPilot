@@ -13,7 +13,7 @@ from pathlib import PurePosixPath
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from epipilot.core.models import utc_now
 from epipilot.research.decision_models import DecisionEstimate, DecisionForecast, DecisionOutcome
@@ -133,6 +133,48 @@ class MetricRule(Record):
         )
 
 
+class RunnerSpec(Record):
+    """Optional exact experiment command controlled by the same coding-agent session."""
+
+    argv: list[str] = Field(min_length=1)
+    timeout_seconds: int = Field(default=3600, ge=1, le=86400)
+
+    @field_validator("argv")
+    @classmethod
+    def argv_nonempty(cls, value: list[str]) -> list[str]:
+        if any(not item.strip() for item in value):
+            raise ValueError("runner argv must contain only nonblank strings")
+        return value
+
+
+class RunLaunch(Record):
+    id: str = Field(min_length=1)
+    contract_id: str = Field(min_length=1)
+    started_at: AwareDatetime
+
+
+class RunReceipt(Record):
+    """Actual CLI-controlled process result, not an independent scientific conclusion."""
+
+    id: str = Field(min_length=1)
+    contract_id: str = Field(min_length=1)
+    source_revision: str = Field(pattern=r"^[a-f0-9]{40}$")
+    argv: list[str] = Field(min_length=1)
+    started_at: AwareDatetime
+    finished_at: AwareDatetime
+    wall_seconds: float = Field(ge=0, allow_inf_nan=False)
+    exit_code: int
+    timed_out: bool = False
+    output_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    artifact_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="after")
+    def reasonable_interval(self) -> RunReceipt:
+        if self.finished_at < self.started_at:
+            raise ValueError("run finished before it started")
+        return self
+
+
 class ExperimentContract(Record):
     """Frozen before execution; a changed protocol must create a new contract."""
 
@@ -150,6 +192,10 @@ class ExperimentContract(Record):
     artifact_ref: str = Field(min_length=1)
     metric_rules: list[MetricRule] = Field(min_length=1)
     verifier_argv: list[str] = Field(min_length=1)
+    runner_spec_ref: str | None = None
+    runner_spec_sha256: str | None = None
+    runner_argv: list[str] = Field(default_factory=list)
+    runner_timeout_seconds: int = Field(default=3600, ge=1, le=86400)
     max_cost: float = Field(gt=0, allow_inf_nan=False)
     status: ContractStatus = ContractStatus.PREREGISTERED
     aborted_cost: float = Field(default=0, ge=0, allow_inf_nan=False)
@@ -180,6 +226,14 @@ class ExperimentContract(Record):
             raise ValueError("verifier arguments cannot be blank")
         if not all(item.strip() for item in self.controls):
             raise ValueError("controls cannot be blank")
+        if any(not item.strip() for item in self.runner_argv):
+            raise ValueError("runner argv cannot contain blank entries")
+        if self.runner_spec_ref is not None and (
+            not self.runner_spec_sha256 or not self.runner_argv
+        ):
+            raise ValueError("runner spec requires frozen digest and argv")
+        if self.runner_argv and not self.runner_spec_ref:
+            raise ValueError("frozen runner argv requires a runner spec reference")
         return self
 
 
@@ -196,6 +250,7 @@ class Experiment(Record):
     metrics: dict[str, float] = Field(default_factory=dict)
     artifact_refs: list[str] = Field(default_factory=list)
     run_command: str = ""
+    run_receipt_id: str | None = None
     evidence_id: str = Field(min_length=1)
     contract_id: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
@@ -240,6 +295,8 @@ class ResearchState(Record):
     claims: dict[str, Claim] = Field(default_factory=dict)
     proposals: dict[str, Proposal] = Field(default_factory=dict)
     contracts: dict[str, ExperimentContract] = Field(default_factory=dict)
+    run_launches: dict[str, RunLaunch] = Field(default_factory=dict)
+    run_receipts: dict[str, RunReceipt] = Field(default_factory=dict)
     decision_estimates: dict[str, DecisionEstimate] = Field(default_factory=dict)
     decision_forecasts: dict[str, DecisionForecast] = Field(default_factory=dict)
     decision_outcomes: dict[str, DecisionOutcome] = Field(default_factory=dict)
