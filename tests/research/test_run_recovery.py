@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
-
+from test_research_plugin import setup_store
 from test_run_receipt import cli, prepare
 
 from epipilot.core.models import utc_now
