@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -69,12 +70,30 @@ def test_one_cell_never_executes_model_proposed_shell(
     monkeypatch.setattr(mac, "_codex", lambda: "/opt/homebrew/bin/codex")
     monkeypatch.setattr(mac, "_check_chatgpt_login", lambda binary: True)
 
+    candidate_sha = hashlib.sha256(
+        mac.canonical(
+            {"model": "logistic", "feature_mode": "all", "C": 1.0, "class_weight": "none"}
+        )
+    ).hexdigest()
+
     def fake_t1(*args: str, timeout: int = 0) -> dict[str, object]:
         stages.append(args[0])
         if args[0] == "trial":
-            return {"exit_code": 0, "charged_seconds": 2.0}
+            return {
+                "id": "trial-0001",
+                "exit_code": 0,
+                "seconds": 2.0,
+                "dev_auroc": 0.87654,
+            }
         if args[0] == "submit":
-            return {"id": "selected"}
+            return {
+                "run_id": "trial-0001",
+                "arm": "agent_only",
+                "dataset": "wdbc",
+                "seed": 42,
+                "dev_auroc": 0.87654,
+                "candidate_sha256": candidate_sha,
+            }
         return {}
 
     def fake_run(argv: list[str], **kwargs: object) -> str:
@@ -105,6 +124,11 @@ def test_one_cell_never_executes_model_proposed_shell(
     assert "shell" not in kwargs
     assert result["model_calls"] == 1
     assert result["trial_completed"] is True
+    assert result["model_output_format"] == "strict_json"
+    assert result["development_auroc"] == 0.87654
+    assert result["development_cost_seconds"] == 2.0
+    assert result["trial_id"] == "trial-0001"
+    assert result["candidate_sha256"] == candidate_sha
 
 
 def test_bad_model_reply_cannot_trigger_trial_or_retry(
@@ -158,7 +182,8 @@ def test_denied_mode_records_sanitized_receipt_without_paid_agent(
     )
     data = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     assert data["status"] == "blocked"
-    assert data["model_calls_confirmed"] == 0
+    assert data["codex_process_attempts"] == 0
+    assert data["provider_request_count"] == "not_observable"
     assert "RUN_ONE_CELL" in data["safe_reason"]
 
 
@@ -199,3 +224,39 @@ def test_candidate_parser_rejects_nonfinite_numeric_parameters() -> None:
         mac.parse_frozen_candidate_reply(
             '{"model":"logistic","feature_mode":"all","C":NaN,"class_weight":"none"}'
         )
+
+
+def test_trial_and_submission_metrics_fail_closed_on_inconsistent_provenance() -> None:
+    candidate = {"model": "logistic", "feature_mode": "all", "C": 1.0, "class_weight": "none"}
+    frozen_hash = hashlib.sha256(mac.canonical(candidate)).hexdigest()
+    trial = {
+        "id": "trial-0001",
+        "exit_code": 0,
+        "seconds": 1.2,
+        "dev_auroc": 0.824,
+    }
+    submission = {
+        "arm": "agent_only",
+        "dataset": "wdbc",
+        "seed": 42,
+        "run_id": "trial-0001",
+        "candidate_sha256": frozen_hash,
+        "dev_auroc": 0.824,
+    }
+    report = mac.validated_development_metrics(trial, submission, candidate)
+    assert report["development_cost_seconds"] == 1.2
+    assert report["development_auroc"] == 0.824
+    assert report["candidate_sha256"] == frozen_hash
+    for key, bad_value in (
+        ("run_id", "trial-9999"),
+        ("candidate_sha256", "0" * 64),
+        ("dev_auroc", 0.98),
+        ("seed", 99),
+    ):
+        corrupted = {**submission, key: bad_value}
+        with pytest.raises(mac.MacRunBlocked):
+            mac.validated_development_metrics(trial, corrupted, candidate)
+    for key, bad_value in (("seconds", -1), ("dev_auroc", float("nan"))):
+        corrupted = {**trial, key: bad_value}
+        with pytest.raises(mac.MacRunBlocked):
+            mac.validated_development_metrics(corrupted, submission, candidate)
