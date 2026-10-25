@@ -122,7 +122,8 @@ def test_one_cell_never_executes_model_proposed_shell(
     assert len(model_calls) == 1
     argv, kwargs = model_calls[0]
     assert argv[0].endswith("codex")
-    assert argv[1:4] == ["exec", "--sandbox", "read-only"]
+    assert argv[1:4] == ["exec", "--model", mac.REQUIRED_MODEL]
+    assert argv[argv.index("--sandbox") + 1] == "read-only"
     assert argv[argv.index("--model") + 1] == mac.REQUIRED_MODEL
     assert kwargs["timeout"] == mac.MODEL_TIMEOUT
     assert "shell" not in kwargs
