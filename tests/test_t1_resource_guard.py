@@ -35,7 +35,9 @@ def test_invalid_limits_fail_closed() -> None:
         guard.guarded_run([sys.executable, "-c", "print('x')"], timeout=3600)
 
 
-def test_exclusive_lock_blocks_second_research_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_exclusive_lock_blocks_second_research_task(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     with guard.single_runner_lock():
         with pytest.raises(guard.ResourceRefusal, match="another EpiPilot"):
@@ -127,7 +129,9 @@ def test_overbudget_process_is_terminated_without_retry(
     assert marker.exists()
 
 
-def test_unavailable_monitoring_refuses_to_start_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unavailable_monitoring_refuses_to_start_subprocess(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         guard,
         "_psutil",
