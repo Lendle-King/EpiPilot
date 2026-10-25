@@ -136,21 +136,15 @@ def _terminate_group(process: subprocess.Popen[bytes], psutil: object) -> None:
     except psutil.Error:
         descendants = []
     for child in reversed(descendants):
-        try:
+        with contextlib.suppress(psutil.Error):
             child.terminate()
-        except psutil.Error:
-            pass
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
     try:
         process.wait(timeout=2)
     except subprocess.TimeoutExpired:
-        try:
+        with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
         process.wait(timeout=2)
     for child in descendants:
         try:
@@ -215,10 +209,12 @@ def guarded_run(
                     descendants = root.children(recursive=True)
                     processes = [root, *descendants]
                     memory = sum(p.memory_info().rss for p in processes) / (1024**2)
-                except (psutil.NoSuchProcess, psutil.ZombieProcess):
+                except (psutil.NoSuchProcess, psutil.ZombieProcess) as exc:
                     if process.poll() is not None:
                         break
-                    raise ResourceRefusal("lost monitoring of the running research process")
+                    raise ResourceRefusal(
+                        "lost monitoring of the running research process"
+                    ) from exc
                 except psutil.AccessDenied as exc:
                     raise ResourceRefusal("cannot measure process memory safely") from exc
                 peak_rss = max(peak_rss, memory)
