@@ -148,7 +148,7 @@ class RunnerSpec(Record):
 
 
 class RunLaunch(Record):
-    id: str = Field(min_length=1)
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     contract_id: str = Field(min_length=1)
     started_at: AwareDatetime
 
@@ -156,7 +156,7 @@ class RunLaunch(Record):
 class RunReceipt(Record):
     """Actual CLI-controlled process result, not an independent scientific conclusion."""
 
-    id: str = Field(min_length=1)
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     contract_id: str = Field(min_length=1)
     source_revision: str = Field(pattern=r"^[a-f0-9]{40}$")
     argv: list[str] = Field(min_length=1)

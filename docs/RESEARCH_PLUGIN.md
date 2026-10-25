@@ -130,9 +130,15 @@ research agent. `execute` runs the **frozen** argv with `shell=False` and
 records a run-start event before launching, a run receipt afterward, wall
 time, exit code, combined output hash and metric-artifact hash. The metrics
 path must not exist before launch, and its bytes must match the receipt
-during record and verify. An interrupted start with no receipt is reported by
-`epi doctor`; it cannot be replayed blindly. Use explicit recovery/abort
-with actual cost. This is opt-in: existing agent-managed executions continue
+during record and verify. An interrupted start with no completed receipt is reported by
+`epi doctor` / `epi iterate` and cannot be replayed blindly. A CLI-controlled
+run writes its finished receipt first to `.research/receipts/RUN-ID.json` and
+then to the event log. If the CLI crashes in that narrow window, restart the
+coding agent and run `epi reconcile --contract PRE-ID`. It checks the sidecar's
+frozen identity, command, and artifact fingerprint before recording the receipt
+event; repeated reconciliation does not relaunch a process. If no complete
+sidecar exists, inspect the actual process/job and record an explicit abort
+with incurred cost rather than claiming recovery. This is opt-in: existing agent-managed executions continue
 to work without a runner specification.
 
 The receipt establishes what this CLI process attempted and which output it

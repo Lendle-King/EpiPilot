@@ -35,7 +35,7 @@ from epipilot.research.models import (
 )
 from epipilot.research.onboarding import inspect_repository
 from epipilot.research.planner import rank_proposals, research_phase
-from epipilot.research.runner import execute_frozen_runner
+from epipilot.research.runner import execute_frozen_runner, recover_receipt
 from epipilot.research.scout_core import frontier_fingerprint, validate_source
 from epipilot.research.scout_models import (
     ScoutCandidateStatus,
@@ -172,6 +172,11 @@ def _parser() -> argparse.ArgumentParser:
         "execute", help="run a frozen argv locally and record a process/artifact receipt"
     )
     execute.add_argument("--contract", required=True)
+
+    reconcile = sub.add_parser(
+        "reconcile", help="adopt a completed controlled-run sidecar after interruption"
+    )
+    reconcile.add_argument("--contract", required=True)
 
     record = sub.add_parser("record", help="record a real observation from a started experiment")
     record.add_argument("--contract", required=True)
@@ -342,6 +347,25 @@ def _next_action(state: ResearchState) -> dict[str, object]:
             "guidance": "Submit Scout results or report failure with actual cost.",
         }
 
+    for contract in state.contracts.values():
+        if contract.status is not ContractStatus.RUNNING or not contract.runner_argv:
+            continue
+        if contract.id in state.run_launches:
+            if contract.id not in state.run_receipts:
+                return {
+                    "status": "runner_unreconciled",
+                    "contract": contract.model_dump(mode="json"),
+                    "guidance": (
+                        "Do NOT relaunch. First inspect the existing process; "
+                        "then use epi reconcile if a completed sidecar exists, "
+                        "or epi abort with actual incurred cost."
+                    ),
+                }
+            return {
+                "status": "runner_finished",
+                "contract": contract.model_dump(mode="json"),
+                "guidance": "Record actual result and cost, then verify frozen evidence.",
+            }
     for status, label, guidance in (
         (ContractStatus.RUNNING, "running", "Resume or abort the in-flight experiment."),
         (ContractStatus.AWAITING_VERIFICATION, "verify", "Run epi verify on its observation."),
@@ -770,6 +794,39 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             "next": f"epi record --contract {args.contract} --summary ... --outcome ... "
             "--cost ... --metric name=value",
         }
+    if command == "reconcile":
+        contract = state.contracts.get(args.contract)
+        if contract is None or not contract.runner_argv:
+            raise ValueError("reconciliation requires a controlled-run contract")
+        launch = state.run_launches.get(contract.id)
+        if launch is None:
+            raise ValueError("no controlled runner has started for this contract")
+        if contract.id in state.run_receipts:
+            return {
+                "status": "already_recorded",
+                "run_receipt_id": state.run_receipts[contract.id].id,
+            }
+        if contract.status is not ContractStatus.RUNNING:
+            raise ValueError("only a running controlled contract can be reconciled")
+        require_clean_revision(root, contract.git_revision)
+        check_fingerprints(root, contract)
+        finished_receipt = recover_receipt(root, contract, launch)
+        if finished_receipt is None:
+            return {
+                "status": "unreconciled",
+                "contract": contract.id,
+                "guidance": (
+                    "No completed receipt exists. Inspect the actual process or remote job. "
+                    "Do not relaunch this contract; abort with real incurred cost if lost."
+                ),
+            }
+        store.add("runner_finished", finished_receipt)
+        return {
+            "status": "recovered",
+            "run_receipt_id": finished_receipt.id,
+            "artifact_sha256": finished_receipt.artifact_sha256,
+            "next": "Use epi record and epi verify after checking actual experiment outcome",
+        }
     if command == "execute":
         contract = state.contracts.get(args.contract)
         if contract is None or contract.status is not ContractStatus.RUNNING:
@@ -915,6 +972,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "verify" and isinstance(result, dict) and not result["check_passed"]:
             return 2
         if args.command == "execute" and isinstance(result, dict) and result["exit_code"] != 0:
+            return 2
+        if (
+            args.command == "reconcile"
+            and isinstance(result, dict)
+            and result["status"] == "unreconciled"
+        ):
             return 2
     except (ValueError, RuntimeError, OSError, KeyError, ValidationError) as exc:
         print(f"epi: {exc}", file=sys.stderr)
