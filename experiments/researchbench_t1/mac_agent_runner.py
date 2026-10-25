@@ -104,9 +104,7 @@ def _run(
     argv: list[str], *, timeout: int, cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> str:
     """Run frozen argv without shell interpolation or raw tool-output logging."""
-    process = guarded_run(
-        argv, cwd=cwd, env=env, timeout=timeout, max_rss_mib=1024
-    )
+    process = guarded_run(argv, cwd=cwd, env=env, timeout=timeout, max_rss_mib=1024)
     if process.returncode != 0:
         raise MacRunBlocked("a local command failed; inspect the runner configuration")
     if len(process.stdout) > 200_000:
