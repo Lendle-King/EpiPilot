@@ -409,7 +409,10 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
                 "status": "decision_value_stop",
                 "selection_policy": "conditional",
                 "decision_score": best.model_dump(mode="json"),
-                "guidance": "No positive expected net decision value; review forecast or stop spending.",
+                "guidance": (
+                    "No positive expected net decision value; "
+                    "review forecast or stop spending."
+                ),
             }
         return {
             "status": "ready_for_agent",
