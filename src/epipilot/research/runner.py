@@ -35,8 +35,11 @@ def _persist_receipt(root: Path, receipt: RunReceipt) -> None:
     temp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=destination.parent,
-            prefix=".partial-receipt-", delete=False,
+            mode="w",
+            encoding="utf-8",
+            dir=destination.parent,
+            prefix=".partial-receipt-",
+            delete=False,
         ) as output:
             temp_path = Path(output.name)
             output.write(receipt.model_dump_json())

@@ -802,7 +802,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         if launch is None:
             raise ValueError("no controlled runner has started for this contract")
         if contract.id in state.run_receipts:
-            return {"status": "already_recorded", "run_receipt_id": state.run_receipts[contract.id].id}
+            return {
+                "status": "already_recorded",
+                "run_receipt_id": state.run_receipts[contract.id].id,
+            }
         if contract.status is not ContractStatus.RUNNING:
             raise ValueError("only a running controlled contract can be reconciled")
         require_clean_revision(root, contract.git_revision)

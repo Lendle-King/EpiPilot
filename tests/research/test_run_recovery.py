@@ -27,18 +27,21 @@ def test_reconcile_finished_sidecar_without_rerunning_process(root: Path) -> Non
     assert state.run_receipts[contract_id] == receipt
     assert cli(root, "reconcile", "--contract", contract_id) == 0
     assert cli(root, "execute", "--contract", contract_id) == 2
-    assert cli(
-        root,
-        "record",
-        "--contract",
-        contract_id,
-        "--summary",
-        "Recovered actual controlled output",
-        "--outcome",
-        "improved",
-        "--cost",
-        "0.5",
-    ) == 0
+    assert (
+        cli(
+            root,
+            "record",
+            "--contract",
+            contract_id,
+            "--summary",
+            "Recovered actual controlled output",
+            "--outcome",
+            "improved",
+            "--cost",
+            "0.5",
+        )
+        == 0
+    )
     exp_id = next(iter(store.load()[0].experiments))
     assert cli(root, "verify", "--experiment", exp_id) == 0
 
@@ -49,9 +52,7 @@ def test_reconcile_rejects_changed_artifact_without_promoting_receipt(root: Path
     launch = RunLaunch(id="RUN-invalid-artifact", contract_id=contract_id, started_at=utc_now())
     store.add("runner_started", launch)
     execute_frozen_runner(root, contract, launch)
-    (root / contract.artifact_ref).write_text(
-        '{"metrics":{"score":0.98}}', encoding="utf-8"
-    )
+    (root / contract.artifact_ref).write_text('{"metrics":{"score":0.98}}', encoding="utf-8")
     assert cli(root, "reconcile", "--contract", contract_id) == 2
     assert not store.load()[0].run_receipts
 
