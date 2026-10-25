@@ -167,6 +167,7 @@ def guarded_run(
     env: dict[str, str] | None = None,
     timeout: int,
     max_rss_mib: int = 1024,
+    started_marker: Path | None = None,
 ) -> GuardedResult:
     """Run fixed argv at low OS priority; sample its process tree and host pressure."""
     if not argv or timeout < 1 or timeout > 240:
@@ -203,6 +204,8 @@ def guarded_run(
         except OSError as exc:
             raise ResourceRefusal("could not launch bounded research subprocess") from exc
         try:
+            if started_marker is not None:
+                started_marker.write_text(str(time.time()), encoding="utf-8")
             while process.poll() is None:
                 elapsed = time.monotonic() - began
                 if elapsed > timeout:
@@ -221,8 +224,9 @@ def guarded_run(
                 peak_rss = max(peak_rss, memory)
                 if len(processes) > policy.max_processes or memory > policy.max_rss_mib:
                     raise ResourceRefusal("research subprocess exceeded its process/RSS cap")
-                available = float(psutil.virtual_memory().available) / (1024**3)
-                total = float(psutil.virtual_memory().total) / (1024**3)
+                host_memory = psutil.virtual_memory()
+                available = float(host_memory.available) / (1024**3)
+                total = float(host_memory.total) / (1024**3)
                 if available < max(policy.min_free_gib, total * policy.min_free_fraction):
                     raise ResourceRefusal("Mac available memory dropped below safety reserve")
                 busy = float(psutil.cpu_percent(interval=None))
@@ -236,9 +240,9 @@ def guarded_run(
         stdout.seek(0)
         stderr.seek(0)
         out_bytes = stdout.read(200_001)
-        err_bytes = stderr.read(8_193)
-        if len(out_bytes) > 200_000 or len(err_bytes) > 8_192:
-            raise ResourceRefusal("research subprocess generated excessive logs")
+        err_bytes = stderr.read(8_192)
+        if len(out_bytes) > 200_000:
+            raise ResourceRefusal("research subprocess generated excessive standard output")
         return GuardedResult(
             returncode=int(process.returncode),
             stdout=out_bytes.decode("utf-8", errors="replace"),
