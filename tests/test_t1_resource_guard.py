@@ -18,7 +18,8 @@ def test_headroom_requires_available_ram_and_idle_cpu() -> None:
     safe = guard.assess_headroom(gib(24), gib(14), 8.0)
     assert safe.total_gib == 24
     assert safe.available_gib == 14
-    assert safe.required_free_gib >= 4.0
+    assert safe.required_free_gib == 1.2
+    assert guard.assess_headroom(gib(24), gib(1.4), 8.0).required_free_gib == 1.2
     with pytest.raises(guard.ResourceRefusal, match="insufficient free memory"):
         guard.assess_headroom(gib(24), gib(1.0), 10)
     with pytest.raises(guard.ResourceRefusal, match="already busy"):
@@ -31,6 +32,9 @@ def test_invalid_limits_fail_closed() -> None:
     for rss_mib in (1, 4096):
         with pytest.raises(ValueError):
             guard.GuardPolicy(max_rss_mib=rss_mib).validate()
+    for fraction in (0.01, 0.049, 0.6):
+        with pytest.raises(ValueError):
+            guard.GuardPolicy(min_free_fraction=fraction).validate()
     with pytest.raises(ValueError, match="unbounded"):
         guard.guarded_run([sys.executable, "-c", "print('x')"], timeout=3600)
 
@@ -143,13 +147,15 @@ def test_unavailable_monitoring_refuses_to_start_subprocess(
         guard.guarded_run([sys.executable, "-c", "print('should not run')"], timeout=3)
 
 
-def test_model_worst_case_reserve_blocks_busy_mac_before_launch(
+def test_95_percent_ram_limit_retains_peak_memory_reservation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class SnapshotOnly:
+        available = gib(5.84)
+
         @staticmethod
         def virtual_memory() -> SimpleNamespace:
-            return SimpleNamespace(total=gib(24), available=gib(5.84))
+            return SimpleNamespace(total=gib(24), available=SnapshotOnly.available)
 
         @staticmethod
         def cpu_percent(interval: float | None = None) -> float:
@@ -158,7 +164,13 @@ def test_model_worst_case_reserve_blocks_busy_mac_before_launch(
     monkeypatch.setattr(guard, "_psutil", lambda: SnapshotOnly)
     sample = guard.inspect_host()
     assert sample.available_gib == 5.84
-    assert sample.required_free_gib == 4.32
+    assert sample.required_free_gib == 1.2
+    assert guard.inspect_host(planned_rss_mib=1536).available_gib == 5.84
+
+    # Total usage can approach 95%, but new Codex needs its full
+    # 1.5 GiB RSS allowance plus an additional 0.5 GiB prelaunch buffer.
+    SnapshotOnly.available = gib(3.0)
+    assert guard.inspect_host().available_gib == 3.0
     with pytest.raises(guard.ResourceRefusal, match="lacks headroom"):
         guard.inspect_host(planned_rss_mib=1536)
     with pytest.raises(guard.ResourceRefusal, match="lacks headroom"):
@@ -167,3 +179,6 @@ def test_model_worst_case_reserve_blocks_busy_mac_before_launch(
             timeout=3,
             max_rss_mib=1536,
         )
+    SnapshotOnly.available = gib(1.0)
+    with pytest.raises(guard.ResourceRefusal, match="insufficient free memory"):
+        guard.inspect_host()
