@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from experiments.researchbench_t1.t1 import (
-    BenchmarkError,
     STAGES,
+    BenchmarkError,
     add_memory,
     finalize,
     ledger,
