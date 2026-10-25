@@ -67,18 +67,25 @@ Its three modes are:
 - `offline_smoke`: run this branch's existing frozen WDBC smoke on the Mac;
   **zero** model calls.
 - `pilot_one_cell`: only after explicit `RUN_ONE_CELL` confirmation, issue
-  **one** Codex `exec` call for the `agent_only / wdbc / seed 42` cell, require
-  an allowlisted JSON candidate, run one real development trial, and submit
-  the best candidate. This cannot support a four-policy efficiency claim.
+  **one** Codex `exec --model 'gpt-6-luna(max)'` call for one frozen
+  `agent_only / wdbc / seed 42 or 137` cell, require an allowlisted
+  candidate, run one real development trial, and submit it.
+  This cannot support a four-policy efficiency claim.
+- `resource_probe`: no model call; inspect **whole-Mac physical memory only**,
+  declining requests that would exceed 95% used memory.
 
 The source is pinned to an exact EpiPilot commit in the remote workflow so
 a new public PR commit cannot change what executes on the trusted Mac.
 Codex/CC Switch authentication is configured on the Mac itself; no secrets
-are copied to GitHub. `gpt-6-luna(max)` is an unverified local model selector
-and should never silently fall back to another model. A call that fails after
-it starts may still consume quota or money; the runner records an attempted
-call and never retries it automatically. No third-party billing cap can be
-enforced by this Python benchmark; use provider-side limits.
+are copied to GitHub. **Only the exact `gpt-6-luna(max)` identifier is allowed**
+in this T1 pilot. The local Codex CLI receives it explicitly via `--model`;
+`default` and alternate names are rejected, and an unsupported name is a
+hard stop, never a reason to fall back. The underlying provider identity is
+not independently attested by this CLI argument. Whole-Mac physical memory
+is the only resource usage limit (95% used); task locking and timeouts remain
+for correctness and spending safety. See `RESEARCHBENCH_T1_MAC_RESOURCE_LIMITS.md`.
+A call that fails after it starts may still consume quota or money; the
+runner never automatically retries or substitutes a different model.
 
 Only the low-cost qualification can be performed on an ordinary same-user
 runner account. A formal blind holdout must remain inaccessible to the
