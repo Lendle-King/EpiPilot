@@ -13,7 +13,7 @@ It is not a statistically valid comparison of four research policies.
 | Dimension | Bounded behavior |
 | --- | --- |
 | Scheduling | One T1 GitHub Actions run at a time via a single concurrency group, plus an exclusive local file lock |
-| Host free memory before run | At least the larger of 2 GiB or **18%** of total physical RAM |
+| Host free memory before run | **5%** of physical RAM (user-approved overall memory use up to **95%**) |
 | Prelaunch headroom | ALSO reserve the full permitted process-tree RSS (1 or 1.5 GiB) and an extra **0.5 GiB** *before* launching |
 | Host CPU at launch | Refuse if measured utilization exceeds **80%** |
 | Sustained CPU during run | Terminate monitored group after **4 consecutive samples above 90%** |
@@ -36,12 +36,17 @@ high-stakes workloads use an isolated VM with enforced memory/CPU quotas.
 Monitor other non-EpiPilot jobs separately; this controller cannot prevent
 other tasks from saturating the Mac.
 
-For example, the 24-GiB Mac previously reported approximately 5.84 GiB
-available while the system safety reserve was 4.32 GiB. A 1.5-GiB Codex
-subprocess plus 0.5-GiB uncertainty requires **6.32 GiB** free at launch;
-the orchestrator must refuse the paid step at that pressure level. The
-resource_probe reports both its baseline safety status and whether a
-worst-case model/worker launch can fit.
+On 2026-10-25 the user explicitly increased the *whole-Mac* physical-memory
+usage ceiling to **95%**. For a 24-GiB Mac this sets a 1.2-GiB runtime
+available-memory floor. Before launching Codex, the guard still reserves its
+full 1.5-GiB per-process-tree RSS cap **plus 0.5 GiB uncertainty**, requiring
+at least **3.2 GiB** available. Training requires 1.2 + 1 + 0.5 = **2.7 GiB**
+available before launching. The recent 5.84/5.87-GiB readings would pass this
+new threshold if other resources remain comparable, but the runner checks the
+**actual current readings again** before every subprocess; old measurements
+never authorize a new call. The `resource_probe` reports whether each
+type of launch can fit. User-approved 95% is an upper utilization ceiling,
+**not** a target to fill available memory.
 
 A research step blocked by CPU, memory, missing psutil, unknown process,
 invalid telemetry, or time limit **must not be automatically rerun**. Keep
