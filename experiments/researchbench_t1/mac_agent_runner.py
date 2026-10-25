@@ -280,7 +280,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
         "42",
         timeout=20,
     )
-    result = {
+    return {
         "model_calls": 1,
         "model_attempt_wall_seconds": round(elapsed, 3),
         "backend": provider,
@@ -294,7 +294,6 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
             "no four-policy comparison, no provider billing attestation"
         ),
     }
-    return result
 
 
 def run(mode: str, provider: str, model: str, confirm: str, root: Path) -> dict[str, Any]:
