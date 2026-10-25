@@ -50,6 +50,7 @@ t1 = [
   "numpy>=1.26,<3",
   "pandas>=2,<3",
   "scikit-learn>=1.4,<2",
+  "psutil>=5.9,<9",
 ]
 
 [tool.hatch.build.targets.wheel]
