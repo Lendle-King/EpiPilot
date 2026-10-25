@@ -362,9 +362,7 @@ def validated_development_metrics(
     ):
         raise MacRunBlocked("submitted benchmark record disagrees with the real trial")
     if any(
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(value)
+        isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
         for value in (score, selected, seconds)
     ):
         raise MacRunBlocked("invalid development metric or runtime in T1 receipt")
