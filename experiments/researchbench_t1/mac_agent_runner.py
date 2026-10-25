@@ -1,0 +1,330 @@
+"""Manual Mac T1 control: zero-LLM checks and one bounded Codex proposal.
+
+GitHub Actions runs this module only on a trusted macOS self-hosted runner.
+The host is not itself a secret-free sandbox. The public T1 reference holdout
+must be independently isolated before any formal research claim is made.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from experiments.researchbench_t1.t1 import normalize_candidate
+
+T1 = Path(__file__).resolve().parent / "t1.py"
+MODEL_TIMEOUT = 150
+ALLOWED_PROVIDERS = ("codex_chatgpt", "ccswitch_codex")
+ALLOWED_MODES = ("diagnose", "offline_smoke", "pilot_one_cell")
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
+
+
+class MacRunBlocked(RuntimeError):
+    """Fail-closed error without printing provider outputs or credentials."""
+
+
+def _model_name(model: str) -> str:
+    if model != "default" and not MODEL_RE.fullmatch(model):
+        raise MacRunBlocked("invalid model selector (no shell commands are accepted)")
+    return model
+
+
+def _python_ready() -> bool:
+    return sys.version_info >= (3, 11)
+
+
+def _codex() -> str:
+    found = shutil.which("codex")
+    if not found:
+        raise MacRunBlocked("Codex CLI not installed in the runner account PATH")
+    return found
+
+
+def _check_chatgpt_login(codex: str) -> bool:
+    """Check authentication without retaining or displaying the CLI response."""
+    try:
+        outcome = subprocess.run(
+            [codex, "login", "status"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return outcome.returncode == 0
+
+
+def _run(
+    argv: list[str], *, timeout: int, cwd: Path | None = None, env: dict[str, str] | None = None
+) -> str:
+    """Run frozen argv without shell interpolation or raw tool-output logging."""
+    try:
+        process = subprocess.run(
+            argv,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise MacRunBlocked("a local subprocess exceeded its fixed time limit") from exc
+    except OSError as exc:
+        raise MacRunBlocked("could not start the required executable") from exc
+    if process.returncode != 0:
+        raise MacRunBlocked("a local command failed; inspect the runner configuration")
+    if len(process.stdout) > 200_000:
+        raise MacRunBlocked("local command output exceeded safe size")
+    return process.stdout
+
+
+def _t1(*args: str, timeout: int = 60) -> dict[str, Any]:
+    try:
+        return json.loads(_run([sys.executable, str(T1), *args], timeout=timeout))
+    except json.JSONDecodeError as exc:
+        raise MacRunBlocked("T1 CLI output did not match its JSON protocol") from exc
+
+
+def _redacted_agent_env() -> dict[str, str]:
+    """Exclude GitHub job credentials from the subprocess when possible."""
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("GITHUB_", "ACTIONS_", "RUNNER_"))
+        and key
+        not in {
+            "GH_TOKEN",
+            "GIT_ASKPASS",
+            "SSH_AUTH_SOCK",
+            "ACTIONS_RUNTIME_TOKEN",
+        }
+    } | {"GIT_TERMINAL_PROMPT": "0", "CI": "1"}
+
+
+def diagnose(provider: str) -> dict[str, Any]:
+    """No inference; neither a model subscription nor a remote proxy is contacted."""
+    codex = shutil.which("codex")
+    status: dict[str, Any] = {
+        "macos": platform.system() == "Darwin",
+        "architecture": platform.machine(),
+        "python_3_11_or_newer": _python_ready(),
+        "codex_installed": codex is not None,
+        "chatgpt_login_status": "not_checked",
+        "provider_profile_usable": "not_verified",
+        "model_usable": "not_verified",
+        "model_calls": 0,
+    }
+    if codex and provider == "codex_chatgpt":
+        status["chatgpt_login_status"] = (
+            "authenticated" if _check_chatgpt_login(codex) else "not_authenticated"
+        )
+    if not status["macos"] or not status["python_3_11_or_newer"]:
+        status["readiness"] = "blocked"
+    elif not codex:
+        status["readiness"] = "codex_missing"
+    elif provider == "codex_chatgpt" and status["chatgpt_login_status"] != "authenticated":
+        status["readiness"] = "login_required"
+    else:
+        status["readiness"] = "eligible_for_manual_probe"
+    return status
+
+
+def offline_smoke(root: Path) -> dict[str, Any]:
+    work, vault = root / "offline_work", root / "offline_vault"
+    output = _t1(
+        "smoke",
+        "--work",
+        str(work),
+        "--vault",
+        str(vault),
+        timeout=180,
+    )
+    reference = output["final"]["holdout_auroc"]["offline_baseline__wdbc__42"]
+    return {
+        "model_calls": 0,
+        "training_attempts": len(output["trials"]),
+        "offline_holdout_auroc": reference,
+        "development_seconds": output["status"]["reserved_or_spent_seconds"],
+        "qualification": "Offline data/algorithm preflight only; NOT a four-policy result",
+    }
+
+
+def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, Any]:
+    """Single agent-only seed with exactly one Codex attempt and one T1 trial."""
+    if confirm != "RUN_ONE_CELL":
+        raise MacRunBlocked("one-cell agent invocation requires explicit RUN_ONE_CELL")
+    codex = _codex()
+    if provider == "codex_chatgpt" and not _check_chatgpt_login(codex):
+        raise MacRunBlocked("Codex ChatGPT login not verified for this runner user")
+    _model_name(model)
+    work = root / "pilot_work"
+    vault = root / "pilot_vault"
+    _t1(
+        "init", "--stage", "pilot", "--allow-agent-stage",
+        "--work", str(work), "--vault", str(vault),
+        timeout=90,
+    )
+    task = _run(
+        [
+            sys.executable, str(T1), "task", "--work", str(work),
+            "--arm", "agent_only", "--dataset", "wdbc", "--seed", "42",
+        ],
+        timeout=20,
+    )
+    agent_dir = root / "agent_read_only_workspace"
+    agent_dir.mkdir(mode=0o700)
+    _run(["git", "init", "-q", str(agent_dir)], timeout=10)
+    request = (
+        "This is a single-call bounded research qualification. You MUST NOT browse, "
+        "run commands, inspect hidden data, or use tools. Return ONLY one JSON object "
+        "containing a T1-allowlisted candidate, with no markdown, explanations, "
+        "or surrounding text. Do not ask for additional model calls.\n\n" + task
+    )
+    response = root / "codex_response_PRIVATE.txt"
+    command = [
+        codex, "exec", "--sandbox", "read-only",
+        "--output-last-message", str(response),
+    ]
+    if model != "default":
+        command.extend(["--model", model])
+    command.append(request)
+    before = time.monotonic()
+    try:
+        outcome = subprocess.run(
+            command,
+            cwd=agent_dir,
+            env=_redacted_agent_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=MODEL_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise MacRunBlocked("one Codex model call timed out; no automatic retry") from exc
+    except OSError as exc:
+        raise MacRunBlocked("Codex executable could not start") from exc
+    elapsed = time.monotonic() - before
+    if outcome.returncode != 0 or not response.is_file():
+        raise MacRunBlocked(
+            "Codex call failed or selected model unavailable; do not silently fall back"
+        )
+    if response.stat().st_size > 4096:
+        raise MacRunBlocked("model proposal exceeded 4 KiB")
+    try:
+        candidate = normalize_candidate(json.loads(response.read_text(encoding="utf-8")))
+    except (ValueError, TypeError, UnicodeError) as exc:
+        raise MacRunBlocked("model output is not a valid frozen T1 candidate JSON") from exc
+    candidate_path = root / "selected_candidate_PRIVATE.json"
+    candidate_path.write_text(json.dumps(candidate, sort_keys=True), encoding="utf-8")
+    trial = _t1(
+        "trial", "--work", str(work), "--arm", "agent_only",
+        "--dataset", "wdbc", "--seed", "42",
+        "--candidate", str(candidate_path),
+        timeout=80,
+    )
+    if trial["exit_code"] != 0:
+        raise MacRunBlocked("bounded development trial failed; do not record a success")
+    submission = _t1(
+        "submit", "--work", str(work), "--arm", "agent_only",
+        "--dataset", "wdbc", "--seed", "42",
+        timeout=20,
+    )
+    result = {
+        "model_calls": 1,
+        "model_attempt_wall_seconds": round(elapsed, 3),
+        "backend": provider,
+        "requested_model": model,
+        "candidate_sha256": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+        "trial_completed": True,
+        "submission_id": submission.get("id", "recorded"),
+        "development_cost_seconds": trial.get("charged_seconds"),
+        "qualification": (
+            "ONE agent_only development cell; no final test, "
+            "no four-policy comparison, no provider billing attestation"
+        ),
+    }
+    return result
+
+
+def run(mode: str, provider: str, model: str, confirm: str, root: Path) -> dict[str, Any]:
+    if mode not in ALLOWED_MODES or provider not in ALLOWED_PROVIDERS:
+        raise MacRunBlocked("unknown mode or provider")
+    _model_name(model)
+    if mode == "diagnose":
+        return diagnose(provider)
+    if platform.system() != "Darwin":
+        raise MacRunBlocked("Mac research jobs are restricted to macOS")
+    if not _python_ready():
+        raise MacRunBlocked("Python 3.11+ is required")
+    if mode == "offline_smoke":
+        return offline_smoke(root)
+    return one_cell(root, provider, model, confirm)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=ALLOWED_MODES, required=True)
+    parser.add_argument("--provider", choices=ALLOWED_PROVIDERS, default="codex_chatgpt")
+    parser.add_argument("--model", default="default")
+    parser.add_argument("--confirm", default="")
+    parser.add_argument("--results", type=Path, required=True)
+    args = parser.parse_args(argv)
+    root = args.results.resolve()
+    root.mkdir(parents=True, exist_ok=False, mode=0o700)
+    started = datetime.now(UTC).isoformat()
+    began = time.monotonic()
+    summary: dict[str, Any] = {
+        "mode": args.mode,
+        "provider": args.provider,
+        "requested_model": args.model,
+        "started_at_utc": started,
+        "status": "blocked",
+        "model_calls_confirmed": 0,
+        "paid_provider_cost": "not_metered",
+    }
+    try:
+        outcome = run(args.mode, args.provider, args.model, args.confirm, root)
+        summary.update(outcome)
+        summary["status"] = "completed"
+        returncode = 0
+    except (MacRunBlocked, ValueError, KeyError, OSError) as exc:
+        summary["safe_reason"] = str(exc)
+        returncode = 2
+    finally:
+        summary["elapsed_wall_seconds"] = round(time.monotonic() - began, 3)
+        (root / "summary.json").write_text(
+            json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        print(
+            json.dumps(
+                {
+                    "status": summary["status"],
+                    "mode": args.mode,
+                    "safe_reason": summary.get("safe_reason"),
+                    "summary_json": str(root / "summary.json"),
+                },
+                ensure_ascii=False,
+            )
+        )
+    return returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
