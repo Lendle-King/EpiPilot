@@ -104,11 +104,19 @@ def assess_headroom(
     )
 
 
-def inspect_host(policy: GuardPolicy = POLICY) -> ResourceSnapshot:
+def inspect_host(
+    policy: GuardPolicy = POLICY, planned_rss_mib: int = 0
+) -> ResourceSnapshot:
+    """Reserve the possible whole subprocess peak IN ADDITION to Mac free memory."""
     psutil = _psutil()
     mem = psutil.virtual_memory()
     utilization = psutil.cpu_percent(interval=0.25)
-    return assess_headroom(int(mem.total), int(mem.available), float(utilization), policy)
+    sample = assess_headroom(int(mem.total), int(mem.available), float(utilization), policy)
+    if planned_rss_mib:
+        needed = sample.required_free_gib + planned_rss_mib / 1024 + 0.5
+        if sample.available_gib < needed:
+            raise ResourceRefusal("Mac lacks headroom for a new model/worker memory peak")
+    return sample
 
 
 @contextlib.contextmanager
@@ -167,7 +175,7 @@ def guarded_run(
     if not argv or timeout < 1 or timeout > 240:
         raise ValueError("unbounded research command or timeout")
     policy = GuardPolicy(max_rss_mib=max_rss_mib)
-    inspect_host(policy)
+    inspect_host(policy, planned_rss_mib=max_rss_mib)
     psutil = _psutil()
     child_env = dict(os.environ if env is None else env)
     for key in (
