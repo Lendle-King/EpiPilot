@@ -263,6 +263,16 @@ def setup(
         raise BenchmarkError("invalid T1 stage")
     if stage != "smoke" and not opt_in:
         raise BenchmarkError("pilot/full must be explicitly enabled; smoke is the default")
+    # Check raw inputs BEFORE optional ML imports or creating a workspace.
+    # A missing UCI file must never trigger a network fetch or partial setup.
+    for dataset in STAGES[stage]["datasets"]:
+        if dataset == "wdbc":
+            continue
+        source = sources.get(dataset)
+        if source is None or not source.is_file():
+            raise BenchmarkError(
+                f"{dataset}: supply an existing local raw UCI file; no download is attempted"
+            )
     work, vault = work.resolve(), vault.resolve()
     if work == vault or work in vault.parents or vault in work.parents:
         raise BenchmarkError("public workspace and private vault must be disjoint")
