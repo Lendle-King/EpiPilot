@@ -12,6 +12,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from epipilot.core.models import utc_now
+from epipilot.research.benchmark import compare_suite
 from epipilot.research.decision_models import DecisionEstimate
 from epipilot.research.decision_value import rank_decision
 from epipilot.research.models import (
@@ -72,6 +73,9 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("onboard", help="inventory existing repository and experiment reports")
     sub.add_parser("status", help="show goal, reserved and spent budget, and research frontier")
     sub.add_parser("review", help="review all claims and research frontier")
+    benchmark = sub.add_parser("benchmark", help="compare matched policy runs at equal budget")
+    benchmark.add_argument("--manifest", type=Path, required=True)
+    benchmark.add_argument("--min-cases", type=int, default=2)
     sub.add_parser("doctor", help="replay the event stream and diagnose pending work")
 
     unknown = sub.add_parser("unknown", help="add or resolve a research unknown")
@@ -497,6 +501,11 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         }
     if command == "status":
         return _status(state)
+    if command == "benchmark":
+        manifest = (root / args.manifest).resolve()
+        if not manifest.is_relative_to(root):
+            raise ValueError("benchmark manifest must remain inside research root")
+        return compare_suite(manifest, min_cases=args.min_cases)
     if command == "doctor":
         return {
             "event_count": sequence,
