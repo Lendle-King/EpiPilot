@@ -1,8 +1,9 @@
-"""Conservative, sampled resource protection for a trusted macOS T1 runner.
+"""Mac T1 subprocess supervision with a whole-machine 95% memory ceiling.
 
-The limits apply to subprocesses launched by this wrapper, not to arbitrary
-unrelated user programs. Memory is sampled at 0.35 s intervals; this is a
-best-effort early termination guard, NOT a kernel-enforced memory cgroup.
+Only HOST physical memory use is constrained. No per-process RSS, CPU usage,
+process-count or forecast-memory budget is enforced. Supervision is sampled,
+not a macOS kernel-enforced memory quota. Tasks retain timeout/cancellation
+and an exclusive lock to prevent overlapping experiments.
 """
 
 from __future__ import annotations
@@ -20,34 +21,19 @@ from pathlib import Path
 
 
 class ResourceRefusal(RuntimeError):
-    """Insufficient headroom or a locally executed task exceeded resource limits."""
+    """Machine memory cap or bounded-subprocess safety requirement was violated."""
 
 
 @dataclass(frozen=True)
 class GuardPolicy:
-    max_rss_mib: int = 1024
-    # User-approved 95%-usage ceiling: reserve >=5% of physical RAM at runtime.
-    # A new child must additionally fit its full RSS cap + 0.5 GiB buffer.
-    min_free_gib: float = 0.0
-    min_free_fraction: float = 0.05
-    max_initial_cpu_percent: float = 80.0
-    max_running_cpu_percent: float = 90.0
-    max_processes: int = 12
+    max_host_memory_used_fraction: float = 0.95
     sample_interval_seconds: float = 0.35
 
     def validate(self) -> None:
-        if not 128 <= self.max_rss_mib <= 2048:
-            raise ValueError("per-process-tree RSS cap must be in [128,2048] MiB")
-        if not 0.0 <= self.min_free_gib <= 8.0:
-            raise ValueError("free-memory reserve must lie in [0,8] GiB")
-        if not 0.05 <= self.min_free_fraction <= 0.4:
-            raise ValueError("free-memory fraction must lie in [0.05,0.4]")
-        if not 30 <= self.max_initial_cpu_percent <= 95:
-            raise ValueError("initial CPU percentage guard outside accepted range")
-        if not 50 <= self.max_running_cpu_percent <= 100:
-            raise ValueError("running CPU percentage guard outside accepted range")
-        if not 2 <= self.max_processes <= 32:
-            raise ValueError("process-count cap outside accepted range")
+        if not 0.50 <= self.max_host_memory_used_fraction <= 0.95:
+            raise ValueError("whole-machine memory usage cap must be in [50%,95%]")
+        if not 0.1 <= self.sample_interval_seconds <= 2:
+            raise ValueError("memory-monitor interval must be within [0.1,2] seconds")
 
 
 POLICY = GuardPolicy()
@@ -57,8 +43,9 @@ POLICY = GuardPolicy()
 class ResourceSnapshot:
     total_gib: float
     available_gib: float
-    cpu_percent: float
     required_free_gib: float
+    used_percent: float
+    max_used_percent: float
 
 
 @dataclass(frozen=True)
@@ -66,62 +53,49 @@ class GuardedResult:
     returncode: int
     stdout: str
     stderr: str
-    peak_rss_mib: float
     elapsed_seconds: float
+    peak_mac_used_percent: float
+    minimum_mac_available_gib: float
 
 
 def _psutil() -> object:
     try:
         import psutil
     except ImportError as exc:
-        raise ResourceRefusal("T1 requires installed psutil to enforce resource limits") from exc
+        raise ResourceRefusal("psutil is required for total Mac memory monitoring") from exc
     return psutil
 
 
 def assess_headroom(
     total_bytes: int,
     available_bytes: int,
-    cpu_percent: float,
     policy: GuardPolicy = POLICY,
 ) -> ResourceSnapshot:
-    """Pure fail-closed preflight, independently testable without system access."""
+    """Fail closed if system-wide physical memory is already over the limit."""
     policy.validate()
-    gib = 1024**3
-    total_gib = total_bytes / gib
-    free_gib = available_bytes / gib
-    required = max(policy.min_free_gib, total_gib * policy.min_free_fraction)
     if total_bytes <= 0 or available_bytes < 0 or available_bytes > total_bytes:
         raise ResourceRefusal("invalid machine memory availability reading")
-    if free_gib < required:
-        raise ResourceRefusal("Mac has insufficient free memory for another research task")
-    if cpu_percent < 0 or cpu_percent > 100:
-        raise ResourceRefusal("invalid machine CPU utilization reading")
-    if cpu_percent > policy.max_initial_cpu_percent:
-        raise ResourceRefusal("Mac CPU is already busy; postpone research instead of competing")
+    required_bytes = total_bytes * (1 - policy.max_host_memory_used_fraction)
+    if available_bytes < required_bytes:
+        raise ResourceRefusal("Mac whole-machine physical memory usage exceeds 95%")
+    gib = 1024**3
     return ResourceSnapshot(
-        total_gib=round(total_gib, 2),
-        available_gib=round(free_gib, 2),
-        cpu_percent=round(cpu_percent, 1),
-        required_free_gib=round(required, 2),
+        total_gib=round(total_bytes / gib, 2),
+        available_gib=round(available_bytes / gib, 2),
+        required_free_gib=round(required_bytes / gib, 2),
+        used_percent=round((1 - available_bytes / total_bytes) * 100, 2),
+        max_used_percent=round(policy.max_host_memory_used_fraction * 100, 2),
     )
 
 
-def inspect_host(policy: GuardPolicy = POLICY, planned_rss_mib: int = 0) -> ResourceSnapshot:
-    """Reserve the possible whole subprocess peak IN ADDITION to Mac free memory."""
-    psutil = _psutil()
-    mem = psutil.virtual_memory()
-    utilization = psutil.cpu_percent(interval=0.25)
-    sample = assess_headroom(int(mem.total), int(mem.available), float(utilization), policy)
-    if planned_rss_mib:
-        needed = sample.required_free_gib + planned_rss_mib / 1024 + 0.5
-        if sample.available_gib < needed:
-            raise ResourceRefusal("Mac lacks headroom for a new model/worker memory peak")
-    return sample
+def inspect_host(policy: GuardPolicy = POLICY) -> ResourceSnapshot:
+    mem = _psutil().virtual_memory()
+    return assess_headroom(int(mem.total), int(mem.available), policy)
 
 
 @contextlib.contextmanager
 def single_runner_lock() -> Iterator[None]:
-    """Avoid two cooperating T1 tasks running on the same Mac account."""
+    """Only one cooperating T1 controller may use the Mac at a time."""
     base = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir())
     base.mkdir(parents=True, exist_ok=True)
     lock = base / "epipilot_t1_agent_exclusive.lock"
@@ -136,16 +110,8 @@ def single_runner_lock() -> Iterator[None]:
             fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
-def _terminate_group(process: subprocess.Popen[bytes], psutil: object) -> None:
-    """Terminate subprocess group, including descendants, rather than only its PID."""
-    try:
-        root = psutil.Process(process.pid)
-        descendants = root.children(recursive=True)
-    except psutil.Error:
-        descendants = []
-    for child in reversed(descendants):
-        with contextlib.suppress(psutil.Error):
-            child.terminate()
+def _terminate_group(process: subprocess.Popen[bytes]) -> None:
+    """Terminate the isolated OS process group after a memory/time breach."""
     with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGTERM)
     try:
@@ -154,12 +120,6 @@ def _terminate_group(process: subprocess.Popen[bytes], psutil: object) -> None:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
         process.wait(timeout=2)
-    for child in descendants:
-        try:
-            if child.is_running():
-                child.kill()
-        except psutil.Error:
-            pass
 
 
 def guarded_run(
@@ -168,35 +128,22 @@ def guarded_run(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     timeout: int,
-    max_rss_mib: int = 1024,
     started_marker: Path | None = None,
 ) -> GuardedResult:
-    """Run fixed argv at low OS priority; sample its process tree and host pressure."""
+    """Execute a fixed command, monitoring only total host physical memory."""
     if not argv or timeout < 1 or timeout > 240:
         raise ValueError("unbounded research command or timeout")
-    policy = GuardPolicy(max_rss_mib=max_rss_mib)
-    inspect_host(policy, planned_rss_mib=max_rss_mib)
+    initial = inspect_host()
     psutil = _psutil()
-    child_env = dict(os.environ if env is None else env)
-    for key in (
-        "OPENBLAS_NUM_THREADS",
-        "OMP_NUM_THREADS",
-        "MKL_NUM_THREADS",
-        "VECLIB_MAXIMUM_THREADS",
-        "NUMEXPR_NUM_THREADS",
-    ):
-        child_env[key] = "1"
-    child_env["TOKENIZERS_PARALLELISM"] = "false"
-    command = ["/usr/bin/nice", "-n", "10", *argv] if os.name == "posix" else argv
     began = time.monotonic()
-    peak_rss = 0
-    high_cpu_samples = 0
+    peak_used = initial.used_percent
+    min_free = initial.available_gib
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         try:
             process = subprocess.Popen(
-                command,
+                argv,
                 cwd=cwd,
-                env=child_env,
+                env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=stdout,
                 stderr=stderr,
@@ -209,39 +156,15 @@ def guarded_run(
             if started_marker is not None:
                 started_marker.write_text(str(time.time()), encoding="utf-8")
             while process.poll() is None:
-                elapsed = time.monotonic() - began
-                if elapsed > timeout:
-                    raise ResourceRefusal("research subprocess exceeded its fixed wall timeout")
-                try:
-                    root = psutil.Process(process.pid)
-                    descendants = root.children(recursive=True)
-                    processes = [root, *descendants]
-                    memory = sum(p.memory_info().rss for p in processes) / (1024**2)
-                except (psutil.NoSuchProcess, psutil.ZombieProcess) as exc:
-                    if process.poll() is not None:
-                        break
-                    raise ResourceRefusal(
-                        "lost monitoring of the running research process"
-                    ) from exc
-                except psutil.AccessDenied as exc:
-                    raise ResourceRefusal("cannot measure process memory safely") from exc
-                peak_rss = max(peak_rss, memory)
-                if len(processes) > policy.max_processes or memory > policy.max_rss_mib:
-                    raise ResourceRefusal("research subprocess exceeded its process/RSS cap")
-                host_memory = psutil.virtual_memory()
-                available = float(host_memory.available) / (1024**3)
-                total = float(host_memory.total) / (1024**3)
-                if available < max(policy.min_free_gib, total * policy.min_free_fraction):
-                    raise ResourceRefusal("Mac available memory dropped below safety reserve")
-                busy = float(psutil.cpu_percent(interval=None))
-                high_cpu_samples = (
-                    high_cpu_samples + 1 if busy > policy.max_running_cpu_percent else 0
-                )
-                if high_cpu_samples >= 4:
-                    raise ResourceRefusal("Mac sustained CPU pressure; stopped research task")
-                time.sleep(policy.sample_interval_seconds)
+                if time.monotonic() - began > timeout:
+                    raise ResourceRefusal("research subprocess exceeded fixed wall timeout")
+                mem = psutil.virtual_memory()
+                sample = assess_headroom(int(mem.total), int(mem.available))
+                peak_used = max(peak_used, sample.used_percent)
+                min_free = min(min_free, sample.available_gib)
+                time.sleep(POLICY.sample_interval_seconds)
         except BaseException:
-            _terminate_group(process, psutil)
+            _terminate_group(process)
             raise
         stdout.seek(0)
         stderr.seek(0)
@@ -253,6 +176,7 @@ def guarded_run(
             returncode=int(process.returncode),
             stdout=out_bytes.decode("utf-8", errors="replace"),
             stderr=err_bytes.decode("utf-8", errors="replace"),
-            peak_rss_mib=round(peak_rss, 2),
             elapsed_seconds=round(time.monotonic() - began, 3),
+            peak_mac_used_percent=round(peak_used, 2),
+            minimum_mac_available_gib=round(min_free, 2),
         )
