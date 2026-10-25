@@ -52,6 +52,19 @@ although T1 accepted the trial and submission. The subsequent patch adds
 strict trial–submission provenance checks and exports those metrics for
 **future** runs. It does not fabricate or retroactively infer missing values.
 
+## Protocol version boundary — strict Luna model / 95% total RAM
+
+Effective for future executions, the T1 experiment runner must request
+**only** `codex exec --model 'gpt-6-luna(max)'` and rejects all alternative
+model names, including the former `default`. The Mac watchdog monitors
+**only global physical-memory usage at the 95% threshold**; previous
+per-process RSS/CPU/process-count gates were removed.
+
+The previous successful seed 42/137 sessions used Codex `default`.
+Those outcomes are **not same-model evidence for a Luna-locked Pilot** and
+cannot be treated as completed matched controls under the revised protocol.
+A failed exact-Luna call must stop without retrying with a different model.
+
 ## Research conclusions allowed now
 
 1. A pinned Mac runner can execute the offline reference benchmark with
