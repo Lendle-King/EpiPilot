@@ -284,8 +284,7 @@ def test_pilot_cannot_contact_codex_when_mac_memory_usage_over_95_percent(
     monkeypatch.setattr(mac, "one_cell", lambda *args: (_ for _ in ()).throw(AssertionError))
     with pytest.raises(mac.ResourceRefusal, match="exceeds 95%"):
         mac.run(
-            "pilot_one_cell", "codex_chatgpt", mac.REQUIRED_MODEL,
-            "RUN_ONE_CELL", tmp_path, 137
+            "pilot_one_cell", "codex_chatgpt", mac.REQUIRED_MODEL, "RUN_ONE_CELL", tmp_path, 137
         )
 
 def test_different_model_is_rejected_before_codex_or_probe(
