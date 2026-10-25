@@ -214,15 +214,17 @@ def load_data(dataset: str, source: Path | None) -> tuple[Any, Any, str]:
     return frame, labels, file_digest(source)
 
 
-def _write_dataset(work: Path, vault: Path, dataset: str, source: Path | None) -> dict[str, Any]:
+def _write_dataset(
+    work: Path, vault: Path, dataset: str, source: Path | None, split_seed: int
+) -> dict[str, Any]:
     np, pd, sklearn, splitter = _dependencies()
     features, target, source_hash = load_data(dataset, source)
     y = pd.Series(np.asarray(target, dtype=int), name="target")
     if len(y.unique()) != 2 or y.value_counts().min() < 20:
         raise BenchmarkError("binary dataset needs two classes with at least 20 members each")
     # Split once per dataset, independently of research agent seed.
-    left, test = splitter(np.arange(len(y)), test_size=0.2, stratify=y, random_state=SPLIT_SEED)
-    train, dev = splitter(left, test_size=0.25, stratify=y.iloc[left], random_state=SPLIT_SEED + 1)
+    left, test = splitter(np.arange(len(y)), test_size=0.2, stratify=y, random_state=split_seed)
+    train, dev = splitter(left, test_size=0.25, stratify=y.iloc[left], random_state=split_seed + 1)
     data = features.reset_index(drop=True).copy()
     data.columns = [str(x) for x in data.columns]
     if "target" in data.columns:
@@ -235,7 +237,7 @@ def _write_dataset(work: Path, vault: Path, dataset: str, source: Path | None) -
     meta = {
         "dataset": dataset,
         "source_hash": source_hash,
-        "split_seed": SPLIT_SEED,
+        "split_seed": split_seed,
         "rows": len(y),
         "features": len(data.columns) - 1,
         "versions": {
@@ -284,8 +286,13 @@ def setup(
     vault.mkdir(parents=True, exist_ok=True)
     spec = STAGES[stage]
     dataset_meta: dict[str, Any] = {}
+    # Do not reuse the already-inspected smoke holdout in real policy comparisons.
+    # Fix the split per stage BEFORE any research agent sees validation feedback.
+    split_seed = SPLIT_SEED + {"smoke": 0, "pilot": 1000, "full": 2000}[stage]
     for dataset in spec["datasets"]:
-        dataset_meta[dataset] = _write_dataset(work, vault, dataset, sources.get(dataset))
+        dataset_meta[dataset] = _write_dataset(
+            work, vault, dataset, sources.get(dataset), split_seed
+        )
     meta = {
         "schema": SCHEMA,
         "stage": stage,
