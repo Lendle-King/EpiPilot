@@ -141,3 +141,29 @@ def test_unavailable_monitoring_refuses_to_start_subprocess(
     )
     with pytest.raises(guard.ResourceRefusal, match="psutil"):
         guard.guarded_run([sys.executable, "-c", "print('should not run')"], timeout=3)
+
+
+def test_model_worst_case_reserve_blocks_busy_mac_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SnapshotOnly:
+        @staticmethod
+        def virtual_memory() -> SimpleNamespace:
+            return SimpleNamespace(total=gib(24), available=gib(5.84))
+
+        @staticmethod
+        def cpu_percent(interval: float | None = None) -> float:
+            return 26.9
+
+    monkeypatch.setattr(guard, "_psutil", lambda: SnapshotOnly)
+    sample = guard.inspect_host()
+    assert sample.available_gib == 5.84
+    assert sample.required_free_gib == 4.32
+    with pytest.raises(guard.ResourceRefusal, match="lacks headroom"):
+        guard.inspect_host(planned_rss_mib=1536)
+    with pytest.raises(guard.ResourceRefusal, match="lacks headroom"):
+        guard.guarded_run(
+            [sys.executable, "-c", "print('must not execute')"],
+            timeout=3,
+            max_rss_mib=1536,
+        )
