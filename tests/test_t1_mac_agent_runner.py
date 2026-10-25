@@ -108,11 +108,11 @@ def test_one_cell_never_executes_model_proposed_shell(
             '{"model":"logistic","feature_mode":"all","C":1.0,"class_weight":"none"}',
             encoding="utf-8",
         )
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=0, peak_rss_mib=176.0)
 
     monkeypatch.setattr(mac, "_t1", fake_t1)
     monkeypatch.setattr(mac, "_run", fake_run)
-    monkeypatch.setattr(mac.subprocess, "run", fake_codex)
+    monkeypatch.setattr(mac, "guarded_run", fake_codex)
     result = mac.one_cell(tmp_path, "codex_chatgpt", "gpt-6-luna(max)", "RUN_ONE_CELL")
     assert stages == ["init", "trial", "submit"]
     assert len(model_calls) == 1
@@ -127,6 +127,7 @@ def test_one_cell_never_executes_model_proposed_shell(
     assert result["model_output_format"] == "strict_json"
     assert result["development_auroc"] == 0.87654
     assert result["development_cost_seconds"] == 2.0
+    assert result["codex_peak_rss_mib"] == 176.0
     assert result["trial_id"] == "trial-0001"
     assert result["candidate_sha256"] == candidate_sha
 
@@ -149,11 +150,11 @@ def test_bad_model_reply_cannot_trigger_trial_or_retry(
     def fake_codex(argv: list[str], **kwargs: object) -> SimpleNamespace:
         dest = Path(argv[argv.index("--output-last-message") + 1])
         dest.write_text('{"model":"exec","command":"touch /tmp/unsafe"}', encoding="utf-8")
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=0, peak_rss_mib=176.0)
 
     monkeypatch.setattr(mac, "_t1", fake_t1)
     monkeypatch.setattr(mac, "_run", fake_run)
-    monkeypatch.setattr(mac.subprocess, "run", fake_codex)
+    monkeypatch.setattr(mac, "guarded_run", fake_codex)
     with pytest.raises(mac.MacRunBlocked, match="unique allowlisted candidate"):
         mac.one_cell(tmp_path, "codex_chatgpt", "default", "RUN_ONE_CELL")
     assert calls == ["init"]
