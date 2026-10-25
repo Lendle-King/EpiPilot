@@ -230,7 +230,9 @@ def guarded_run(
                 if available < max(policy.min_free_gib, total * policy.min_free_fraction):
                     raise ResourceRefusal("Mac available memory dropped below safety reserve")
                 busy = float(psutil.cpu_percent(interval=None))
-                high_cpu_samples = high_cpu_samples + 1 if busy > policy.max_running_cpu_percent else 0
+                high_cpu_samples = (
+                    high_cpu_samples + 1 if busy > policy.max_running_cpu_percent else 0
+                )
                 if high_cpu_samples >= 4:
                     raise ResourceRefusal("Mac sustained CPU pressure; stopped research task")
                 time.sleep(policy.sample_interval_seconds)
