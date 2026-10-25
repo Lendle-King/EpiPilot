@@ -7,7 +7,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from experiments.researchbench_t1 import mac_agent_runner as mac
 
 
