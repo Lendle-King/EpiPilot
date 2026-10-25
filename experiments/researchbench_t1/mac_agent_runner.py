@@ -176,14 +176,29 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
     work = root / "pilot_work"
     vault = root / "pilot_vault"
     _t1(
-        "init", "--stage", "pilot", "--allow-agent-stage",
-        "--work", str(work), "--vault", str(vault),
+        "init",
+        "--stage",
+        "pilot",
+        "--allow-agent-stage",
+        "--work",
+        str(work),
+        "--vault",
+        str(vault),
         timeout=90,
     )
     task = _run(
         [
-            sys.executable, str(T1), "task", "--work", str(work),
-            "--arm", "agent_only", "--dataset", "wdbc", "--seed", "42",
+            sys.executable,
+            str(T1),
+            "task",
+            "--work",
+            str(work),
+            "--arm",
+            "agent_only",
+            "--dataset",
+            "wdbc",
+            "--seed",
+            "42",
         ],
         timeout=20,
     )
@@ -198,8 +213,12 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
     )
     response = root / "codex_response_PRIVATE.txt"
     command = [
-        codex, "exec", "--sandbox", "read-only",
-        "--output-last-message", str(response),
+        codex,
+        "exec",
+        "--sandbox",
+        "read-only",
+        "--output-last-message",
+        str(response),
     ]
     if model != "default":
         command.extend(["--model", model])
@@ -234,16 +253,31 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
     candidate_path = root / "selected_candidate_PRIVATE.json"
     candidate_path.write_text(json.dumps(candidate, sort_keys=True), encoding="utf-8")
     trial = _t1(
-        "trial", "--work", str(work), "--arm", "agent_only",
-        "--dataset", "wdbc", "--seed", "42",
-        "--candidate", str(candidate_path),
+        "trial",
+        "--work",
+        str(work),
+        "--arm",
+        "agent_only",
+        "--dataset",
+        "wdbc",
+        "--seed",
+        "42",
+        "--candidate",
+        str(candidate_path),
         timeout=80,
     )
     if trial["exit_code"] != 0:
         raise MacRunBlocked("bounded development trial failed; do not record a success")
     submission = _t1(
-        "submit", "--work", str(work), "--arm", "agent_only",
-        "--dataset", "wdbc", "--seed", "42",
+        "submit",
+        "--work",
+        str(work),
+        "--arm",
+        "agent_only",
+        "--dataset",
+        "wdbc",
+        "--seed",
+        "42",
         timeout=20,
     )
     result = {
