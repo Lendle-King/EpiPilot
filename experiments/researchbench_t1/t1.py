@@ -16,8 +16,9 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 STAGES: dict[str, dict[str, Any]] = {
     "smoke": {
@@ -337,7 +338,7 @@ def normalize_candidate(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fit(train: Path, evaluation: Path, raw: dict[str, Any], seed: int, fit_all: bool) -> float:
-    np, pd, sklearn, _ = _dependencies()
+    _, pd, _, _ = _dependencies()
     from sklearn.compose import ColumnTransformer
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.impute import SimpleImputer
@@ -628,10 +629,22 @@ def task_prompt(work: Path, arm: str, dataset: str, seed: int) -> str:
     path = Path(__file__).resolve()
     src = work / "public" / dataset
     instructions = {
-        "agent_only": "No EpiPilot CLI or past-research memory. Choose up to two distinct candidate experiments using the shared dev feedback.",
-        "memory_only": "No EpiPilot planner. Read previously recorded memory_only notes; add a sourced note after each real trial with the memory command.",
-        "epipilot_heuristic": "Use a separate project-local EpiPilot event store. Register uncertainty, claim, proposals and evidence, then follow `epi iterate` (default heuristic).",
-        "epipilot_conditional": "Use a separate project-local EpiPilot event store and preregister a four-outcome decision table before selecting with `epi iterate --policy conditional`. Never silently fall back to heuristic.",
+        "agent_only": (
+            "No EpiPilot CLI or past research memory. "
+            "Choose at most two candidates using shared development feedback."
+        ),
+        "memory_only": (
+            "No EpiPilot planner. Reuse only policy-scoped, sourced memory notes, "
+            "and record a note after real trials."
+        ),
+        "epipilot_heuristic": (
+            "Use an isolated project-local EpiPilot event store. Register uncertainty, "
+            "claims, proposals and evidence; select via epi iterate."
+        ),
+        "epipilot_conditional": (
+            "Use an isolated EpiPilot event store and freeze a four-outcome table. "
+            "Select via epi iterate --policy conditional; never silently fall back."
+        ),
         "offline_baseline": "Offline baseline smoke only, no agent permitted or required.",
     }
     history = [e for e in ledger(work) if e["kind"] == "memory_note" and e["arm"] == arm]
@@ -643,21 +656,30 @@ def task_prompt(work: Path, arm: str, dataset: str, seed: int) -> str:
         if arm == "memory_only"
         else "(not exposed to this policy)"
     )
+    trial_cmd = (
+        f"python {path} trial --work {work} --arm {arm} "
+        f"--dataset {dataset} --seed {seed} --candidate YOUR_CANDIDATE.json"
+    )
+    submit_cmd = (
+        f"python {path} submit --work {work} --arm {arm} "
+        f"--dataset {dataset} --seed {seed}"
+    )
     return f"""ResearchBench-T1 {meta["stage"]} / {dataset} / seed {seed} / policy {arm}
 Goal: maximize held-out AUROC under a hard development experiment budget.
 Only train/dev are visible: {src}/train.csv and {src}/dev.csv.
 Never read the raw dataset, private holdout, vault path, or final metrics during research.
-Do not use web access, external model APIs, GPU jobs, or paid provider calls without separate explicit authorization.
-The harness makes ZERO external model calls. Coding Agent billing outside it is NOT metered.
-At most {profile["per_cell_trials"]} trials per cell, each <= {profile["trial_seconds"]} wall-seconds.
-Total stage experimental wall budget = {profile["total_seconds"]} seconds; violations fail closed.
-Candidate interventions are restricted to logistic/forest parameter JSONs (see candidates/).
+Do not use web, external APIs, GPU or paid providers without separate authorization.
+The harness makes ZERO external model calls; Agent billing is NOT metered here.
+At most {profile["per_cell_trials"]} trials per cell.
+Each trial has a {profile["trial_seconds"]}-second hard wall-time cap.
+Total development budget: {profile["total_seconds"]} CPU wall seconds (fail closed).
+Allowed interventions: logistic/forest parameter JSONs in candidates/.
 Instructions for this arm: {instructions[arm]}
 Memory notes available: {notes}
 To run an experiment:
-  python {path} trial --work {work} --arm {arm} --dataset {dataset} --seed {seed} --candidate YOUR_CANDIDATE.json
+  {trial_cmd}
 Then choose and freeze the strongest development candidate:
-  python {path} submit --work {work} --arm {arm} --dataset {dataset} --seed {seed}
+  {submit_cmd}
 NEVER call finalize from an agent session. Final held-out evaluation is operator-only,
 after every arm and seed is frozen. Inspect genuine failures and stop when budget is exhausted.
 """
@@ -865,7 +887,7 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
         result = {
             "stage": meta["stage"],
             "holdout_auroc": {k: v["value"] for k, v in evaluated.items()},
-            "qualification": "Offline reference evaluator only; not verified Coding Agent performance",
+            "qualification": "Offline reference evaluator; not verified Coding Agent performance",
         }
         if meta["stage"] != "smoke":
             runs = []
