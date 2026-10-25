@@ -22,12 +22,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from experiments.researchbench_t1.resource_guard import (
+    ResourceRefusal,
+    guarded_run,
+    inspect_host,
+    single_runner_lock,
+)
 from experiments.researchbench_t1.t1 import canonical, normalize_candidate
 
 T1 = Path(__file__).resolve().parent / "t1.py"
 MODEL_TIMEOUT = 150
 ALLOWED_PROVIDERS = ("codex_chatgpt", "ccswitch_codex")
-ALLOWED_MODES = ("diagnose", "offline_smoke", "pilot_one_cell")
+ALLOWED_MODES = ("diagnose", "resource_probe", "offline_smoke", "pilot_one_cell")
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
 
 
@@ -88,15 +94,8 @@ def _codex() -> str:
 def _check_chatgpt_login(codex: str) -> bool:
     """Check authentication without retaining or displaying the CLI response."""
     try:
-        outcome = subprocess.run(
-            [codex, "login", "status"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            timeout=15,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        outcome = guarded_run([codex, "login", "status"], timeout=15, max_rss_mib=512)
+    except (OSError, subprocess.TimeoutExpired, ResourceRefusal):
         return False
     return outcome.returncode == 0
 
@@ -105,22 +104,9 @@ def _run(
     argv: list[str], *, timeout: int, cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> str:
     """Run frozen argv without shell interpolation or raw tool-output logging."""
-    try:
-        process = subprocess.run(
-            argv,
-            cwd=cwd,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            check=False,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise MacRunBlocked("a local subprocess exceeded its fixed time limit") from exc
-    except OSError as exc:
-        raise MacRunBlocked("could not start the required executable") from exc
+    process = guarded_run(
+        argv, cwd=cwd, env=env, timeout=timeout, max_rss_mib=1024
+    )
     if process.returncode != 0:
         raise MacRunBlocked("a local command failed; inspect the runner configuration")
     if len(process.stdout) > 200_000:
@@ -266,24 +252,16 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
     if model != "default":
         command.extend(["--model", model])
     command.append(request)
-    # Conservative, durable marker: a failed/timed-out call may still incur provider usage.
-    (root / "agent_attempt.started").write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
+    # The guard itself writes the attempt marker only after the OS starts Codex.
     before = time.monotonic()
-    try:
-        outcome = subprocess.run(
-            command,
-            cwd=agent_dir,
-            env=_redacted_agent_env(),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            timeout=MODEL_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise MacRunBlocked("one Codex model call timed out; no automatic retry") from exc
-    except OSError as exc:
-        raise MacRunBlocked("Codex executable could not start") from exc
+    outcome = guarded_run(
+        command,
+        cwd=agent_dir,
+        env=_redacted_agent_env(),
+        timeout=MODEL_TIMEOUT,
+        max_rss_mib=1536,
+        started_marker=root / "agent_attempt.started",
+    )
     elapsed = time.monotonic() - before
     if outcome.returncode != 0 or not response.is_file():
         raise MacRunBlocked(
@@ -330,6 +308,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
     return {
         "model_calls": 1,
         "model_attempt_wall_seconds": round(elapsed, 3),
+        "codex_peak_rss_mib": outcome.peak_rss_mib,
         "backend": provider,
         "requested_model": model,
         "model_output_format": reply_format,
@@ -391,6 +370,17 @@ def run(mode: str, provider: str, model: str, confirm: str, root: Path) -> dict[
         raise MacRunBlocked("Mac research jobs are restricted to macOS")
     if not _python_ready():
         raise MacRunBlocked("Python 3.11+ is required")
+    if mode == "resource_probe":
+        sample = inspect_host()
+        return {
+            "model_calls": 0,
+            "total_memory_gib": sample.total_gib,
+            "available_memory_gib": sample.available_gib,
+            "required_free_memory_gib": sample.required_free_gib,
+            "cpu_percent": sample.cpu_percent,
+            "resource_guard": "ready",
+            "qualification": "No model/training subprocess run during this preflight",
+        }
     if mode == "offline_smoke":
         return offline_smoke(root)
     return one_cell(root, provider, model, confirm)
@@ -418,11 +408,12 @@ def main(argv: list[str] | None = None) -> int:
         "paid_provider_cost": "not_metered",
     }
     try:
-        outcome = run(args.mode, args.provider, args.model, args.confirm, root)
+        with single_runner_lock():
+            outcome = run(args.mode, args.provider, args.model, args.confirm, root)
         summary.update(outcome)
         summary["status"] = "completed"
         returncode = 0
-    except (MacRunBlocked, ValueError, KeyError, OSError) as exc:
+    except (MacRunBlocked, ResourceRefusal, ValueError, KeyError, OSError) as exc:
         summary["safe_reason"] = str(exc)
         returncode = 2
     finally:
