@@ -28,6 +28,7 @@ from epipilot.research.models import (
     ResearchGoal,
     ResearchState,
     RunLaunch,
+    RunReceipt,
     RunnerSpec,
     Unknown,
     research_id,
@@ -807,14 +808,14 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             raise ValueError("unknown experiment contract")
         require_clean_revision(root, contract.git_revision)
         check_fingerprints(root, contract)
-        receipt = None
+        record_receipt: RunReceipt | None = None
         if contract.runner_argv:
-            receipt = state.run_receipts.get(contract.id)
-            if receipt is None:
+            record_receipt = state.run_receipts.get(contract.id)
+            if record_receipt is None:
                 raise ValueError("controlled run has no finished receipt; abort if interrupted")
             if args.outcome != "infrastructure_failure":
                 _values, digest = artifact_metrics(root, contract)
-                if receipt.exit_code != 0 or digest != receipt.artifact_sha256:
+                if record_receipt.exit_code != 0 or digest != record_receipt.artifact_sha256:
                     raise ValueError("recorded output is not the frozen runner's artifact")
         metrics = _parse_metrics(args.metric)
         if args.outcome != "infrastructure_failure" and not metrics:
@@ -833,7 +834,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             seeds=args.seed,
             metrics=metrics,
             run_command=args.run_command,
-            run_receipt_id=None if receipt is None else receipt.id,
+            run_receipt_id=None if record_receipt is None else record_receipt.id,
             artifact_refs=[contract.artifact_ref, *args.artifact],
             evidence_id=evidence_id,
         )

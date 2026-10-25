@@ -291,21 +291,21 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
     elif kind == "runner_finished":
         if legacy:
             raise ValueError("controlled runs require v2")
-        receipt = RunReceipt.model_validate(p)
-        contract = state.contracts.get(receipt.contract_id)
-        launch = state.run_launches.get(receipt.contract_id)
+        finished_receipt = RunReceipt.model_validate(p)
+        contract = state.contracts.get(finished_receipt.contract_id)
+        finished_launch = state.run_launches.get(finished_receipt.contract_id)
         if (
             contract is None
             or contract.status is not ContractStatus.RUNNING
-            or launch is None
-            or launch.id != receipt.id
-            or launch.started_at != receipt.started_at
-            or receipt.contract_id in state.run_receipts
-            or receipt.argv != contract.runner_argv
-            or receipt.source_revision != contract.git_revision
+            or finished_launch is None
+            or finished_finished_launch.id != finished_receipt.id
+            or finished_finished_launch.started_at != finished_receipt.started_at
+            or finished_receipt.contract_id in state.run_receipts
+            or finished_receipt.argv != contract.runner_argv
+            or finished_receipt.source_revision != contract.git_revision
         ):
             raise ValueError("runner receipt must match one predeclared, started command")
-        state.run_receipts[receipt.contract_id] = receipt
+        state.run_receipts[finished_receipt.contract_id] = finished_receipt
     elif kind == "experiment_recorded":
         exp = Experiment.model_validate(p["experiment"])
         recorded_evidence = EvidenceRecord.model_validate(p["evidence"])
@@ -340,11 +340,11 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             ):
                 raise ValueError("recorded experiment disagrees with frozen configuration")
             if contract.runner_argv:
-                receipt = state.run_receipts.get(contract.id)
-                if receipt is None or receipt.id != exp.run_receipt_id:
+                recorded_run = state.run_receipts.get(contract.id)
+                if recorded_run is None or recorded_run.id != exp.run_receipt_id:
                     raise ValueError("controlled experiment needs its matching run receipt")
                 if exp.outcome != "infrastructure_failure" and (
-                    receipt.exit_code != 0 or receipt.artifact_sha256 is None
+                    recorded_run.exit_code != 0 or recorded_run.artifact_sha256 is None
                 ):
                     raise ValueError("successful controlled experiment needs a successful run")
             if exp.outcome != "infrastructure_failure":
@@ -399,8 +399,8 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             if not p.get("artifact_sha256") or not p.get("check_output_sha256"):
                 raise ValueError("metric artifact and verifier hashes are required")
             if contract.runner_argv:
-                receipt = state.run_receipts.get(contract.id)
-                if receipt is None or receipt.artifact_sha256 != p["artifact_sha256"]:
+                verified_run = state.run_receipts.get(contract.id)
+                if verified_run is None or verified_run.artifact_sha256 != p["artifact_sha256"]:
                     raise ValueError("artifact differs from the controlled run receipt")
             metrics = dict(p["validated_metrics"])
             if set(metrics) != {rule.name for rule in contract.metric_rules}:
@@ -668,6 +668,8 @@ class ResearchStore:
         | Proposal
         | OnboardingSnapshot
         | ExperimentContract
-        | ScoutOperation,
+        | ScoutOperation
+        | RunLaunch
+        | RunReceipt,
     ) -> ResearchEvent:
         return self.append(kind, record.model_dump(mode="json"))
