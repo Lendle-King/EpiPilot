@@ -973,9 +973,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         if args.command == "execute" and isinstance(result, dict) and result["exit_code"] != 0:
             return 2
-        if args.command == "reconcile" and isinstance(result, dict):
-            if result["status"] == "unreconciled":
-                return 2
+        if (
+            args.command == "reconcile"
+            and isinstance(result, dict)
+            and result["status"] == "unreconciled"
+        ):
+            return 2
     except (ValueError, RuntimeError, OSError, KeyError, ValidationError) as exc:
         print(f"epi: {exc}", file=sys.stderr)
         return 2
