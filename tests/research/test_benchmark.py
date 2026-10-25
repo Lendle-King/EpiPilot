@@ -85,7 +85,9 @@ def test_policy_comparison_is_matched(tmp_path: Path) -> None:
     path = fixture(tmp_path)
     results = compare_suite(path)
     assert results["matched_cases"] == 2
-    assert results["policies"]["epipilot_heuristic"]["mean_paired_improvement"] == pytest.approx(0.2)
+    assert results["policies"]["epipilot_heuristic"]["mean_paired_improvement"] == pytest.approx(
+        0.2
+    )
     assert results["policies"]["epipilot_heuristic"]["mean_cost"] == 6.5
     assert results["policies"]["epipilot_heuristic"]["paired_wins"] == 2
     assert main(["--root", str(tmp_path), "benchmark", "--manifest", "manifest.json"]) == 0
