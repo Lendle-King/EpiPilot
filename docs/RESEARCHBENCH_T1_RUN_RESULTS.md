@@ -65,6 +65,23 @@ Those outcomes are **not same-model evidence for a Luna-locked Pilot** and
 cannot be treated as completed matched controls under the revised protocol.
 A failed exact-Luna call must stop without retrying with a different model.
 
+## Strict Luna / 95%-only RAM follow-up — 2026-10-25
+
+This protocol removed per-process RSS, CPU-load and process-count hard gates
+and monitored **only whole-Mac physical memory used <=95%**. Codex was
+required to receive the explicit `--model 'gpt-6-luna(max)'` argument.
+
+| GitHub run | Result | Observation |
+| --- | --- | --- |
+| [40201406655](https://github.com/Lendle-King/Remote-Control/actions/runs/40201406655) | **Pass** (zero-model resource probe) | 24 GiB total RAM, 10.90 GiB available, 54.6% whole-Mac memory used, limit 95%; no model invocation |
+| [40201519820](https://github.com/Lendle-King/Remote-Control/actions/runs/40201519820) | **Rejected**, model-only qualification | One `gpt-6-luna(max)` Codex CLI attempt **started**; controller elapsed 37.502 seconds; Codex exited nonzero with no accepted candidate and no T1 development trial. The CLI stderr was intentionally not retained in sanitized artifacts; the underlying failure category (model ID, permission or provider) is undetermined. Provider-side request count and spend remain **unknown** |
+
+The model was not replaced with a default or alternative; no automatic
+retry occurred. The private push-triggered execution workflow has been
+disabled again. **There is currently no successful execution attesting that
+the local Codex path supports the exact Luna model ID.** The previous
+`default`-model qualifications remain scientifically separate.
+
 ## Research conclusions allowed now
 
 1. A pinned Mac runner can execute the offline reference benchmark with
