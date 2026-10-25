@@ -130,7 +130,7 @@ def test_bad_model_reply_cannot_trigger_trial_or_retry(
     monkeypatch.setattr(mac, "_t1", fake_t1)
     monkeypatch.setattr(mac, "_run", fake_run)
     monkeypatch.setattr(mac.subprocess, "run", fake_codex)
-    with pytest.raises(mac.MacRunBlocked, match="valid frozen T1 candidate"):
+    with pytest.raises(mac.MacRunBlocked, match="unique allowlisted candidate"):
         mac.one_cell(tmp_path, "codex_chatgpt", "default", "RUN_ONE_CELL")
     assert calls == ["init"]
 
@@ -171,3 +171,31 @@ def test_environment_scrubs_github_and_ssh_tokens(monkeypatch: pytest.MonkeyPatc
     assert "ACTIONS_RUNTIME_TOKEN" not in environment
     assert "SSH_AUTH_SOCK" not in environment
     assert environment["CI"] == "1"
+
+
+def test_candidate_reply_is_strictly_allowlisted_even_with_wrappers() -> None:
+    raw = '{"model":"logistic","feature_mode":"all","C":1.0,"class_weight":"none"}'
+    for candidate_text, expected_mode in (
+        (raw, "strict_json"),
+        ("```json\n" + raw + "\n```", "fenced_json"),
+        ("The best bounded setting is: " + raw, "embedded_json"),
+    ):
+        candidate, mode = mac.parse_frozen_candidate_reply(candidate_text)
+        assert candidate["model"] == "logistic"
+        assert mode == expected_mode
+    for bad in (
+        "",
+        "I cannot run this task.",
+        raw + "\n" + raw,
+        '{"model":"exec","command":"touch /tmp/unsafe"}',
+        raw + ("x" * 5000),
+    ):
+        with pytest.raises(ValueError):
+            mac.parse_frozen_candidate_reply(bad)
+
+
+def test_candidate_parser_rejects_nonfinite_numeric_parameters() -> None:
+    with pytest.raises(ValueError):
+        mac.parse_frozen_candidate_reply(
+            '{"model":"logistic","feature_mode":"all","C":NaN,"class_weight":"none"}'
+        )
