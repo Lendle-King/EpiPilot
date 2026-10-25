@@ -61,8 +61,9 @@ def test_offline_smoke_uses_only_local_t1(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert result["training_attempts"] == 2
 
 
+@pytest.mark.parametrize("seed", [42, 137])
 def test_one_cell_never_executes_model_proposed_shell(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, seed: int
 ) -> None:
     model_calls = []
     stages = []
@@ -78,6 +79,8 @@ def test_one_cell_never_executes_model_proposed_shell(
 
     def fake_t1(*args: str, timeout: int = 0) -> dict[str, object]:
         stages.append(args[0])
+        if args[0] in {"task", "trial", "submit"}:
+            assert args[args.index("--seed") + 1] == str(seed)
         if args[0] == "trial":
             return {
                 "id": "trial-0001",
@@ -90,7 +93,7 @@ def test_one_cell_never_executes_model_proposed_shell(
                 "run_id": "trial-0001",
                 "arm": "agent_only",
                 "dataset": "wdbc",
-                "seed": 42,
+                "seed": seed,
                 "dev_auroc": 0.87654,
                 "candidate_sha256": candidate_sha,
             }
@@ -113,7 +116,7 @@ def test_one_cell_never_executes_model_proposed_shell(
     monkeypatch.setattr(mac, "_t1", fake_t1)
     monkeypatch.setattr(mac, "_run", fake_run)
     monkeypatch.setattr(mac, "guarded_run", fake_codex)
-    result = mac.one_cell(tmp_path, "codex_chatgpt", "gpt-6-luna(max)", "RUN_ONE_CELL")
+    result = mac.one_cell(tmp_path, "codex_chatgpt", "gpt-6-luna(max)", "RUN_ONE_CELL", seed)
     assert stages == ["init", "trial", "submit"]
     assert len(model_calls) == 1
     argv, kwargs = model_calls[0]
@@ -129,6 +132,8 @@ def test_one_cell_never_executes_model_proposed_shell(
     assert result["development_cost_seconds"] == 2.0
     assert result["codex_peak_rss_mib"] == 176.0
     assert result["trial_id"] == "trial-0001"
+    assert result["seed"] == seed
+    assert result["arm"] == "agent_only"
     assert result["candidate_sha256"] == candidate_sha
 
 
