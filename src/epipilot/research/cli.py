@@ -116,7 +116,8 @@ def _parser() -> argparse.ArgumentParser:
     next_cmd.add_argument("--limit", type=int, default=5)
     plan = sub.add_parser("plan", help="compile context for a proposal")
     plan.add_argument("--id", required=True)
-    sub.add_parser("iterate", help="return the next blocked, pending or runnable action")
+    iterate = sub.add_parser("iterate", help="return the next blocked, pending or runnable action")
+    iterate.add_argument("--policy", choices=["heuristic", "conditional"], default="heuristic")
 
     scout = sub.add_parser("scout", help="reserve, submit and review sourced research leads")
     scout_sub = scout.add_subparsers(dest="action", required=True)
@@ -339,8 +340,10 @@ def _safe_verifier(parts: list[str]) -> list[str]:
     return argv
 
 
-def _next_action(state: ResearchState) -> dict[str, object]:
-    """Prioritize resuming one in-flight run over launching additional experiments."""
+def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str, object]:
+    """Prioritize existing work and use an explicitly selected research policy."""
+    if policy not in {"heuristic", "conditional"}:
+        raise ValueError("unknown research policy")
     active_scout = next(
         (run for run in state.scout_runs.values() if run.status is ScoutStatus.RUNNING), None
     )
@@ -382,10 +385,48 @@ def _next_action(state: ResearchState) -> dict[str, object]:
                     "contract": item.model_dump(mode="json"),
                     "guidance": guidance,
                 }
+    if policy == "conditional":
+        scores = []
+        for estimate in state.decision_estimates.values():
+            try:
+                scores.append(rank_decision(state, estimate))
+            except ValueError:
+                # Only active, budget/dependency-feasible proposals are eligible.
+                continue
+        if not scores:
+            return {
+                "status": "decision_forecast_required",
+                "selection_policy": "conditional",
+                "guidance": (
+                    "Register a four-outcome decision table for a feasible proposal, "
+                    "or explicitly choose --policy heuristic."
+                ),
+            }
+        scores.sort(key=lambda item: (-item.net_value, item.proposal_id))
+        best = scores[0]
+        if best.net_value <= 0:
+            return {
+                "status": "decision_value_stop",
+                "selection_policy": "conditional",
+                "decision_score": best.model_dump(mode="json"),
+                "guidance": "No positive net VoI; review forecast or stop spending.",
+            }
+        return {
+            "status": "ready_for_agent",
+            "selection_policy": "conditional",
+            "decision_score": best.model_dump(mode="json"),
+            "task": _plan(state, best.proposal_id),
+            "continuation": "Preregister and verify the real run before updating claims.",
+            "qualification": (
+                "Agent-supplied conditional value is a forecast, not observed causal "
+                "improvement or an empirically trained policy."
+            ),
+        }
     ranked = rank_proposals(state, limit=1)
     if ranked:
         return {
             "status": "ready_for_agent",
+            "selection_policy": "heuristic",
             "task": _plan(state, ranked[0].proposal.id),
             "continuation": "Preregister before execution; update memory after verification.",
         }
@@ -593,7 +634,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
     if command == "plan":
         return _plan(state, args.id)
     if command == "iterate":
-        return _next_action(state)
+        return _next_action(state, policy=args.policy)
     if command == "scout":
         if args.action == "status":
             return {
