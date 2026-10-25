@@ -104,9 +104,7 @@ def assess_headroom(
     )
 
 
-def inspect_host(
-    policy: GuardPolicy = POLICY, planned_rss_mib: int = 0
-) -> ResourceSnapshot:
+def inspect_host(policy: GuardPolicy = POLICY, planned_rss_mib: int = 0) -> ResourceSnapshot:
     """Reserve the possible whole subprocess peak IN ADDITION to Mac free memory."""
     psutil = _psutil()
     mem = psutil.virtual_memory()
