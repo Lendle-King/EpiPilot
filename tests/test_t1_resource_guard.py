@@ -39,10 +39,12 @@ def test_exclusive_lock_blocks_second_research_task(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
-    with guard.single_runner_lock():
-        with pytest.raises(guard.ResourceRefusal, match="another EpiPilot"):
-            with guard.single_runner_lock():
-                pass
+    with (
+        guard.single_runner_lock(),
+        pytest.raises(guard.ResourceRefusal, match="another EpiPilot"),
+        guard.single_runner_lock(),
+    ):
+        pass
     with guard.single_runner_lock():
         pass
 
