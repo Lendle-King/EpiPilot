@@ -41,9 +41,7 @@ def test_one_cell_requires_explicit_authorization_before_any_agent_call(
         mac.one_cell(tmp_path, "codex_chatgpt", "default", "")
 
 
-def test_offline_smoke_uses_only_local_t1(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_offline_smoke_uses_only_local_t1(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     commands = []
 
     def fake_t1(*args: str, timeout: int = 0) -> dict[str, object]:
@@ -147,8 +145,14 @@ def test_denied_mode_records_sanitized_receipt_without_paid_agent(
     assert (
         mac.main(
             [
-                "--mode", "pilot_one_cell", "--provider", "codex_chatgpt",
-                "--model", "gpt-6-luna(max)", "--results", str(output),
+                "--mode",
+                "pilot_one_cell",
+                "--provider",
+                "codex_chatgpt",
+                "--model",
+                "gpt-6-luna(max)",
+                "--results",
+                str(output),
             ]
         )
         == 2
