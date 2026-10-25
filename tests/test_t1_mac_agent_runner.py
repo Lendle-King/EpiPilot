@@ -13,8 +13,7 @@ from experiments.researchbench_t1 import mac_agent_runner as mac
 
 def test_model_selection_rejects_shell_or_unrecognized_chars() -> None:
     assert mac._model_name("gpt-6-luna(max)") == "gpt-6-luna(max)"
-    assert mac._model_name("default") == "default"
-    for model in ("", "$(id)", "gpt-6-luna; rm -rf /", "\nmodel", " "):
+    for model in ("", "default", "gpt-6", "gpt-6-luna max", "$(id)", "\nmodel", " "):
         with pytest.raises(mac.MacRunBlocked):
             mac._model_name(model)
 
@@ -38,7 +37,7 @@ def test_one_cell_requires_explicit_authorization_before_any_agent_call(
 
     monkeypatch.setattr(mac, "_codex", forbidden)
     with pytest.raises(mac.MacRunBlocked, match="RUN_ONE_CELL"):
-        mac.one_cell(tmp_path, "codex_chatgpt", "default", "")
+        mac.one_cell(tmp_path, "codex_chatgpt", mac.REQUIRED_MODEL, "")
 
 
 def test_offline_smoke_uses_only_local_t1(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -111,7 +110,9 @@ def test_one_cell_never_executes_model_proposed_shell(
             '{"model":"logistic","feature_mode":"all","C":1.0,"class_weight":"none"}',
             encoding="utf-8",
         )
-        return SimpleNamespace(returncode=0, peak_rss_mib=176.0)
+        return SimpleNamespace(
+            returncode=0, peak_mac_used_percent=47.5, minimum_mac_available_gib=12.6
+        )
 
     monkeypatch.setattr(mac, "_t1", fake_t1)
     monkeypatch.setattr(mac, "_run", fake_run)
@@ -122,7 +123,7 @@ def test_one_cell_never_executes_model_proposed_shell(
     argv, kwargs = model_calls[0]
     assert argv[0].endswith("codex")
     assert argv[1:4] == ["exec", "--sandbox", "read-only"]
-    assert argv[argv.index("--model") + 1] == "gpt-6-luna(max)"
+    assert argv[argv.index("--model") + 1] == mac.REQUIRED_MODEL
     assert kwargs["timeout"] == mac.MODEL_TIMEOUT
     assert "shell" not in kwargs
     assert result["model_calls"] == 1
@@ -130,7 +131,8 @@ def test_one_cell_never_executes_model_proposed_shell(
     assert result["model_output_format"] == "strict_json"
     assert result["development_auroc"] == 0.87654
     assert result["development_cost_seconds"] == 2.0
-    assert result["codex_peak_rss_mib"] == 176.0
+    assert result["peak_mac_memory_used_percent"] == 47.5
+    assert result["minimum_mac_available_gib"] == 12.6
     assert result["trial_id"] == "trial-0001"
     assert result["seed"] == seed
     assert result["arm"] == "agent_only"
@@ -155,13 +157,15 @@ def test_bad_model_reply_cannot_trigger_trial_or_retry(
     def fake_codex(argv: list[str], **kwargs: object) -> SimpleNamespace:
         dest = Path(argv[argv.index("--output-last-message") + 1])
         dest.write_text('{"model":"exec","command":"touch /tmp/unsafe"}', encoding="utf-8")
-        return SimpleNamespace(returncode=0, peak_rss_mib=176.0)
+        return SimpleNamespace(
+            returncode=0, peak_mac_used_percent=47.5, minimum_mac_available_gib=12.6
+        )
 
     monkeypatch.setattr(mac, "_t1", fake_t1)
     monkeypatch.setattr(mac, "_run", fake_run)
     monkeypatch.setattr(mac, "guarded_run", fake_codex)
     with pytest.raises(mac.MacRunBlocked, match="unique allowlisted candidate"):
-        mac.one_cell(tmp_path, "codex_chatgpt", "default", "RUN_ONE_CELL")
+        mac.one_cell(tmp_path, "codex_chatgpt", mac.REQUIRED_MODEL, "RUN_ONE_CELL")
     assert calls == ["init"]
 
 
@@ -268,15 +272,31 @@ def test_trial_and_submission_metrics_fail_closed_on_inconsistent_provenance() -
             mac.validated_development_metrics(corrupted, submission, candidate)
 
 
-def test_pilot_cannot_contact_codex_when_mac_memory_reserve_is_insufficient(
+def test_pilot_cannot_contact_codex_when_mac_memory_usage_over_95_percent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(mac.platform, "system", lambda: "Darwin")
 
     def refuse(*args: object, **kwargs: object) -> object:
-        raise mac.ResourceRefusal("Mac lacks headroom for a new model/worker memory peak")
+        raise mac.ResourceRefusal("Mac whole-machine physical memory usage exceeds 95%")
 
     monkeypatch.setattr(mac, "inspect_host", refuse)
     monkeypatch.setattr(mac, "one_cell", lambda *args: (_ for _ in ()).throw(AssertionError))
-    with pytest.raises(mac.ResourceRefusal, match="Mac lacks headroom"):
-        mac.run("pilot_one_cell", "codex_chatgpt", "default", "RUN_ONE_CELL", tmp_path, 137)
+    with pytest.raises(mac.ResourceRefusal, match="exceeds 95%"):
+        mac.run(
+            "pilot_one_cell", "codex_chatgpt", mac.REQUIRED_MODEL,
+            "RUN_ONE_CELL", tmp_path, 137
+        )
+
+def test_different_model_is_rejected_before_codex_or_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        mac, "inspect_host", lambda: (_ for _ in ()).throw(AssertionError("probed"))
+    )
+    monkeypatch.setattr(
+        mac, "one_cell", lambda *args: (_ for _ in ()).throw(AssertionError("Codex"))
+    )
+    for model in ("default", "gpt-6", "gpt-6-luna", "gpt-6-luna max"):
+        with pytest.raises(mac.MacRunBlocked, match="only the exact Codex model"):
+            mac.run("pilot_one_cell", "codex_chatgpt", model, "RUN_ONE_CELL", tmp_path)
