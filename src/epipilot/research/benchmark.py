@@ -105,7 +105,12 @@ def _measured(root: Path, suite: Suite, run: Run) -> float:
     if hashlib.sha256(artifact.read_bytes()).hexdigest() != run.artifact_sha256:
         raise InvalidBenchmark("artifact hash mismatch")
     if not isinstance(source, dict) or set(source) != {
-        "case_id", "seed", "dataset", "evaluator", "metric", "value"
+        "case_id",
+        "seed",
+        "dataset",
+        "evaluator",
+        "metric",
+        "value",
     }:
         raise InvalidBenchmark("unexpected independent evaluation record schema")
     expected = {
@@ -119,11 +124,7 @@ def _measured(root: Path, suite: Suite, run: Run) -> float:
         if type(source[key]) is not type(value) or source[key] != value:
             raise InvalidBenchmark(f"evaluator record disagrees on {key}")
     score = source["value"]
-    if (
-        isinstance(score, bool)
-        or not isinstance(score, (float, int))
-        or not math.isfinite(score)
-    ):
+    if isinstance(score, bool) or not isinstance(score, (float, int)) or not math.isfinite(score):
         raise InvalidBenchmark("nonfinite or nonnumeric evaluation metric")
     return float(score)
 
