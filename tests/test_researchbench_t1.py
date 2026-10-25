@@ -206,6 +206,7 @@ def test_real_pilot_uses_a_fresh_holdout_from_inspected_smoke(tmp_path: Path) ->
     pilot_meta = json.loads((pilot_work / "meta.json").read_text(encoding="utf-8"))
     assert smoke_meta["datasets"]["wdbc"]["split_seed"] == 20271025
     assert pilot_meta["datasets"]["wdbc"]["split_seed"] == 20272025
-    assert smoke_meta["datasets"]["wdbc"]["files"]["test"]["sha256"] != (
-        pilot_meta["datasets"]["wdbc"]["files"]["test"]["sha256"]
+    assert (
+        smoke_meta["datasets"]["wdbc"]["files"]["test"]["sha256"]
+        != (pilot_meta["datasets"]["wdbc"]["files"]["test"]["sha256"])
     )
