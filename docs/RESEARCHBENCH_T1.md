@@ -56,6 +56,35 @@ pre-registered official three-dataset research-efficiency comparison.
 Re-running with the same workspace is intentionally rejected. Use fresh
 workspace and vault paths for an independent replication.
 
+## Optional private macOS remote execution
+
+The private [Remote-Control](https://github.com/Lendle-King/Remote-Control)
+repository can host a **manual-only**, self-hosted macOS GitHub Actions workflow.
+Its three modes are:
+
+- `diagnose`: no ML fit and **zero** model calls; checks that the job actually reached
+  a Mac runner and whether its Codex CLI is present/authenticated.
+- `offline_smoke`: run this branch's existing frozen WDBC smoke on the Mac;
+  **zero** model calls.
+- `pilot_one_cell`: only after explicit `RUN_ONE_CELL` confirmation, issue
+  **one** Codex `exec` call for the `agent_only / wdbc / seed 42` cell, require
+  an allowlisted JSON candidate, run one real development trial, and submit
+  the best candidate. This cannot support a four-policy efficiency claim.
+
+The source is pinned to an exact EpiPilot commit in the remote workflow so
+a new public PR commit cannot change what executes on the trusted Mac.
+Codex/CC Switch authentication is configured on the Mac itself; no secrets
+are copied to GitHub. `gpt-6-luna(max)` is an unverified local model selector
+and should never silently fall back to another model. A call that fails after
+it starts may still consume quota or money; the runner records an attempted
+call and never retries it automatically. No third-party billing cap can be
+enforced by this Python benchmark; use provider-side limits.
+
+Only the low-cost qualification can be performed on an ordinary same-user
+runner account. A formal blind holdout must remain inaccessible to the
+Coding Agent through a separate account/host/security boundary. No final
+test is opened by the one-cell command.
+
 ## Pilot: four controlled policy slots, no automatic paid model calls
 
 First initialize the matched pilot (manual approval is required for the
