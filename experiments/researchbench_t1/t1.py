@@ -660,10 +660,7 @@ def task_prompt(work: Path, arm: str, dataset: str, seed: int) -> str:
         f"python {path} trial --work {work} --arm {arm} "
         f"--dataset {dataset} --seed {seed} --candidate YOUR_CANDIDATE.json"
     )
-    submit_cmd = (
-        f"python {path} submit --work {work} --arm {arm} "
-        f"--dataset {dataset} --seed {seed}"
-    )
+    submit_cmd = f"python {path} submit --work {work} --arm {arm} --dataset {dataset} --seed {seed}"
     return f"""ResearchBench-T1 {meta["stage"]} / {dataset} / seed {seed} / policy {arm}
 Goal: maximize held-out AUROC under a hard development experiment budget.
 Only train/dev are visible: {src}/train.csv and {src}/dev.csv.
