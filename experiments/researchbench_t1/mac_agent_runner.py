@@ -183,8 +183,12 @@ def offline_smoke(root: Path) -> dict[str, Any]:
     }
 
 
-def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, Any]:
-    """Single agent-only seed with exactly one Codex attempt and one T1 trial."""
+def one_cell(
+    root: Path, provider: str, model: str, confirm: str, seed: int = 42
+) -> dict[str, Any]:
+    """One independent agent-only development cell; never run two seeds in a job."""
+    if seed not in (42, 137):
+        raise MacRunBlocked("pilot cell seed must be one of the frozen qualification seeds")
     if confirm != "RUN_ONE_CELL":
         raise MacRunBlocked("one-cell agent invocation requires explicit RUN_ONE_CELL")
     codex = _codex()
@@ -216,7 +220,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
             "--dataset",
             "wdbc",
             "--seed",
-            "42",
+            str(seed),
         ],
         timeout=20,
     )
@@ -283,7 +287,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
         "--dataset",
         "wdbc",
         "--seed",
-        "42",
+        str(seed),
         "--candidate",
         str(candidate_path),
         timeout=80,
@@ -299,10 +303,10 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
         "--dataset",
         "wdbc",
         "--seed",
-        "42",
+        str(seed),
         timeout=20,
     )
-    measured = validated_development_metrics(trial, submission, candidate)
+    measured = validated_development_metrics(trial, submission, candidate, seed)
     return {
         "model_calls": 1,
         "model_attempt_wall_seconds": round(elapsed, 3),
@@ -311,6 +315,8 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
         "requested_model": model,
         "model_output_format": reply_format,
         "trial_completed": True,
+        "seed": seed,
+        "arm": "agent_only",
         **measured,
         "qualification": (
             "ONE agent_only development cell; no final test, no four-policy comparison. "
@@ -320,7 +326,10 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
 
 
 def validated_development_metrics(
-    trial: dict[str, Any], submission: dict[str, Any], candidate: dict[str, Any]
+    trial: dict[str, Any],
+    submission: dict[str, Any],
+    candidate: dict[str, Any],
+    seed: int = 42,
 ) -> dict[str, object]:
     """Require real T1 run and submitted candidate to agree before reporting numbers."""
     score = trial.get("dev_auroc")
@@ -335,7 +344,7 @@ def validated_development_metrics(
         or submission.get("arm") != "agent_only"
         or submission.get("dataset") != "wdbc"
         or type(submission.get("seed")) is not int
-        or submission.get("seed") != 42
+        or submission.get("seed") != seed
     ):
         raise MacRunBlocked("submitted benchmark record disagrees with the real trial")
     if any(
@@ -358,7 +367,9 @@ def validated_development_metrics(
     }
 
 
-def run(mode: str, provider: str, model: str, confirm: str, root: Path) -> dict[str, Any]:
+def run(
+    mode: str, provider: str, model: str, confirm: str, root: Path, seed: int = 42
+) -> dict[str, Any]:
     if mode not in ALLOWED_MODES or provider not in ALLOWED_PROVIDERS:
         raise MacRunBlocked("unknown mode or provider")
     _model_name(model)
@@ -381,7 +392,7 @@ def run(mode: str, provider: str, model: str, confirm: str, root: Path) -> dict[
         }
     if mode == "offline_smoke":
         return offline_smoke(root)
-    return one_cell(root, provider, model, confirm)
+    return one_cell(root, provider, model, confirm, seed)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -390,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider", choices=ALLOWED_PROVIDERS, default="codex_chatgpt")
     parser.add_argument("--model", default="default")
     parser.add_argument("--confirm", default="")
+    parser.add_argument("--seed", type=int, choices=[42, 137], default=42)
     parser.add_argument("--results", type=Path, required=True)
     args = parser.parse_args(argv)
     root = args.results.resolve()
@@ -407,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     try:
         with single_runner_lock():
-            outcome = run(args.mode, args.provider, args.model, args.confirm, root)
+            outcome = run(args.mode, args.provider, args.model, args.confirm, root, args.seed)
         summary.update(outcome)
         summary["status"] = "completed"
         returncode = 0
