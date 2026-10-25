@@ -223,6 +223,10 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
     if model != "default":
         command.extend(["--model", model])
     command.append(request)
+    # Conservative, durable marker: a failed/timed-out call may still incur provider usage.
+    (root / "agent_attempt.started").write_text(
+        datetime.now(UTC).isoformat(), encoding="utf-8"
+    )
     before = time.monotonic()
     try:
         outcome = subprocess.run(
@@ -342,6 +346,7 @@ def main(argv: list[str] | None = None) -> int:
         returncode = 2
     finally:
         summary["elapsed_wall_seconds"] = round(time.monotonic() - began, 3)
+        summary["model_attempt_started"] = (root / "agent_attempt.started").exists()
         (root / "summary.json").write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
@@ -350,6 +355,8 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "status": summary["status"],
                     "mode": args.mode,
+                    "readiness": summary.get("readiness"),
+                    "model_attempt_started": summary["model_attempt_started"],
                     "safe_reason": summary.get("safe_reason"),
                     "summary_json": str(root / "summary.json"),
                 },
