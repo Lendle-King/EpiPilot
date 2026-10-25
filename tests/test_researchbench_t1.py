@@ -28,8 +28,14 @@ from experiments.researchbench_t1.t1 import (
 def _candidate(name: str = "logistic") -> dict[str, object]:
     if name == "logistic":
         return {"model": "logistic", "feature_mode": "all", "C": 1.0, "class_weight": "none"}
-    return {"model": "forest", "feature_mode": "all", "n_estimators": 64,
-            "max_depth": 7, "min_samples_leaf": 2, "class_weight": "balanced"}
+    return {
+        "model": "forest",
+        "feature_mode": "all",
+        "n_estimators": 64,
+        "max_depth": 7,
+        "min_samples_leaf": 2,
+        "class_weight": "balanced",
+    }
 
 
 def _write(path: Path, content: dict[str, object]) -> Path:
@@ -103,9 +109,17 @@ def test_actual_cpu_smoke_chooses_dev_model_once(tmp_path: Path) -> None:
     assert not (work / "public" / "wdbc" / "test.csv").exists()
     assert (vault / "wdbc" / "test.csv").exists()
     with pytest.raises(BenchmarkError, match="per-cell experiment count"):
-        perform_trial(work, "offline_baseline", "wdbc", 42,
-                      Path(__file__).parent.parent / "experiments" / "researchbench_t1" /
-                      "candidates" / "logistic.json")
+        perform_trial(
+            work,
+            "offline_baseline",
+            "wdbc",
+            42,
+            Path(__file__).parent.parent
+            / "experiments"
+            / "researchbench_t1"
+            / "candidates"
+            / "logistic.json",
+        )
 
 
 def test_trial_duplicate_and_data_integrity_guards(tmp_path: Path) -> None:
@@ -131,8 +145,15 @@ def test_manual_crash_reconciliation_is_conservative(tmp_path: Path) -> None:
     work, vault = tmp_path / "work", tmp_path / "vault"
     setup(work, vault, "smoke", {}, False)
     events = work / "events.jsonl"
-    begin = {"kind": "started", "id": "trial-0001", "arm": "offline_baseline",
-             "dataset": "wdbc", "seed": 42, "candidate_sha256": "0" * 64, "time_limit": 12}
+    begin = {
+        "kind": "started",
+        "id": "trial-0001",
+        "arm": "offline_baseline",
+        "dataset": "wdbc",
+        "seed": 42,
+        "candidate_sha256": "0" * 64,
+        "time_limit": 12,
+    }
     events.write_text(json.dumps(begin) + "\n", encoding="utf-8")
     candidate = _write(tmp_path / "new.json", _candidate())
     with pytest.raises(BenchmarkError, match="unreconciled"):

@@ -20,16 +20,33 @@ from pathlib import Path
 from typing import Any, Iterator
 
 STAGES: dict[str, dict[str, Any]] = {
-    "smoke": {"datasets": ["wdbc"], "arms": ["offline_baseline"],
-              "seeds": [42], "per_cell_trials": 2, "trial_seconds": 12,
-              "total_seconds": 30, "final_eval_seconds": 15},
-    "pilot": {"datasets": ["wdbc"], "arms": ["agent_only", "memory_only",
-              "epipilot_heuristic", "epipilot_conditional"], "seeds": [42, 137],
-              "per_cell_trials": 2, "trial_seconds": 15, "total_seconds": 120, "final_eval_seconds": 20},
-    "full": {"datasets": ["adult", "bank", "magic"],
-             "arms": ["agent_only", "memory_only", "epipilot_heuristic",
-                      "epipilot_conditional"], "seeds": [42, 137, 271],
-             "per_cell_trials": 2, "trial_seconds": 20, "total_seconds": 900, "final_eval_seconds": 35},
+    "smoke": {
+        "datasets": ["wdbc"],
+        "arms": ["offline_baseline"],
+        "seeds": [42],
+        "per_cell_trials": 2,
+        "trial_seconds": 12,
+        "total_seconds": 30,
+        "final_eval_seconds": 15,
+    },
+    "pilot": {
+        "datasets": ["wdbc"],
+        "arms": ["agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"],
+        "seeds": [42, 137],
+        "per_cell_trials": 2,
+        "trial_seconds": 15,
+        "total_seconds": 120,
+        "final_eval_seconds": 20,
+    },
+    "full": {
+        "datasets": ["adult", "bank", "magic"],
+        "arms": ["agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"],
+        "seeds": [42, 137, 271],
+        "per_cell_trials": 2,
+        "trial_seconds": 20,
+        "total_seconds": 900,
+        "final_eval_seconds": 35,
+    },
 }
 SPLIT_SEED = 20271025
 SCHEMA = 1
@@ -66,7 +83,9 @@ def atomic_json(path: Path, data: dict[str, Any]) -> None:
         raise BenchmarkError(f"refusing to overwrite existing data: {path}")
     tmp: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile("wb", dir=path.parent, prefix=".partial-", delete=False) as stream:
+        with tempfile.NamedTemporaryFile(
+            "wb", dir=path.parent, prefix=".partial-", delete=False
+        ) as stream:
             tmp = Path(stream.name)
             stream.write(canonical(data))
             stream.flush()
@@ -83,7 +102,9 @@ def exclusive(root: Path) -> Iterator[None]:
     try:
         fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError as exc:
-        raise BenchmarkError("T1 is already running or requires explicit crash reconciliation") from exc
+        raise BenchmarkError(
+            "T1 is already running or requires explicit crash reconciliation"
+        ) from exc
     try:
         os.close(fd)
         yield
@@ -136,13 +157,29 @@ def load_data(dataset: str, source: Path | None) -> tuple[Any, Any, str]:
         labels = bunch.target.copy()
         return data, labels, "sklearn.datasets.load_breast_cancer"
     if source is None or not source.is_file():
-        raise BenchmarkError(f"{dataset}: supply an existing local raw UCI file; no download is attempted")
+        raise BenchmarkError(
+            f"{dataset}: supply an existing local raw UCI file; no download is attempted"
+        )
     if source.stat().st_size > 40 * 1024 * 1024:
         raise BenchmarkError("refusing oversized external dataset")
     if dataset == "adult":
-        cols = ["age", "workclass", "fnlwgt", "education", "education_num", "marital_status",
-                "occupation", "relationship", "race", "sex", "capital_gain", "capital_loss",
-                "hours_per_week", "native_country", "target"]
+        cols = [
+            "age",
+            "workclass",
+            "fnlwgt",
+            "education",
+            "education_num",
+            "marital_status",
+            "occupation",
+            "relationship",
+            "race",
+            "sex",
+            "capital_gain",
+            "capital_loss",
+            "hours_per_week",
+            "native_country",
+            "target",
+        ]
         frame = pd.read_csv(source, header=None, names=cols, skipinitialspace=True)
         frame = frame.replace("?", np.nan)
         target = frame.pop("target").astype(str).str.strip().str.rstrip(".")
@@ -152,7 +189,9 @@ def load_data(dataset: str, source: Path | None) -> tuple[Any, Any, str]:
     elif dataset == "bank":
         frame = pd.read_csv(source, sep=";")
         if "y" not in frame or "duration" not in frame:
-            raise BenchmarkError("Bank Marketing requires bank-full.csv with y and duration columns")
+            raise BenchmarkError(
+                "Bank Marketing requires bank-full.csv with y and duration columns"
+            )
         target = frame.pop("y").astype(str).str.strip()
         if set(target.unique()) != {"yes", "no"}:
             raise BenchmarkError("Bank label vocabulary not recognized")
@@ -192,20 +231,33 @@ def _write_dataset(work: Path, vault: Path, dataset: str, source: Path | None) -
     vault_dir = vault / dataset
     public_dir.mkdir(parents=True, exist_ok=False)
     vault_dir.mkdir(parents=True, exist_ok=False)
-    meta = {"dataset": dataset, "source_hash": source_hash, "split_seed": SPLIT_SEED,
-            "rows": len(y), "features": len(data.columns) - 1,
-            "versions": {"sklearn": sklearn.__version__, "pandas": pd.__version__,
-                         "numpy": np.__version__},
-            "files": {}}
-    for name, ids, folder in [("train", train, public_dir), ("dev", dev, public_dir),
-                              ("test", test, vault_dir)]:
+    meta = {
+        "dataset": dataset,
+        "source_hash": source_hash,
+        "split_seed": SPLIT_SEED,
+        "rows": len(y),
+        "features": len(data.columns) - 1,
+        "versions": {
+            "sklearn": sklearn.__version__,
+            "pandas": pd.__version__,
+            "numpy": np.__version__,
+        },
+        "files": {},
+    }
+    for name, ids, folder in [
+        ("train", train, public_dir),
+        ("dev", dev, public_dir),
+        ("test", test, vault_dir),
+    ]:
         path = folder / f"{name}.csv"
         data.iloc[ids].to_csv(path, index=False, float_format="%.15g")
         meta["files"][name] = {"sha256": file_digest(path), "rows": len(ids)}
     return meta
 
 
-def setup(work: Path, vault: Path, stage: str, sources: dict[str, Path], opt_in: bool) -> dict[str, Any]:
+def setup(
+    work: Path, vault: Path, stage: str, sources: dict[str, Path], opt_in: bool
+) -> dict[str, Any]:
     if stage not in STAGES:
         raise BenchmarkError("invalid T1 stage")
     if stage != "smoke" and not opt_in:
@@ -223,16 +275,30 @@ def setup(work: Path, vault: Path, stage: str, sources: dict[str, Path], opt_in:
     dataset_meta: dict[str, Any] = {}
     for dataset in spec["datasets"]:
         dataset_meta[dataset] = _write_dataset(work, vault, dataset, sources.get(dataset))
-    meta = {"schema": SCHEMA, "stage": stage, "profile": spec,
-            "datasets": dataset_meta, "total_external_api_calls": 0,
-            "final_holdout_is_off_limits_during_search": True}
+    meta = {
+        "schema": SCHEMA,
+        "stage": stage,
+        "profile": spec,
+        "datasets": dataset_meta,
+        "total_external_api_calls": 0,
+        "final_holdout_is_off_limits_during_search": True,
+    }
     atomic_json(work / "meta.json", meta)
-    atomic_json(vault / "meta.json", {"public_meta_sha256": file_digest(work / "meta.json"),
-                                      "dataset_holdouts": {k: v["files"]["test"]["sha256"]
-                                                           for k, v in dataset_meta.items()}})
-    return {"stage": stage, "work": str(work), "vault": str(vault),
-            "profile": spec, "dataset_rows": {k: v["rows"] for k, v in dataset_meta.items()},
-            "api_calls": 0}
+    atomic_json(
+        vault / "meta.json",
+        {
+            "public_meta_sha256": file_digest(work / "meta.json"),
+            "dataset_holdouts": {k: v["files"]["test"]["sha256"] for k, v in dataset_meta.items()},
+        },
+    )
+    return {
+        "stage": stage,
+        "work": str(work),
+        "vault": str(vault),
+        "profile": spec,
+        "dataset_rows": {k: v["rows"] for k, v in dataset_meta.items()},
+        "api_calls": 0,
+    }
 
 
 def normalize_candidate(raw: dict[str, Any]) -> dict[str, Any]:
@@ -240,12 +306,22 @@ def normalize_candidate(raw: dict[str, Any]) -> dict[str, Any]:
         raise BenchmarkError("candidate needs model and feature_mode")
     allowed = {
         "logistic": {"model", "feature_mode", "C", "class_weight"},
-        "forest": {"model", "feature_mode", "n_estimators", "max_depth", "min_samples_leaf", "class_weight"},
+        "forest": {
+            "model",
+            "feature_mode",
+            "n_estimators",
+            "max_depth",
+            "min_samples_leaf",
+            "class_weight",
+        },
     }
     name = raw["model"]
     if name not in allowed or set(raw) != allowed[name]:
         raise BenchmarkError("unapproved estimator or inconsistent parameter schema")
-    if raw["feature_mode"] not in ("all", "numeric_only") or raw["class_weight"] not in ("none", "balanced"):
+    if raw["feature_mode"] not in ("all", "numeric_only") or raw["class_weight"] not in (
+        "none",
+        "balanced",
+    ):
         raise BenchmarkError("invalid feature_mode or class_weight")
     if name == "logistic":
         c = raw["C"]
@@ -253,7 +329,9 @@ def normalize_candidate(raw: dict[str, Any]) -> dict[str, Any]:
             raise BenchmarkError("logistic C outside approved range")
     else:
         n, depth, leaf = raw["n_estimators"], raw["max_depth"], raw["min_samples_leaf"]
-        if any(type(x) is not int for x in (n, depth, leaf)) or not (20 <= n <= 120 and 2 <= depth <= 16 and 1 <= leaf <= 10):
+        if any(type(x) is not int for x in (n, depth, leaf)) or not (
+            20 <= n <= 120 and 2 <= depth <= 16 and 1 <= leaf <= 10
+        ):
             raise BenchmarkError("forest parameters outside approved range")
     return dict(sorted(raw.items()))
 
@@ -285,23 +363,40 @@ def _fit(train: Path, evaluation: Path, raw: dict[str, Any], seed: int, fit_all:
     categories = [c for c in train_frame.columns if c not in numerics]
     transformers: list[tuple[str, Any, list[str]]] = []
     if numerics:
-        transformers.append(("num", make_pipeline(SimpleImputer(strategy="median"),
-                                                  StandardScaler()), numerics))
+        transformers.append(
+            ("num", make_pipeline(SimpleImputer(strategy="median"), StandardScaler()), numerics)
+        )
     if categories:
-        transformers.append(("cat", make_pipeline(SimpleImputer(strategy="most_frequent"),
-                                                  OneHotEncoder(handle_unknown="ignore")), categories))
+        transformers.append(
+            (
+                "cat",
+                make_pipeline(
+                    SimpleImputer(strategy="most_frequent"), OneHotEncoder(handle_unknown="ignore")
+                ),
+                categories,
+            )
+        )
     if not transformers:
         raise BenchmarkError("empty design matrix")
     preprocessor = ColumnTransformer(transformers)
     weight = None if candidate["class_weight"] == "none" else "balanced"
     if candidate["model"] == "logistic":
-        model = LogisticRegression(C=candidate["C"], max_iter=250, class_weight=weight,
-                                   random_state=seed, solver="liblinear")
+        model = LogisticRegression(
+            C=candidate["C"],
+            max_iter=250,
+            class_weight=weight,
+            random_state=seed,
+            solver="liblinear",
+        )
     else:
-        model = RandomForestClassifier(n_estimators=candidate["n_estimators"],
-                                      max_depth=candidate["max_depth"],
-                                      min_samples_leaf=candidate["min_samples_leaf"],
-                                      class_weight=weight, n_jobs=1, random_state=seed)
+        model = RandomForestClassifier(
+            n_estimators=candidate["n_estimators"],
+            max_depth=candidate["max_depth"],
+            min_samples_leaf=candidate["min_samples_leaf"],
+            class_weight=weight,
+            n_jobs=1,
+            random_state=seed,
+        )
     pipeline = make_pipeline(preprocessor, model)
     pipeline.fit(train_frame, y_train)
     probabilities = pipeline.predict_proba(eval_frame)[:, 1]
@@ -328,17 +423,24 @@ def _load_meta(work: Path) -> dict[str, Any]:
 
 def _unit(meta: dict[str, Any], arm: str, dataset: str, seed: int) -> None:
     profile = meta["profile"]
-    if arm not in profile["arms"] or dataset not in profile["datasets"] or seed not in profile["seeds"]:
+    if (
+        arm not in profile["arms"]
+        or dataset not in profile["datasets"]
+        or seed not in profile["seeds"]
+    ):
         raise BenchmarkError("arm/dataset/seed outside preregistered task matrix")
 
 
 def _spent(events: list[dict[str, Any]], timeout: int) -> float:
     ended = {e["id"] for e in events if e["kind"] in ("finished", "aborted")}
     return sum(float(e["seconds"]) for e in events if e["kind"] in ("finished", "aborted")) + sum(
-        timeout for e in events if e["kind"] == "started" and e["id"] not in ended)
+        timeout for e in events if e["kind"] == "started" and e["id"] not in ended
+    )
 
 
-def perform_trial(work: Path, arm: str, dataset: str, seed: int, candidate_path: Path) -> dict[str, Any]:
+def perform_trial(
+    work: Path, arm: str, dataset: str, seed: int, candidate_path: Path
+) -> dict[str, Any]:
     work = work.resolve()
     meta = _load_meta(work)
     _unit(meta, arm, dataset, seed)
@@ -351,35 +453,78 @@ def perform_trial(work: Path, arm: str, dataset: str, seed: int, candidate_path:
         finished = {e["id"] for e in history if e["kind"] in ("finished", "aborted")}
         if any(e["id"] not in finished for e in started):
             raise BenchmarkError("unreconciled interrupted trial; do not restart automatically")
-        matches = [e for e in started if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)]
+        matches = [
+            e for e in started if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+        ]
         if len(matches) >= profile["per_cell_trials"]:
             raise BenchmarkError("per-cell experiment count budget exhausted")
         if any(e["candidate_sha256"] == c_hash for e in matches):
             raise BenchmarkError("identical candidate already attempted for this research cell")
         # Reserve one maximum-duration trial; crash counts conservatively.
-        if _spent(history, profile["trial_seconds"]) + profile["trial_seconds"] > profile["total_seconds"] + 1e-9:
+        if (
+            _spent(history, profile["trial_seconds"]) + profile["trial_seconds"]
+            > profile["total_seconds"] + 1e-9
+        ):
             raise BenchmarkError("global CPU wall-budget exhausted, cannot reserve trial")
         run_id = f"trial-{len(started) + 1:04d}"
         run_dir = work / "runs" / run_id
         run_dir.mkdir(parents=True, exist_ok=False)
         atomic_json(run_dir / "candidate.json", proposed)
-        event(work, {"kind": "started", "id": run_id, "arm": arm, "dataset": dataset,
-                     "seed": seed, "candidate_sha256": c_hash, "time_limit": profile["trial_seconds"]})
+        event(
+            work,
+            {
+                "kind": "started",
+                "id": run_id,
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "candidate_sha256": c_hash,
+                "time_limit": profile["trial_seconds"],
+            },
+        )
         train = work / "public" / dataset / "train.csv"
         dev = work / "public" / dataset / "dev.csv"
         dataset_meta = meta["datasets"][dataset]["files"]
-        if file_digest(train) != dataset_meta["train"]["sha256"] or file_digest(dev) != dataset_meta["dev"]["sha256"]:
+        if (
+            file_digest(train) != dataset_meta["train"]["sha256"]
+            or file_digest(dev) != dataset_meta["dev"]["sha256"]
+        ):
             raise BenchmarkError("public split was modified; run remains reserved until reviewed")
-        argv = [sys.executable, str(Path(__file__).resolve()), "_worker", "--train", str(train),
-                "--eval", str(dev), "--candidate", str(run_dir / "candidate.json"),
-                "--seed", str(seed), "--output", str(run_dir / "metric.json")]
+        argv = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "_worker",
+            "--train",
+            str(train),
+            "--eval",
+            str(dev),
+            "--candidate",
+            str(run_dir / "candidate.json"),
+            "--seed",
+            str(seed),
+            "--output",
+            str(run_dir / "metric.json"),
+        ]
         environment = dict(os.environ)
-        environment.update({"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
-                            "NUMEXPR_NUM_THREADS": "1"})
+        environment.update(
+            {
+                "OPENBLAS_NUM_THREADS": "1",
+                "OMP_NUM_THREADS": "1",
+                "MKL_NUM_THREADS": "1",
+                "NUMEXPR_NUM_THREADS": "1",
+            }
+        )
         begin = time.monotonic()
         try:
-            result = subprocess.run(argv, timeout=profile["trial_seconds"], capture_output=True,
-                                    text=True, cwd=work, env=environment, check=False)
+            result = subprocess.run(
+                argv,
+                timeout=profile["trial_seconds"],
+                capture_output=True,
+                text=True,
+                cwd=work,
+                env=environment,
+                check=False,
+            )
             exit_code = result.returncode
             stderr = result.stderr[:400]
         except subprocess.TimeoutExpired:
@@ -390,13 +535,25 @@ def perform_trial(work: Path, arm: str, dataset: str, seed: int, candidate_path:
         score = None if measured is None else measured["auroc"]
         if score is not None and (type(score) is not float or not 0 <= score <= 1):
             exit_code, score, stderr = 2, None, "invalid AUROC result"
-        receipt = {"kind": "finished", "id": run_id, "seconds": round(seconds, 6),
-                   "exit_code": exit_code, "dev_auroc": score, "metric_sha256": (
-                       file_digest(metric_path) if metric_path.exists() else None),
-                   "error": stderr}
+        receipt = {
+            "kind": "finished",
+            "id": run_id,
+            "seconds": round(seconds, 6),
+            "exit_code": exit_code,
+            "dev_auroc": score,
+            "metric_sha256": (file_digest(metric_path) if metric_path.exists() else None),
+            "error": stderr,
+        }
         event(work, receipt)
-        return {**receipt, "dataset": dataset, "seed": seed, "arm": arm,
-                "remaining_wall_seconds": max(0, profile["total_seconds"] - _spent(ledger(work), profile["trial_seconds"]))}
+        return {
+            **receipt,
+            "dataset": dataset,
+            "seed": seed,
+            "arm": arm,
+            "remaining_wall_seconds": max(
+                0, profile["total_seconds"] - _spent(ledger(work), profile["trial_seconds"])
+            ),
+        }
 
 
 def recover_failed_trial(work: Path, run_id: str, reason: str) -> dict[str, Any]:
@@ -411,12 +568,22 @@ def recover_failed_trial(work: Path, run_id: str, reason: str) -> dict[str, Any]
         if run_id not in ids or run_id in ended:
             raise BenchmarkError("only an uncompleted started trial may be reconciled")
         # Conservatively charge full timeout rather than inventing actual wall time.
-        event(work, {"kind": "aborted", "id": run_id, "seconds": meta["profile"]["trial_seconds"],
-                     "reason": reason, "cost_is_upper_bound": True})
+        event(
+            work,
+            {
+                "kind": "aborted",
+                "id": run_id,
+                "seconds": meta["profile"]["trial_seconds"],
+                "reason": reason,
+                "cost_is_upper_bound": True,
+            },
+        )
         return {"aborted": run_id, "charged_seconds": meta["profile"]["trial_seconds"]}
 
 
-def add_memory(work: Path, arm: str, dataset: str, seed: int, run_id: str, note: str) -> dict[str, Any]:
+def add_memory(
+    work: Path, arm: str, dataset: str, seed: int, run_id: str, note: str
+) -> dict[str, Any]:
     """A memory-only baseline may reuse scoped lessons grounded in real dev runs."""
     if arm != "memory_only" or not 20 <= len(note.strip()) <= 500:
         raise BenchmarkError("only memory_only may save a bounded, meaningful lesson")
@@ -427,15 +594,28 @@ def add_memory(work: Path, arm: str, dataset: str, seed: int, run_id: str, note:
         history = ledger(work)
         begins = {e["id"]: e for e in history if e["kind"] == "started"}
         ends = {e["id"]: e for e in history if e["kind"] == "finished"}
-        if run_id not in ends or ends[run_id]["exit_code"] != 0 or (
-            begins[run_id]["arm"], begins[run_id]["dataset"], begins[run_id]["seed"]
-        ) != (arm, dataset, seed):
+        if (
+            run_id not in ends
+            or ends[run_id]["exit_code"] != 0
+            or (begins[run_id]["arm"], begins[run_id]["dataset"], begins[run_id]["seed"])
+            != (arm, dataset, seed)
+        ):
             raise BenchmarkError("memory cannot be based on an unrelated or failed trial")
         notes = [e for e in history if e["kind"] == "memory_note" and e["id"] == run_id]
         if notes:
             raise BenchmarkError("only one memory note is permitted per validated run")
-        event(work, {"kind": "memory_note", "id": run_id, "arm": arm, "dataset": dataset,
-                     "seed": seed, "note": note.strip(), "dev_auroc": ends[run_id]["dev_auroc"]})
+        event(
+            work,
+            {
+                "kind": "memory_note",
+                "id": run_id,
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "note": note.strip(),
+                "dev_auroc": ends[run_id]["dev_auroc"],
+            },
+        )
     return {"memory_added": run_id, "status": "unverified_agent_note_with_verified_dev_metric"}
 
 
@@ -455,18 +635,22 @@ def task_prompt(work: Path, arm: str, dataset: str, seed: int) -> str:
         "offline_baseline": "Offline baseline smoke only, no agent permitted or required.",
     }
     history = [e for e in ledger(work) if e["kind"] == "memory_note" and e["arm"] == arm]
-    notes = "\n".join(
-        f"- {e['dataset']}/{e['seed']}/{e['id']}: {e['note']} (dev_AUROC={e['dev_auroc']})"
-        for e in history[-6:]
-    ) if arm == "memory_only" else "(not exposed to this policy)"
-    return f"""ResearchBench-T1 {meta['stage']} / {dataset} / seed {seed} / policy {arm}
+    notes = (
+        "\n".join(
+            f"- {e['dataset']}/{e['seed']}/{e['id']}: {e['note']} (dev_AUROC={e['dev_auroc']})"
+            for e in history[-6:]
+        )
+        if arm == "memory_only"
+        else "(not exposed to this policy)"
+    )
+    return f"""ResearchBench-T1 {meta["stage"]} / {dataset} / seed {seed} / policy {arm}
 Goal: maximize held-out AUROC under a hard development experiment budget.
 Only train/dev are visible: {src}/train.csv and {src}/dev.csv.
 Never read the raw dataset, private holdout, vault path, or final metrics during research.
 Do not use web access, external model APIs, GPU jobs, or paid provider calls without separate explicit authorization.
 The harness makes ZERO external model calls. Coding Agent billing outside it is NOT metered.
-At most {profile['per_cell_trials']} trials per cell, each <= {profile['trial_seconds']} wall-seconds.
-Total stage experimental wall budget = {profile['total_seconds']} seconds; violations fail closed.
+At most {profile["per_cell_trials"]} trials per cell, each <= {profile["trial_seconds"]} wall-seconds.
+Total stage experimental wall budget = {profile["total_seconds"]} seconds; violations fail closed.
 Candidate interventions are restricted to logistic/forest parameter JSONs (see candidates/).
 Instructions for this arm: {instructions[arm]}
 Memory notes available: {notes}
@@ -486,10 +670,15 @@ def select(work: Path, arm: str, dataset: str, seed: int) -> dict[str, Any]:
     with exclusive(work):
         history = ledger(work)
         started = {e["id"]: e for e in history if e["kind"] == "started"}
-        outcomes = [e for e in history if e["kind"] == "finished" and e["exit_code"] == 0
-                    and e["dev_auroc"] is not None and
-                    (started[e["id"]]["arm"], started[e["id"]]["dataset"], started[e["id"]]["seed"]) ==
-                    (arm, dataset, seed)]
+        outcomes = [
+            e
+            for e in history
+            if e["kind"] == "finished"
+            and e["exit_code"] == 0
+            and e["dev_auroc"] is not None
+            and (started[e["id"]]["arm"], started[e["id"]]["dataset"], started[e["id"]]["seed"])
+            == (arm, dataset, seed)
+        ]
         if not outcomes:
             raise BenchmarkError("cannot submit without a successful real validation run")
         for observed in outcomes:
@@ -500,9 +689,14 @@ def select(work: Path, arm: str, dataset: str, seed: int) -> dict[str, Any]:
         candidate = work / "runs" / chosen["id"] / "candidate.json"
         if file_digest(candidate) != digest(canonical(read_json(candidate))):
             raise BenchmarkError("candidate bytes mismatch")
-        result = {"arm": arm, "dataset": dataset, "seed": seed,
-                  "run_id": chosen["id"], "candidate_sha256": file_digest(candidate),
-                  "dev_auroc": chosen["dev_auroc"]}
+        result = {
+            "arm": arm,
+            "dataset": dataset,
+            "seed": seed,
+            "run_id": chosen["id"],
+            "candidate_sha256": file_digest(candidate),
+            "dev_auroc": chosen["dev_auroc"],
+        }
         path = work / "submissions" / f"{arm}__{dataset}__{seed}.json"
         atomic_json(path, result)
         return result
@@ -514,13 +708,21 @@ def status(work: Path) -> dict[str, Any]:
     history = ledger(work)
     started = [e for e in history if e["kind"] == "started"]
     finished = [e for e in history if e["kind"] == "finished"]
-    return {"stage": meta["stage"], "total_started": len(started),
-            "completed": len(finished), "reserved_or_spent_seconds": _spent(history, meta["profile"]["trial_seconds"]),
-            "max_total_seconds": meta["profile"]["total_seconds"],
-            "submitted": len(list((work / "submissions").glob("*.json"))) if (work / "submissions").exists() else 0,
-            "required_submissions": len(meta["profile"]["datasets"]) * len(meta["profile"]["arms"]) * len(meta["profile"]["seeds"]),
-            "external_model_calls": "not metered; none invoked by this harness",
-            "holdout_evaluated": (work / "final.started").exists()}
+    return {
+        "stage": meta["stage"],
+        "total_started": len(started),
+        "completed": len(finished),
+        "reserved_or_spent_seconds": _spent(history, meta["profile"]["trial_seconds"]),
+        "max_total_seconds": meta["profile"]["total_seconds"],
+        "submitted": len(list((work / "submissions").glob("*.json")))
+        if (work / "submissions").exists()
+        else 0,
+        "required_submissions": len(meta["profile"]["datasets"])
+        * len(meta["profile"]["arms"])
+        * len(meta["profile"]["seeds"]),
+        "external_model_calls": "not metered; none invoked by this harness",
+        "holdout_evaluated": (work / "final.started").exists(),
+    }
 
 
 def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, Any]:
@@ -530,20 +732,30 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
     if priv["public_meta_sha256"] != file_digest(work / "meta.json"):
         raise BenchmarkError("evaluation vault is not paired to this frozen public task")
     profile = meta["profile"]
-    wanted = [(a, d, s) for d in profile["datasets"] for s in profile["seeds"] for a in profile["arms"]]
+    wanted = [
+        (a, d, s) for d in profile["datasets"] for s in profile["seeds"] for a in profile["arms"]
+    ]
     audit_data: dict[str, Any] = {}
     if meta["stage"] != "smoke":
         if audit is None:
-            raise BenchmarkError("comparison requires explicit non-synthetic intervention/audit records")
+            raise BenchmarkError(
+                "comparison requires explicit non-synthetic intervention/audit records"
+            )
         audit_data = read_json(audit)
         if set(audit_data) != {f"{a}__{d}__{s}" for a, d, s in wanted}:
             raise BenchmarkError("audit must cover exactly all benchmark cells")
         for row in audit_data.values():
-            if not isinstance(row, dict) or set(row) != {"human_interventions", "repeated_experiments", "unsupported_claims"} or any(type(x) is not int or x < 0 for x in row.values()):
+            if (
+                not isinstance(row, dict)
+                or set(row) != {"human_interventions", "repeated_experiments", "unsupported_claims"}
+                or any(type(x) is not int or x < 0 for x in row.values())
+            ):
                 raise BenchmarkError("audit counts must be explicit nonnegative integers")
     with exclusive(work):
         if (work / "final.started").exists():
-            raise BenchmarkError("sealed holdout has already been evaluated; prevent test-set reuse")
+            raise BenchmarkError(
+                "sealed holdout has already been evaluated; prevent test-set reuse"
+            )
         submissions = {}
         hist = ledger(work)
         started = {e["id"]: e for e in hist if e["kind"] == "started"}
@@ -556,7 +768,11 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 raise BenchmarkError("selection does not belong to frozen arm and task")
             if rid not in started or rid not in finished or finished[rid]["exit_code"] != 0:
                 raise BenchmarkError("selection refers to a non-validated trial")
-            if (started[rid]["arm"], started[rid]["dataset"], started[rid]["seed"]) != (arm, dataset, seed):
+            if (started[rid]["arm"], started[rid]["dataset"], started[rid]["seed"]) != (
+                arm,
+                dataset,
+                seed,
+            ):
                 raise BenchmarkError("selection references a different policy or task")
             if selection["dev_auroc"] != finished[rid]["dev_auroc"]:
                 raise BenchmarkError("submitted validation score differs from frozen receipt")
@@ -571,8 +787,13 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             private_test = vault / dataset / "test.csv"
             if file_digest(private_test) != priv["dataset_holdouts"][dataset]:
                 raise BenchmarkError("private test file does not match frozen holdout")
-        atomic_json(work / "final.started", {"submission_hashes": {
-            k: file_digest(v[1]) for k, v in submissions.items()}, "status": "sealed_for_one_time_evaluation"})
+        atomic_json(
+            work / "final.started",
+            {
+                "submission_hashes": {k: file_digest(v[1]) for k, v in submissions.items()},
+                "status": "sealed_for_one_time_evaluation",
+            },
+        )
         evaluated = {}
         for arm, dataset, seed in wanted:
             key = f"{arm}__{dataset}__{seed}"
@@ -582,52 +803,117 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             output = work / "final" / f"{key}.worker.json"
             try:
                 _, pd, _, _ = _dependencies()
-                train = pd.concat([pd.read_csv(public / "train.csv"), pd.read_csv(public / "dev.csv")], ignore_index=True)
+                train = pd.concat(
+                    [pd.read_csv(public / "train.csv"), pd.read_csv(public / "dev.csv")],
+                    ignore_index=True,
+                )
                 train.to_csv(temp_train, index=False)
-                cmd = [sys.executable, str(Path(__file__).resolve()), "_worker", "--train", str(temp_train),
-                       "--eval", str(vault / dataset / "test.csv"), "--candidate", str(candidate),
-                       "--seed", str(seed), "--output", str(output)]
+                cmd = [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    "_worker",
+                    "--train",
+                    str(temp_train),
+                    "--eval",
+                    str(vault / dataset / "test.csv"),
+                    "--candidate",
+                    str(candidate),
+                    "--seed",
+                    str(seed),
+                    "--output",
+                    str(output),
+                ]
                 environment = dict(os.environ)
-                environment.update({"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
-                                    "NUMEXPR_NUM_THREADS": "1"})
-                evaluation = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=work,
-                                            env=environment, timeout=profile["final_eval_seconds"])
+                environment.update(
+                    {
+                        "OPENBLAS_NUM_THREADS": "1",
+                        "OMP_NUM_THREADS": "1",
+                        "MKL_NUM_THREADS": "1",
+                        "NUMEXPR_NUM_THREADS": "1",
+                    }
+                )
+                evaluation = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    cwd=work,
+                    env=environment,
+                    timeout=profile["final_eval_seconds"],
+                )
                 if evaluation.returncode != 0:
                     raise BenchmarkError("sealed reference evaluator failed; no automatic retry")
                 score = read_json(output)["auroc"]
                 if type(score) is not float or not 0 <= score <= 1:
                     raise BenchmarkError("invalid sealed AUROC")
             except subprocess.TimeoutExpired as exc:
-                raise BenchmarkError("sealed reference evaluator exceeded its hard time cap") from exc
+                raise BenchmarkError(
+                    "sealed reference evaluator exceeded its hard time cap"
+                ) from exc
             finally:
                 temp_train.unlink(missing_ok=True)
-            outcome = {"case_id": f"{dataset}:{seed}", "seed": seed, "dataset": f"researchbench-t1-{meta['stage']}",
-                       "evaluator": "t1-offline-reference-v1", "metric": "holdout_auroc", "value": score}
+            outcome = {
+                "case_id": f"{dataset}:{seed}",
+                "seed": seed,
+                "dataset": f"researchbench-t1-{meta['stage']}",
+                "evaluator": "t1-offline-reference-v1",
+                "metric": "holdout_auroc",
+                "value": score,
+            }
             evaluated[key] = outcome
             atomic_json(work / "final" / f"{key}.json", outcome)
-        result = {"stage": meta["stage"], "holdout_auroc": {k: v["value"] for k, v in evaluated.items()},
-                  "qualification": "Offline reference evaluator only; not verified Coding Agent performance"}
+        result = {
+            "stage": meta["stage"],
+            "holdout_auroc": {k: v["value"] for k, v in evaluated.items()},
+            "qualification": "Offline reference evaluator only; not verified Coding Agent performance",
+        }
         if meta["stage"] != "smoke":
             runs = []
             for arm, dataset, seed in wanted:
                 key = f"{arm}__{dataset}__{seed}"
                 eval_file = work / "final" / f"{key}.json"
-                attempts = [e for e in started.values() if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)]
+                attempts = [
+                    e
+                    for e in started.values()
+                    if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+                ]
                 finish_map = {e["id"]: e for e in hist if e["kind"] in ("finished", "aborted")}
                 cost = sum(finish_map[e["id"]]["seconds"] for e in attempts)
-                runs.append({"policy": arm, "case_id": f"{dataset}:{seed}", "seed": seed,
-                             "artifact_ref": f"final/{key}.json", "artifact_sha256": file_digest(eval_file),
-                             "actual_cost": cost, **audit_data[key]})
-            suite = {"schema_version": 1, "name": f"ResearchBench-T1-{meta['stage']}",
-                     "dataset": f"researchbench-t1-{meta['stage']}", "evaluator": "t1-offline-reference-v1",
-                     "metric": "holdout_auroc", "direction": "maximize", "budget_unit": "measured_worker_wall_seconds",
-                     "per_case_budget": profile["per_cell_trials"] * profile["trial_seconds"] * 1.2,
-                     "baseline": "agent_only", "policies": profile["arms"],
-                     "cases": [{"case_id": f"{d}:{s}", "seed": s} for d in profile["datasets"] for s in profile["seeds"]],
-                     "runs": runs}
+                runs.append(
+                    {
+                        "policy": arm,
+                        "case_id": f"{dataset}:{seed}",
+                        "seed": seed,
+                        "artifact_ref": f"final/{key}.json",
+                        "artifact_sha256": file_digest(eval_file),
+                        "actual_cost": cost,
+                        **audit_data[key],
+                    }
+                )
+            suite = {
+                "schema_version": 1,
+                "name": f"ResearchBench-T1-{meta['stage']}",
+                "dataset": f"researchbench-t1-{meta['stage']}",
+                "evaluator": "t1-offline-reference-v1",
+                "metric": "holdout_auroc",
+                "direction": "maximize",
+                "budget_unit": "measured_worker_wall_seconds",
+                "per_case_budget": profile["per_cell_trials"] * profile["trial_seconds"] * 1.2,
+                "baseline": "agent_only",
+                "policies": profile["arms"],
+                "cases": [
+                    {"case_id": f"{d}:{s}", "seed": s}
+                    for d in profile["datasets"]
+                    for s in profile["seeds"]
+                ],
+                "runs": runs,
+            }
             atomic_json(work / "manifest.json", suite)
             result["comparison_manifest"] = str(work / "manifest.json")
-        atomic_json(work / "final.completed", {"evaluation_count": len(wanted), "qualification": result["qualification"]})
+        atomic_json(
+            work / "final.completed",
+            {"evaluation_count": len(wanted), "qualification": result["qualification"]},
+        )
         return result
 
 
@@ -637,14 +923,19 @@ def smoke(work: Path, vault: Path) -> dict[str, Any]:
     first = perform_trial(work, "offline_baseline", "wdbc", 42, candidate)
     if first["exit_code"] != 0:
         raise BenchmarkError(f"smoke baseline fit failed: {first['error']}")
-    alternate = perform_trial(work, "offline_baseline", "wdbc", 42,
-                              Path(__file__).parent / "candidates" / "forest.json")
+    alternate = perform_trial(
+        work, "offline_baseline", "wdbc", 42, Path(__file__).parent / "candidates" / "forest.json"
+    )
     if alternate["exit_code"] != 0:
         raise BenchmarkError(f"smoke forest fit failed: {alternate['error']}")
     selected = select(work, "offline_baseline", "wdbc", 42)
     final = finalize(work, vault)
-    return {"trials": [first, alternate], "submission": selected,
-            "final": final, "status": status(work)}
+    return {
+        "trials": [first, alternate],
+        "submission": selected,
+        "final": final,
+        "status": status(work),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -707,9 +998,17 @@ def main(argv: list[str] | None = None) -> int:
             print(task_prompt(args.work, args.arm, args.dataset, args.seed))
             return 0
         if args.command == "init":
-            val = setup(args.work, args.vault, args.stage,
-                        {n: getattr(args, f"source_{n}") for n in ("adult", "bank", "magic")
-                         if getattr(args, f"source_{n}") is not None}, args.allow_agent_stage)
+            val = setup(
+                args.work,
+                args.vault,
+                args.stage,
+                {
+                    n: getattr(args, f"source_{n}")
+                    for n in ("adult", "bank", "magic")
+                    if getattr(args, f"source_{n}") is not None
+                },
+                args.allow_agent_stage,
+            )
         elif args.command == "trial":
             val = perform_trial(args.work, args.arm, args.dataset, args.seed, args.candidate)
         elif args.command == "submit":
