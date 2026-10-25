@@ -183,9 +183,7 @@ def offline_smoke(root: Path) -> dict[str, Any]:
     }
 
 
-def one_cell(
-    root: Path, provider: str, model: str, confirm: str, seed: int = 42
-) -> dict[str, Any]:
+def one_cell(root: Path, provider: str, model: str, confirm: str, seed: int = 42) -> dict[str, Any]:
     """One independent agent-only development cell; never run two seeds in a job."""
     if seed not in (42, 137):
         raise MacRunBlocked("pilot cell seed must be one of the frozen qualification seeds")
