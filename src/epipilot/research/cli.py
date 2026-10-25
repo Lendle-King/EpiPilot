@@ -73,9 +73,7 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("onboard", help="inventory existing repository and experiment reports")
     sub.add_parser("status", help="show goal, reserved and spent budget, and research frontier")
     sub.add_parser("review", help="review all claims and research frontier")
-    benchmark = sub.add_parser(
-        "benchmark", help="compare matched policy runs at equal budget"
-    )
+    benchmark = sub.add_parser("benchmark", help="compare matched policy runs at equal budget")
     benchmark.add_argument("--manifest", type=Path, required=True)
     benchmark.add_argument("--min-cases", type=int, default=2)
     sub.add_parser("doctor", help="replay the event stream and diagnose pending work")
