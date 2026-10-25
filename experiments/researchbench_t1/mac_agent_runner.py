@@ -224,9 +224,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str) -> dict[str, A
         command.extend(["--model", model])
     command.append(request)
     # Conservative, durable marker: a failed/timed-out call may still incur provider usage.
-    (root / "agent_attempt.started").write_text(
-        datetime.now(UTC).isoformat(), encoding="utf-8"
-    )
+    (root / "agent_attempt.started").write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
     before = time.monotonic()
     try:
         outcome = subprocess.run(
