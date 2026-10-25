@@ -3,15 +3,51 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from test_run_receipt import cli, prepare, root
+from test_run_receipt import cli, prepare
 
 from epipilot.core.models import utc_now
 from epipilot.research.models import RunLaunch
 from epipilot.research.runner import execute_frozen_runner, receipt_file
+
+
+@pytest.fixture
+def root(tmp_path: Path) -> Path:
+    path = tmp_path / "controlled"
+    path.mkdir()
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "epipilot@example.invalid"],
+        ["config", "user.name", "EpiPilot Tests"],
+    ):
+        subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
+    (path / "config.json").write_text('{"seed":42}', encoding="utf-8")
+    (path / "data.json").write_text('{"split":"train"}', encoding="utf-8")
+    script = (
+        "from pathlib import Path\n"
+        "target = Path('results/metrics.json')\n"
+        "target.parent.mkdir(exist_ok=True)\n"
+        "target.write_text('{\\\"metrics\\\":{\\\"score\\\":0.9}}', encoding='utf-8')\n"
+    )
+    (path / "run_trial.py").write_text(script, encoding="utf-8")
+    (path / "runner.json").write_text(
+        json.dumps({"argv": [sys.executable, "run_trial.py"], "timeout_seconds": 20}),
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "."], cwd=path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "frozen study"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+    setup_store(path)
+    return path
 
 
 def test_reconcile_finished_sidecar_without_rerunning_process(root: Path) -> None:
