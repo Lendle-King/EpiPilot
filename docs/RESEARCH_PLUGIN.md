@@ -156,6 +156,15 @@ scientific conclusions depend on them. Do not edit historical event lines.
   new proposal and pre-registered experiment.
 - The event store is single-writer. A crashed process may leave a
   `.research/.write.lock`; check for live writers before manual recovery.
+- A frozen Git revision pins research source, not the evolving research event
+  stream. Tracked modifications or commits limited to `.research/**` are
+  permitted during execution; changes to any other tracked file remain blocked.
+  Config/data files are additionally checked by their frozen fingerprints.
+  Do not keep executable research code under `.research/`.
+- If independently validated counterevidence makes a previously supported
+  Claim inconclusive, v2 replay reopens Unknowns whose resolution relied on
+  that Claim. Original resolution evidence is retained and reopening evidence
+  is recorded; downstream proposal reevaluation remains a separate step.
 - The event file is intentionally visible to Git. Do not save private
   transcripts, secrets, passwords, cookies, private screenshots or raw
   proprietary results. Review before committing it.

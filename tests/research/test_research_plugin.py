@@ -752,3 +752,92 @@ def test_onboarding_includes_report_artifacts_without_promoting_claims(root: Pat
     assert not state.claims
     assert "artifacts/experiment-results.json" in state.onboarding[0].relevant_files
     assert ".env" not in state.onboarding[0].relevant_files
+
+def test_versioned_event_log_preserves_frozen_source_after_log_only_commit(root: Path) -> None:
+    """Research event commits must not invalidate the code/config snapshot."""
+    store = setup_store(root)
+    subprocess.run(
+        ["git", "add", ".research/events.jsonl"], cwd=root, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "track scientific history"],
+        cwd=root, check=True, capture_output=True,
+    )
+    contract = register(store, root)
+    # Pre-registration writes to the tracked event file without changing source.
+    assert require_clean_revision(root, contract.git_revision)
+    # A log-only commit advances HEAD; the pinned source remains identical.
+    subprocess.run(
+        ["git", "add", ".research/events.jsonl"], cwd=root, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "record preregistration"],
+        cwd=root, check=True, capture_output=True,
+    )
+    assert require_clean_revision(root, contract.git_revision)
+    observe(store, root)
+    assert validate(root) == 0
+
+
+def test_frozen_source_rejects_committed_code_change_even_with_versioned_log(root: Path) -> None:
+    store = setup_store(root)
+    contract = register(store, root)
+    (root / "README.md").write_text("Changed actual research code/docs", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "README.md"], cwd=root, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "modify pinned source"],
+        cwd=root, check=True, capture_output=True,
+    )
+    with pytest.raises(ValueError, match="source differs"):
+        require_clean_revision(root, contract.git_revision)
+
+
+def test_counterevidence_reopens_resolved_unknown_and_restores_research_frontier(
+    root: Path,
+) -> None:
+    store = setup_store(root)
+    register(store, root)
+    observe(store, root)
+    assert validate(root) == 0
+    reflect(store)
+    store.append(
+        "unknown_resolved",
+        {"unknown_id": "U", "evidence_id": "EV-1", "rationale": "Initial scoped evidence"},
+    )
+    state, _ = store.load()
+    assert state.unknowns["U"].status == "resolved"
+    assert research_phase(state) == "optimization"
+
+    store.add(
+        "proposal_added",
+        Proposal(
+            id="P2",
+            title="Counterexample on held-out evaluation",
+            kind=ProposalKind.EXPLORE,
+            rationale="Try to falsify the original supported mechanism",
+            acceptance="Same frozen protocol and opposing metric",
+            unknown_ids=["U"],
+            claim_ids=["C"],
+            information_gain=0.9,
+            expected_improvement=0.1,
+            estimated_cost=1,
+            risk=0.1,
+        ),
+    )
+    register(store, root, contract_id="PRE-2", proposal_id="P2")
+    observe(
+        store, root, score=0.4, outcome="no_gain",
+        contract_id="PRE-2", experiment_id="EXP-2", evidence_id="EV-2",
+    )
+    assert validate(root, "EXP-2") == 0
+    reflect(store, verdict="refuted", evidence_id="EV-2")
+
+    new_state, _ = store.load()
+    assert new_state.claims["C"].status is ClaimStatus.INCONCLUSIVE
+    assert new_state.unknowns["U"].status == "open"
+    assert new_state.unknowns["U"].resolution_evidence_ids == ["EV-1"]
+    assert new_state.unknowns["U"].reopening_evidence_ids == ["EV-2"]
+    assert research_phase(new_state) != "optimization"
+    assert ResearchStore(store.root).load()[0] == new_state
