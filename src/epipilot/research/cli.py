@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from pydantic import ValidationError
 
+from epipilot.core.models import utc_now
 from epipilot.research.decision_models import DecisionEstimate
 from epipilot.research.decision_value import rank_decision
 from epipilot.research.models import (
@@ -25,11 +27,15 @@ from epipilot.research.models import (
     ProposalKind,
     ResearchGoal,
     ResearchState,
+    RunLaunch,
+    RunnerSpec,
+    RunReceipt,
     Unknown,
     research_id,
 )
 from epipilot.research.onboarding import inspect_repository
 from epipilot.research.planner import rank_proposals, research_phase
+from epipilot.research.runner import execute_frozen_runner
 from epipilot.research.scout_core import frontier_fingerprint, validate_source
 from epipilot.research.scout_models import (
     ScoutCandidateStatus,
@@ -41,6 +47,7 @@ from epipilot.research.store import ResearchStore
 from epipilot.research.validation import (
     artifact_metrics,
     check_fingerprints,
+    hash_file,
     optional_fingerprint,
     require_clean_revision,
     run_frozen_verifier,
@@ -149,6 +156,9 @@ def _parser() -> argparse.ArgumentParser:
     prereg.add_argument("--artifact", required=True, help="repository-relative JSON metric path")
     prereg.add_argument("--max-cost", type=float, required=True)
     prereg.add_argument(
+        "--runner-spec", help="optional committed JSON argv/timeout spec for epi execute"
+    )
+    prereg.add_argument(
         "--verifier",
         nargs=argparse.REMAINDER,
         required=True,
@@ -157,6 +167,11 @@ def _parser() -> argparse.ArgumentParser:
 
     start = sub.add_parser("start", help="reserve cost before running a frozen experiment")
     start.add_argument("--contract", required=True)
+
+    execute = sub.add_parser(
+        "execute", help="run a frozen argv locally and record a process/artifact receipt"
+    )
+    execute.add_argument("--contract", required=True)
 
     record = sub.add_parser("record", help="record a real observation from a started experiment")
     record.add_argument("--contract", required=True)
@@ -217,6 +232,12 @@ def _status(state: ResearchState) -> dict[str, object]:
         "claims": len(state.claims),
         "proposals": len(state.proposals),
         "contracts": len(state.contracts),
+        "controlled_run_receipts": len(state.run_receipts),
+        "runner_started_without_receipt": [
+            contract_id
+            for contract_id in state.run_launches
+            if contract_id not in state.run_receipts
+        ],
         "experiments": len(state.experiments),
         "decision_estimates": len(state.decision_estimates),
         "decision_forecasts": len(state.decision_forecasts),
@@ -383,6 +404,15 @@ def _verify(
         require_clean_revision(root, contract.git_revision)
         check_fingerprints(root, contract)
         metrics, artifact_sha = artifact_metrics(root, contract)
+        if contract.runner_argv:
+            receipt = state.run_receipts.get(contract.id)
+            if (
+                receipt is None
+                or receipt.id != exp.run_receipt_id
+                or receipt.exit_code != 0
+                or artifact_sha != receipt.artifact_sha256
+            ):
+                raise ValueError("result artifact is not the controlled run output")
         if set(metrics) != set(exp.metrics) or any(
             abs(metrics[key] - exp.metrics[key]) > 1e-9 for key in metrics
         ):
@@ -670,6 +700,31 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
     if command == "preregister":
         revision = require_clean_revision(root)
         verifier = _safe_verifier(args.verifier)
+        runner_spec = None
+        runner_sha = None
+        if args.runner_spec is not None:
+            path = (root / args.runner_spec).resolve()
+            relative_spec = Path(args.runner_spec)
+            if (
+                relative_spec.is_absolute()
+                or ".." in relative_spec.parts
+                or relative_spec.parts[0] == ".research"
+                or not path.is_relative_to(root)
+                or not path.is_file()
+            ):
+                raise ValueError("runner spec must be a safe repository-local JSON file")
+            tracked = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "--error-unmatch", "--", args.runner_spec],
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            if tracked.returncode != 0:
+                raise ValueError("runner spec must be committed to the research repository")
+            if path.stat().st_size > 16000:
+                raise ValueError("runner spec exceeds 16 KB")
+            runner_spec = RunnerSpec.model_validate_json(path.read_bytes())
+            runner_sha = hash_file(path)
         proposal = state.proposals.get(args.proposal)
         if proposal is None:
             raise ValueError("unknown proposal")
@@ -690,6 +745,10 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             artifact_ref=args.artifact,
             metric_rules=_metric_rules(args.metric_rule),
             verifier_argv=verifier,
+            runner_spec_ref=args.runner_spec,
+            runner_spec_sha256=runner_sha,
+            runner_argv=[] if runner_spec is None else runner_spec.argv,
+            runner_timeout_seconds=(3600 if runner_spec is None else runner_spec.timeout_seconds),
             max_cost=args.max_cost,
         )
         store.add("experiment_preregistered", registration)
@@ -711,12 +770,53 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             "next": f"epi record --contract {args.contract} --summary ... --outcome ... "
             "--cost ... --metric name=value",
         }
+    if command == "execute":
+        contract = state.contracts.get(args.contract)
+        if contract is None or contract.status is not ContractStatus.RUNNING:
+            raise ValueError("execute requires a started frozen experiment")
+        if not contract.runner_argv or args.contract in state.run_launches:
+            raise ValueError("runner is missing or was already launched; never duplicate a run")
+        require_clean_revision(root, contract.git_revision)
+        check_fingerprints(root, contract)
+        artifact_path = (root / contract.artifact_ref).resolve()
+        if artifact_path.exists() or (root / contract.artifact_ref).is_symlink():
+            raise ValueError("controlled execution requires a fresh, absent metric artifact")
+        launch = RunLaunch(id=research_id("RUN"), contract_id=contract.id, started_at=utc_now())
+        store.add("runner_started", launch)
+        receipt = execute_frozen_runner(root, contract, launch)
+        store.add("runner_finished", receipt)
+        return {
+            "run_receipt_id": receipt.id,
+            "contract": contract.id,
+            "exit_code": receipt.exit_code,
+            "timed_out": receipt.timed_out,
+            "wall_seconds": receipt.wall_seconds,
+            "output_sha256": receipt.output_sha256,
+            "artifact_sha256": receipt.artifact_sha256,
+            "next": (
+                "epi record --contract ID --outcome improved|no_gain --cost ACTUAL"
+                if receipt.exit_code == 0 and receipt.artifact_sha256
+                else (
+                    "Record infrastructure_failure with real cost or abort; "
+                    "do not rerun this contract"
+                )
+            ),
+        }
     if command == "record":
         contract = state.contracts.get(args.contract)
         if contract is None:
             raise ValueError("unknown experiment contract")
         require_clean_revision(root, contract.git_revision)
         check_fingerprints(root, contract)
+        record_receipt: RunReceipt | None = None
+        if contract.runner_argv:
+            record_receipt = state.run_receipts.get(contract.id)
+            if record_receipt is None:
+                raise ValueError("controlled run has no finished receipt; abort if interrupted")
+            if args.outcome != "infrastructure_failure":
+                _values, digest = artifact_metrics(root, contract)
+                if record_receipt.exit_code != 0 or digest != record_receipt.artifact_sha256:
+                    raise ValueError("recorded output is not the frozen runner's artifact")
         metrics = _parse_metrics(args.metric)
         if args.outcome != "infrastructure_failure" and not metrics:
             metrics, _ = artifact_metrics(root, contract)
@@ -734,6 +834,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             seeds=args.seed,
             metrics=metrics,
             run_command=args.run_command,
+            run_receipt_id=None if record_receipt is None else record_receipt.id,
             artifact_refs=[contract.artifact_ref, *args.artifact],
             evidence_id=evidence_id,
         )
@@ -812,6 +913,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = _dispatch(args, store, root)
         _emit(result)
         if args.command == "verify" and isinstance(result, dict) and not result["check_passed"]:
+            return 2
+        if args.command == "execute" and isinstance(result, dict) and result["exit_code"] != 0:
             return 2
     except (ValueError, RuntimeError, OSError, KeyError, ValidationError) as exc:
         print(f"epi: {exc}", file=sys.stderr)
