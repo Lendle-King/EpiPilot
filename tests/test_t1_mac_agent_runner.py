@@ -266,3 +266,17 @@ def test_trial_and_submission_metrics_fail_closed_on_inconsistent_provenance() -
         corrupted = {**trial, key: bad_value}
         with pytest.raises(mac.MacRunBlocked):
             mac.validated_development_metrics(corrupted, submission, candidate)
+
+
+def test_pilot_cannot_contact_codex_when_mac_memory_reserve_is_insufficient(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(mac.platform, "system", lambda: "Darwin")
+
+    def refuse(*args: object, **kwargs: object) -> object:
+        raise mac.ResourceRefusal("Mac lacks headroom for a new model/worker memory peak")
+
+    monkeypatch.setattr(mac, "inspect_host", refuse)
+    monkeypatch.setattr(mac, "one_cell", lambda *args: (_ for _ in ()).throw(AssertionError))
+    with pytest.raises(mac.ResourceRefusal, match="Mac lacks headroom"):
+        mac.run("pilot_one_cell", "codex_chatgpt", "default", "RUN_ONE_CELL", tmp_path, 137)
