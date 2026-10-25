@@ -146,6 +146,46 @@ observed; it is **not** tamperproof attestation, an isolated sandbox,
 statistical validity, or a guarantee about external remote jobs. Keep the
 existing coding-agent approvals and use a domain-specific verifier.
 
+## Optional paired binary-result verifier
+
+For matched GUI or other binary task outcomes, the CLI ships a small, exact
+data-integrity checker. Include the per-pair boolean outcomes in the **same**
+JSON metric artifact:
+
+```json
+{
+  "protocol": {"split": "heldout-v1"},
+  "pairs": [
+    {"id": "task-1/seed-42", "baseline": false, "candidate": true},
+    {"id": "task-2/seed-42", "baseline": true, "candidate": false}
+  ],
+  "metrics": {
+    "delta_success": 0.0,
+    "paired_p_value": 1.0,
+    "pair_count": 2
+  }
+}
+```
+
+The example has too few pairs for the default minimum (8). At pre-registration,
+freeze rules for all three metrics, such as
+`delta_success:at_least:0.02`, `paired_p_value:at_most:0.05`, and
+`pair_count:at_least:30`, then freeze this substantive verifier:
+
+```bash
+--verifier python -m epipilot.research.verifiers.paired_binary {artifact} --min-pairs 30 --expected-split heldout-v1
+```
+
+This verifier independently recomputes paired success improvement, the
+two-sided exact McNemar/binomial p-value and sample count from source rows,
+rejecting duplicate sample IDs, missing/nonbinary values, split mismatches
+and incorrect published metrics. An inconclusive p-value is a *valid
+measurement*, not an execution-check failure; record `--outcome inconclusive`
+if the study cannot resolve the hypothesis. This does not establish truly
+matched initial conditions, independence, a clean holdout, correct stopping,
+multiple-testing adjustment, or causal validity. For other research domains,
+use your own frozen substantive checker.
+
 ## Evidence and authority limitations
 
 These are three distinct layers:
