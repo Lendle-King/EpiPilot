@@ -19,6 +19,12 @@ be metered by T1 and need explicit provider-side limits and independent audit.
 | `pilot` (explicit opt-in) | WDBC | Agent, Memory, EpiPilot heuristic, EpiPilot conditional | 42, 137 | 2 | 15 s | 120 s | 20 s | 0 |
 | `full` (explicit opt-in) | Adult, Bank Marketing, MAGIC Gamma Telescope | same four policies | 42, 137, 271 | 2 | 20 s | 900 s | 35 s | 0 |
 
+To avoid leaking information from the already inspected smoke holdout,
+each stage freezes a **different stratified train/dev/final-test split seed**
+(smoke = 20271025, pilot = 20272025, full = 20273025). Every policy within
+the same stage shares exactly the same split. Formal pilot/full results must
+not reuse the smoke split or earlier same-candidate dry-run scores.
+
 The staged ceilings limit this research *evaluator*, not the tokens spent
 in manually launched Codex/Kimi sessions. In particular, `full` is **not**
 recommended until `pilot` is complete and reviewed. These are upper bounds,

@@ -193,3 +193,19 @@ def test_manifest_source_hash_stays_pinned(tmp_path: Path) -> None:
     candidate = _write(tmp_path / "candidate.json", _candidate())
     with pytest.raises(BenchmarkError, match="public split was modified"):
         perform_trial(work, "offline_baseline", "wdbc", 42, candidate)
+
+
+def test_real_pilot_uses_a_fresh_holdout_from_inspected_smoke(tmp_path: Path) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    smoke_work, smoke_vault = tmp_path / "smoke-work", tmp_path / "smoke-vault"
+    pilot_work, pilot_vault = tmp_path / "pilot-work", tmp_path / "pilot-vault"
+    setup(smoke_work, smoke_vault, "smoke", {}, False)
+    setup(pilot_work, pilot_vault, "pilot", {}, True)
+    smoke_meta = json.loads((smoke_work / "meta.json").read_text(encoding="utf-8"))
+    pilot_meta = json.loads((pilot_work / "meta.json").read_text(encoding="utf-8"))
+    assert smoke_meta["datasets"]["wdbc"]["split_seed"] == 20271025
+    assert pilot_meta["datasets"]["wdbc"]["split_seed"] == 20272025
+    assert smoke_meta["datasets"]["wdbc"]["files"]["test"]["sha256"] != (
+        pilot_meta["datasets"]["wdbc"]["files"]["test"]["sha256"]
+    )
