@@ -12,6 +12,28 @@ No secret test labels from the research pilot were released to the Agent.
 | [40192580613](https://github.com/Lendle-King/Remote-Control/actions/runs/40192580613) | Agent-only, first bounded Codex process | Rejected | One Codex CLI invocation attempted; invalid model output format; **no qualified development trial** | Provider API call count and dollar spend were not metered |
 | [40195783939](https://github.com/Lendle-King/Remote-Control/actions/runs/40195783939) | Agent-only, single bounded format retry | **Success** | One Codex CLI invocation; strict JSON candidate accepted; one real T1 development trial and one submission completed; Codex subprocess 11.914 s, total orchestration 23.666 s | No final holdout; no comparison against other policies; internal provider request count and actual monetary cost unknown |
 
+## Resource-safe Mac continuation — 2026-10-25
+
+The following **zero-model** probes were performed after the bounded
+agent-only format qualification:
+
+| GitHub Run | Mode | Verified outcome |
+| --- | --- | --- |
+| [40198426212](https://github.com/Lendle-King/Remote-Control/actions/runs/40198426212) | resource_probe, original threshold | Success; Mac physical RAM 24.0 GiB, available 5.84 GiB, CPU 26.9%; no Codex invocation |
+| [40198975172](https://github.com/Lendle-King/Remote-Control/actions/runs/40198975172) | resource_probe, predicted peak guard | Success; Mac RAM 24.0 GiB, available **5.87 GiB**, CPU **30.2%**; 4.32 GiB free-memory reserve plus 1.5 GiB Codex RSS cap plus 0.5 GiB uncertainty = **6.32 GiB required**. The probe explicitly returned `codex_launch_eligible=false`. **Zero** model attempts. |
+
+The next proposed agent-only seed (137) was **NOT launched**. This was
+an intentional resource-based stop, not an experimental or scientific failure.
+The new `resource_guard.py` adds OS low priority, single-worker scheduling,
+one numerical thread, periodic process-tree RSS monitoring, process-count
+limits, CPU pressure refusal, and sustained pressure termination. These
+are sampled user-space guards and are **not** kernel-enforced cgroup limits.
+
+The private Remote-Control task workflow was disabled immediately after
+this resource finding; a later model call requires a newly reviewed
+resource gate, a fresh task authorization and fixed source code. Full
+four-arm or three-dataset comparisons have not been started.
+
 The successful retry used frozen EpiPilot commit
 `573000e4fbad96cfa3bfcbf70399fe8b9a83cbd5`. Its GitHub Actions
 sanitized receipt artifact is
