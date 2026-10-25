@@ -249,6 +249,29 @@ scientific conclusions depend on them. Do not edit historical event lines.
   transcripts, secrets, passwords, cookies, private screenshots or raw
   proprietary results. Review before committing it.
 
+## Optional conditional action selection
+
+The default 'epi iterate' retains the deterministic two-step heuristic.
+To explicitly use Scout's four-outcome conditional decision-value scores,
+register a source-grounded decision table and then call:
+
+    epi decision register --file decision-table.json
+    epi iterate --policy conditional
+
+This opt-in policy considers registered, budget/dependency-feasible forecasts,
+calibrates them using the existing qualified evidence where available, and
+selects the positive highest estimated net decision value. If no usable
+forecast exists, the CLI reports 'decision_forecast_required'; if no net
+value is positive, it reports 'decision_value_stop'. It never silently
+falls back to another policy or starts a new run over pending verification.
+The status is advisory; all existing pre-registration, budget and independent
+verification gates remain in force.
+
+This is NOT evidence that the subjective outcome probabilities are correct or
+that conditional selection outperforms greedy/heuristic research. Compare
+the policies on real matched held-out tasks using RESEARCH_BENCHMARK.md
+before any scientific performance claims.
+
 ## Research-policy limitations
 
 For source-grounded discovery, see [Bounded Research Scout v2](SCOUT_V2.md).
