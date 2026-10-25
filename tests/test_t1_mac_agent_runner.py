@@ -287,6 +287,7 @@ def test_pilot_cannot_contact_codex_when_mac_memory_usage_over_95_percent(
             "pilot_one_cell", "codex_chatgpt", mac.REQUIRED_MODEL, "RUN_ONE_CELL", tmp_path, 137
         )
 
+
 def test_different_model_is_rejected_before_codex_or_probe(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
