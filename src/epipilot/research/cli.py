@@ -731,9 +731,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             runner_spec_ref=args.runner_spec,
             runner_spec_sha256=runner_sha,
             runner_argv=[] if runner_spec is None else runner_spec.argv,
-            runner_timeout_seconds=(
-                3600 if runner_spec is None else runner_spec.timeout_seconds
-            ),
+            runner_timeout_seconds=(3600 if runner_spec is None else runner_spec.timeout_seconds),
             max_cost=args.max_cost,
         )
         store.add("experiment_preregistered", registration)
@@ -766,9 +764,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         artifact_path = (root / contract.artifact_ref).resolve()
         if artifact_path.exists() or (root / contract.artifact_ref).is_symlink():
             raise ValueError("controlled execution requires a fresh, absent metric artifact")
-        launch = RunLaunch(
-            id=research_id("RUN"), contract_id=contract.id, started_at=utc_now()
-        )
+        launch = RunLaunch(id=research_id("RUN"), contract_id=contract.id, started_at=utc_now())
         store.add("runner_started", launch)
         receipt = execute_frozen_runner(root, contract, launch)
         store.add("runner_finished", receipt)

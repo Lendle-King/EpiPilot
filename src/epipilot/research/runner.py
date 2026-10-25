@@ -49,7 +49,8 @@ def execute_frozen_runner(
     elapsed = time.monotonic() - started
     artifact = (root / contract.artifact_ref).resolve()
     artifact_sha = (
-        hash_file(artifact) if artifact.is_relative_to(root.resolve()) and artifact.is_file()
+        hash_file(artifact)
+        if artifact.is_relative_to(root.resolve()) and artifact.is_file()
         else None
     )
     return RunReceipt(
