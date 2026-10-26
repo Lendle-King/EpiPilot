@@ -179,6 +179,23 @@ ProjectState_n = Reduce(ProjectState_0, Event_1, ..., Event_n)
 
 Reducers are deterministic and side-effect free. Replay rejects duplicate event IDs, aggregate mismatches, missing referenced entities, illegal task transitions, invalid plan provenance, and orderings that would permit a task to become `PASSED` without prior matching independent verification evidence. Runtime/session/context metadata stored in `ProjectState` is a projection of authoritative events, not a second source of truth.
 
+## Checkpoint and recovery
+
+Checkpoints accelerate restart but never replace the canonical event stream. Checkpoint schema version 1 stores the project ID, last applied event version, serialized typed `ProjectState`, schema version, SHA-256 checksum, and creation timestamp. Snapshot serialization is typed JSON rather than an executable object format.
+
+The checksum covers both serialized state bytes and protected envelope metadata. Recovery validates the checkpoint schema, checksum, project identity, and event version before applying the event tail:
+
+```text
+validated checkpoint state
+  + events after checkpoint.last_event_version
+  -> replay tail
+  -> recovered ProjectState
+```
+
+If a checkpoint is malformed, corrupted, ahead of the event stream, inconsistent with its replay tail, or otherwise invalid, it is discarded and the project is reconstructed by full event replay. This preserves the invariant that a checkpoint is only a disposable performance optimization.
+
+Recovery also reconciles logical task state with external executor reality. A task recorded as `RUNNING` is never automatically started again. If its recorded executor session is still active, recovery returns `REATTACH_SESSION`; a missing, terminated, or unknown session returns explicit `RECOVERY_REQUIRED`. Tasks already at `AGENT_REPORTED_DONE` or `VERIFYING` return `RESUME_VERIFICATION` so executor work is not duplicated. Resume itself is read-only with respect to task execution and canonical events.
+
 ## Failure policy
 
 Failures are classified before retrying:

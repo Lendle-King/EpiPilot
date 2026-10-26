@@ -13,11 +13,25 @@ def replay_project(
     events: tuple[ProjectEvent, ...],
 ) -> ProjectState:
     """Rebuild a project aggregate solely from its append-only event stream."""
-    state = ProjectState(project_id=project_id)
+    return replay_from_state(ProjectState(project_id=project_id), events)
+
+
+def replay_from_state(
+    state: ProjectState,
+    events: tuple[ProjectEvent, ...],
+) -> ProjectState:
+    """Apply an ordered tail to a validated state snapshot.
+
+    Checkpoint recovery uses this only after the checkpoint envelope, checksum,
+    project identity, and event version have been validated.
+    """
+    current = state
     seen: set[EventId] = set()
     for event in events:
         if event.id in seen:
-            raise DuplicateAppliedEvent(f"event {event.id} appears more than once in the stream")
+            raise DuplicateAppliedEvent(
+                f"event {event.id} appears more than once in the replay tail"
+            )
         seen.add(event.id)
-        state = reduce_event(state, event)
-    return state
+        current = reduce_event(current, event)
+    return current
