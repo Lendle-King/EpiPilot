@@ -29,6 +29,21 @@ spawn another coding agent or pretend that the CLI runs experiments autonomously
    *hypotheses*, never validated experiments or facts. Avoid redundant Scout
    epochs and stop when no decision-relevant novelty remains.
    See docs/SCOUT_V2.md for submission schema and limits.
+4b. If the operator enabled **Problem Exploration Mode** (explicit
+   \`epi explore enable --budget-share 0.20\`), run \`epi explore status\`
+   and \`epi explore probes\` before algorithm optimization. Diagnose
+   decision-relevant properties via competing explanations and preregistered
+   \`--kind explore\` experiments; do not treat probe templates as results.
+   After substantive verification and linked Claim review, optionally record
+   a scoped recommendation with \`epi explore guide\`, then inspect
+   \`epi explore profile\`. Only use \`epi explore advance --reason ...\`
+   when its readiness gate is met; early advancement needs explicit
+   \`--override\` and an approved, recorded rationale. When a critical
+   validated counterexample reopens an Unknown, return to diagnosis through
+   \`epi explore reopen --reason ...\`, or explicitly acknowledge that
+   changed evidence. A spent budget is not proof of readiness. The
+   original \`epi iterate\` default remains unchanged when mode is disabled.
+   See docs/PROBLEM_EXPLORATION.md for the complete protocol.
 5. Use `epi propose` to add useful discriminative experiments (including controls,
    risk, estimated cost, information gain and likely follow-on value). Estimates
    are heuristics, not calibrated probabilities.
