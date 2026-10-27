@@ -152,6 +152,44 @@ def test_continuation_parent_hashes_are_pinned_and_mutation_is_rejected(
         pilot_controller._verify_parent_artifact_hashes(parent, {"events.jsonl": expected})
 
 
+def test_continuation_prepare_summary_excludes_imported_parent_calls(tmp_path: Path) -> None:
+    work = tmp_path / "pilot_work"
+    work.mkdir()
+    (work / "events.jsonl").write_text(
+        "\n".join(
+            (
+                json.dumps({"kind": "agent_call_started", "call_id": "parent-call"}),
+                json.dumps(
+                    {
+                        "kind": "agent_call_started",
+                        "call_id": "continuation-call",
+                        "continuation_segment": True,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "kind": "agent_call_finished",
+                        "call_id": "parent-call",
+                        "process_started": True,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "kind": "agent_call_finished",
+                        "call_id": "continuation-call",
+                        "process_started": True,
+                        "continuation_segment": True,
+                    }
+                ),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert mac._count_pilot_calls(tmp_path, continuation_only=True) == 1
+    assert mac._count_pilot_processes(tmp_path, continuation_only=True) == 1
+
+
 def test_continuation_context_is_cell_scoped_and_filters_test_payloads(
     tmp_path: Path,
 ) -> None:

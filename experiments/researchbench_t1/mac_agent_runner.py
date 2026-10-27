@@ -827,7 +827,7 @@ def main(argv: list[str] | None = None) -> int:
         returncode = 2
     finally:
         summary["elapsed_wall_seconds"] = round(time.monotonic() - began, 3)
-        continuation_only = args.mode == "pilot_v2_continue"
+        continuation_only = args.mode in {"pilot_v2_continue_prepare", "pilot_v2_continue"}
         pilot_calls = _count_pilot_calls(root, continuation_only=continuation_only)
         pilot_processes = _count_pilot_processes(root, continuation_only=continuation_only)
         one_cell_started = (root / "agent_attempt.started").exists()
