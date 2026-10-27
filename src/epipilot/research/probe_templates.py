@@ -70,7 +70,10 @@ _KEYWORDS: tuple[tuple[ExplorationDimension, tuple[str, ...]], ...] = (
     (ExplorationDimension.EVALUATION, ("variance", "noise", "reproduc", "checker", "评估", "方差")),
     (ExplorationDimension.BOTTLENECK, ("failure", "bottleneck", "失败", "瓶颈")),
     (ExplorationDimension.SOLUTION_SPACE, ("search", "parameter", "解空间", "参数")),
-    (ExplorationDimension.CONDITIONAL, ("routing", "condition", "when", "time", "条件", "路由", "时机")),
+    (
+        ExplorationDimension.CONDITIONAL,
+        ("routing", "condition", "when", "time", "条件", "路由", "时机"),
+    ),
     (ExplorationDimension.INTERACTION, ("interaction", "joint", "耦合", "交互", "联合")),
     (ExplorationDimension.BOUNDS, ("upper bound", "oracle", "上界", "边界")),
     (ExplorationDimension.ROBUSTNESS, ("robust", "shift", "泛化", "稳健", "分布")),
@@ -95,9 +98,7 @@ def probe_templates(
             keys = next((k for d, k in _KEYWORDS if d is dim), ())
             if any(keyword in words for keyword in keys):
                 related.append(unknown)
-        score = max(
-            (item.importance * item.decision_sensitivity for item in related), default=0.0
-        )
+        score = max((item.importance * item.decision_sensitivity for item in related), default=0.0)
         proposals.append(
             (
                 score,
