@@ -15,11 +15,15 @@ from typing import Any
 
 from epipilot.research.decision_models import DecisionEstimate, DecisionForecast
 from epipilot.research.decision_value import rank_decision, record_outcome
+from epipilot.research.exploration import ensure_action_allowed, pending_research, readiness
 from epipilot.research.models import (
     Claim,
     ClaimStatus,
     ContractStatus,
     EvidenceRecord,
+    ExplorationConfig,
+    ExplorationStage,
+    ProblemInsight,
     Experiment,
     ExperimentContract,
     OnboardingSnapshot,
@@ -63,6 +67,92 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         if state.goal is not None:
             raise ValueError("goal already exists; goal changes need explicit user authorization")
         state.goal = ResearchGoal.model_validate(p)
+    elif kind == "exploration_enabled":
+        config = ExplorationConfig.model_validate(p)
+        if legacy or state.goal is None or not config.enabled:
+            raise ValueError("exploration enable requires a v2 goal and enabled config")
+        if config.stage is not ExplorationStage.EXPLORATION:
+            raise ValueError("exploration enable must begin with the discovery stage")
+        if state.exploration is not None and state.exploration.enabled:
+            raise ValueError("exploration mode is already enabled")
+        if pending_research(state):
+            raise ValueError("finish in-flight research before changing exploration mode")
+        state.exploration = config
+    elif kind == "exploration_disabled":
+        reason = str(p.get("reason", "")).strip()
+        if state.exploration is None or not state.exploration.enabled or len(reason) < 8:
+            raise ValueError("exploration disable requires active mode and a reason")
+        if pending_research(state):
+            raise ValueError("finish in-flight research before disabling exploration")
+        state.exploration = state.exploration.model_copy(
+            update={"enabled": False, "reason": reason}
+        )
+    elif kind == "exploration_advanced":
+        config = state.exploration
+        reason = str(p.get("reason", "")).strip()
+        override = p.get("override") is True
+        if config is None or not config.enabled or len(reason) < 8:
+            raise ValueError("exploration advance requires active mode and a reason")
+        if pending_research(state):
+            raise ValueError("finish in-flight research before leaving exploration")
+        if not readiness(state).get("ready") and not override:
+            raise ValueError("exploration is not ready; explicit --override is required")
+        reopened = sorted(
+            {eid for unknown in state.unknowns.values() for eid in unknown.reopening_evidence_ids}
+        )
+        state.exploration = config.model_copy(
+            update={
+                "stage": ExplorationStage.OPTIMIZATION,
+                "reason": reason,
+                "acknowledged_reopenings": reopened,
+            }
+        )
+    elif kind == "exploration_reopened":
+        config = state.exploration
+        reason = str(p.get("reason", "")).strip()
+        if (
+            config is None
+            or not config.enabled
+            or config.stage is not ExplorationStage.OPTIMIZATION
+            or len(reason) < 8
+        ):
+            raise ValueError("reopening requires optimization stage and a reason")
+        if pending_research(state):
+            raise ValueError("finish in-flight research before reopening exploration")
+        state.exploration = config.model_copy(
+            update={"stage": ExplorationStage.EXPLORATION, "reason": reason}
+        )
+    elif kind == "problem_insight_recorded":
+        insight = ProblemInsight.model_validate(p)
+        if legacy or state.exploration is None or not state.exploration.enabled:
+            raise ValueError("problem guidance requires active exploration mode")
+        if insight.id in state.problem_insights:
+            raise ValueError("duplicate problem insight id")
+        sources: set[str] = set()
+        for claim_id, status in insight.claim_statuses.items():
+            claim = state.claims.get(claim_id)
+            if (
+                claim is None
+                or claim.status is not status
+                or status not in {ClaimStatus.SUPPORTED, ClaimStatus.REFUTED}
+            ):
+                raise ValueError("problem guidance requires conclusive, reviewed claims")
+            sources.update(claim.supporting_evidence_ids + claim.contradicting_evidence_ids)
+        if set(insight.evidence_ids) != sources or len(insight.evidence_ids) != len(sources):
+            raise ValueError("problem guidance must use exactly the reviewed claim evidence")
+        if not sources or any(
+            eid not in state.evidence or not state.evidence[eid].measurement_validated
+            for eid in sources
+        ):
+            raise ValueError("problem guidance requires qualified experimental evidence")
+        if any(
+            existing.title.casefold() == insight.title.casefold()
+            and existing.dimension is insight.dimension
+            and existing.claim_statuses == insight.claim_statuses
+            for existing in state.problem_insights.values()
+        ):
+            raise ValueError("duplicate problem guidance")
+        state.problem_insights[insight.id] = insight
     elif kind == "unknown_added":
         new_unknown = Unknown.model_validate(p)
         if new_unknown.id in state.unknowns:
@@ -132,6 +222,12 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("unchanged Scout frontier already explored; review evidence first")
         if operation.reserved_cost > state.remaining + 1e-9:
             raise ValueError("Scout reservation exceeds remaining experiment budget")
+        if (
+            state.exploration is not None
+            and state.exploration.enabled
+            and operation.reserved_cost > state.exploration_remaining + 1e-9
+        ):
+            raise ValueError("Scout reservation exceeds exploration budget cap")
         state.scout_runs[operation.id] = operation
     elif kind == "scout_submitted":
         if legacy:
@@ -246,6 +342,15 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         proposal = state.proposals.get(registration.proposal_id)
         if proposal is None or proposal.status != "proposed":
             raise ValueError("pre-registration requires an available proposal")
+        if not legacy:
+            ensure_action_allowed(state, proposal)
+            if (
+                state.exploration is not None
+                and state.exploration.enabled
+                and proposal.kind is ProposalKind.EXPLORE
+                and registration.max_cost > state.exploration_remaining + 1e-9
+            ):
+                raise ValueError("experiment pre-registration exceeds exploration budget cap")
         if any(state.proposals[parent].status != "completed" for parent in proposal.depends_on):
             raise ValueError("pre-registration dependencies not completed")
         if not proposal.unknown_ids and not proposal.claim_ids:
@@ -270,6 +375,16 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("only a pre-registered experiment can start")
         if started_contract.max_cost > state.remaining + 1e-9:
             raise ValueError("insufficient budget to reserve experiment cost")
+        proposal = state.proposals[started_contract.proposal_id]
+        if not legacy:
+            ensure_action_allowed(state, proposal)
+            if (
+                state.exploration is not None
+                and state.exploration.enabled
+                and proposal.kind is ProposalKind.EXPLORE
+                and started_contract.max_cost > state.exploration_remaining + 1e-9
+            ):
+                raise ValueError("insufficient exploration budget to start experiment")
         state.contracts[started_contract.id] = started_contract.model_copy(
             update={"status": ContractStatus.RUNNING}
         )
