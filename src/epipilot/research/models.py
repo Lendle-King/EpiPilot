@@ -291,6 +291,7 @@ class OnboardingSnapshot(Record):
 
 class ResearchState(Record):
     goal: ResearchGoal | None = None
+    fixed_reserve: float = Field(default=0.0, ge=0, allow_inf_nan=False)
     unknowns: dict[str, Unknown] = Field(default_factory=dict)
     claims: dict[str, Claim] = Field(default_factory=dict)
     proposals: dict[str, Proposal] = Field(default_factory=dict)
@@ -328,11 +329,19 @@ class ResearchState(Record):
 
     @property
     def remaining(self) -> float:
-        return 0.0 if self.goal is None else max(0.0, self.goal.budget - self.spent - self.reserved)
+        return (
+            0.0
+            if self.goal is None
+            else max(0.0, self.goal.budget - self.fixed_reserve - self.spent - self.reserved)
+        )
 
     @property
     def overrun(self) -> float:
-        return 0.0 if self.goal is None else max(0.0, self.spent - self.goal.budget)
+        return (
+            0.0
+            if self.goal is None
+            else max(0.0, self.fixed_reserve + self.spent + self.reserved - self.goal.budget)
+        )
 
 
 class ResearchEvent(Record):

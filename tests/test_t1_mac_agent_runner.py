@@ -12,8 +12,17 @@ from experiments.researchbench_t1 import mac_agent_runner as mac
 
 
 def test_model_selection_rejects_shell_or_unrecognized_chars() -> None:
-    assert mac._model_name("gpt-6-luna(max)") == "gpt-6-luna(max)"
-    for model in ("", "default", "gpt-6", "gpt-6-luna max", "$(id)", "\nmodel", " "):
+    assert mac._model_name("gpt-6-luna") == "gpt-6-luna"
+    for model in (
+        "",
+        "default",
+        "gpt-6",
+        "gpt-6-luna(max)",
+        "gpt-6-luna max",
+        "$(id)",
+        "\nmodel",
+        " ",
+    ):
         with pytest.raises(mac.MacRunBlocked):
             mac._model_name(model)
 
@@ -23,7 +32,7 @@ def test_diagnose_is_no_inference_and_reports_unverified_model(
 ) -> None:
     monkeypatch.setattr(mac.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(mac.shutil, "which", lambda binary: None)
-    report = mac.run("diagnose", "ccswitch_codex", "gpt-6-luna(max)", "", Path("/unused"))
+    report = mac.run("diagnose", "ccswitch_codex", "gpt-6-luna", "", Path("/unused"))
     assert report["model_calls"] == 0
     assert report["model_usable"] == "not_verified"
     assert report["readiness"] == "codex_missing"
@@ -117,17 +126,20 @@ def test_one_cell_never_executes_model_proposed_shell(
     monkeypatch.setattr(mac, "_t1", fake_t1)
     monkeypatch.setattr(mac, "_run", fake_run)
     monkeypatch.setattr(mac, "guarded_run", fake_codex)
-    result = mac.one_cell(tmp_path, "codex_chatgpt", "gpt-6-luna(max)", "RUN_ONE_CELL", seed)
+    result = mac.one_cell(tmp_path, "codex_chatgpt", "gpt-6-luna", "RUN_ONE_CELL", seed)
     assert stages == ["init", "trial", "submit"]
     assert len(model_calls) == 1
     argv, kwargs = model_calls[0]
     assert argv[0].endswith("codex")
-    assert argv[1:4] == ["exec", "--model", mac.REQUIRED_MODEL]
+    assert argv[1:4] == ["--no-daemon", "exec", "--model"]
     assert argv[argv.index("--sandbox") + 1] == "read-only"
     assert argv[argv.index("--model") + 1] == mac.REQUIRED_MODEL
+    assert argv[argv.index("-c") + 1] == 'model_reasoning_effort="max"'
+    assert "--ephemeral" in argv
     assert kwargs["timeout"] == mac.MODEL_TIMEOUT
     assert "shell" not in kwargs
     assert result["model_calls"] == 1
+    assert result["model_reasoning_effort"] == "max"
     assert result["trial_completed"] is True
     assert result["model_output_format"] == "strict_json"
     assert result["development_auroc"] == 0.87654
@@ -184,7 +196,7 @@ def test_denied_mode_records_sanitized_receipt_without_paid_agent(
                 "--provider",
                 "codex_chatgpt",
                 "--model",
-                "gpt-6-luna(max)",
+                "gpt-6-luna",
                 "--results",
                 str(output),
             ]
@@ -298,6 +310,6 @@ def test_different_model_is_rejected_before_codex_or_probe(
     monkeypatch.setattr(
         mac, "one_cell", lambda *args: (_ for _ in ()).throw(AssertionError("Codex"))
     )
-    for model in ("default", "gpt-6", "gpt-6-luna", "gpt-6-luna max"):
-        with pytest.raises(mac.MacRunBlocked, match="only the exact Codex model"):
+    for model in ("default", "gpt-6", "gpt-6-luna(max)", "gpt-6-luna max"):
+        with pytest.raises(mac.MacRunBlocked, match="only model"):
             mac.run("pilot_one_cell", "codex_chatgpt", model, "RUN_ONE_CELL", tmp_path)

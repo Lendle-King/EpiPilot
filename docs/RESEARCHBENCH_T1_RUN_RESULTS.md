@@ -77,10 +77,42 @@ required to receive the explicit `--model 'gpt-6-luna(max)'` argument.
 | [40201519820](https://github.com/Lendle-King/Remote-Control/actions/runs/40201519820) | **Rejected**, model-only qualification | One `gpt-6-luna(max)` Codex CLI attempt **started**; controller elapsed 37.502 seconds; Codex exited nonzero with no accepted candidate and no T1 development trial. The CLI stderr was intentionally not retained in sanitized artifacts; the underlying failure category (model ID, permission or provider) is undetermined. Provider-side request count and spend remain **unknown** |
 
 The model was not replaced with a default or alternative; no automatic
-retry occurred. The private push-triggered execution workflow has been
-disabled again. **There is currently no successful execution attesting that
-the local Codex path supports the exact Luna model ID.** The previous
-`default`-model qualifications remain scientifically separate.
+retry occurred. The private push-triggered execution workflow was disabled
+again. As of 2026-10-25 there was no successful execution attesting that the
+local Codex path accepted the Luna model. The previous `default`-model
+qualifications remain scientifically separate.
+
+## Local exact-model qualification and fairness repair — 2026-10-27
+
+The current local checkout is the clean branch base
+`efccceeb29990da937991b76ff95418f63f0c1da`. No Pilot cell or Full run was
+started. The two qualification attempts in this task were:
+
+| Attempt | Invocation | Outcome |
+| --- | --- | --- |
+| 1 | `--model 'gpt-6-luna(max)'` with `model_reasoning_effort=max` | CLI exited during app-server initialization with `Operation not permitted`; no model response was returned. |
+| 2 | `codex --no-daemon exec --model gpt-6-luna -c 'model_reasoning_effort="max"' -C /tmp --skip-git-repo-check --sandbox read-only --ephemeral 'Reply with exactly OK.'` | Success; CLI returned `OK` and recorded model `gpt-6-luna` with reasoning effort `max`. No project or experiment context was sent. |
+
+This confirms the corrected model slug/effort pair works through the local
+CLI path. It does not independently attest the upstream provider backend.
+Provider request count, token usage, and billing were not available in the
+receipt. Qualification attempts are complete; no further check is authorized
+by this record.
+
+The whole-Mac memory guard was exercised with a read-only resource sample and
+a trivial guarded child process (no model or ML training): 55.86% memory used,
+10.59 GiB available, 95% limit, 1.2 GiB required free, and the guarded child
+exited successfully. This verifies the normal launch path, not forced
+termination under memory pressure.
+
+The Pilot profile now reserves 30 worker seconds independently per cell and
+240 seconds total across eight cells. The Full profile still has a 900-second
+global cap; its 36 independent 40-second cells require 1,440 seconds, so
+initialization now fails closed before creating work or vault directories.
+The current `mac_agent_runner.py` model argv now uses the corrected model
+slug and explicit max effort. Focused non-model regressions passed: 28 tests.
+The test command used an empty pytest config because this environment lacks
+the repository's optional `pytest-asyncio` plugin.
 
 ## Research conclusions allowed now
 

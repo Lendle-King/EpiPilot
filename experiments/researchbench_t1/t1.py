@@ -1,8 +1,8 @@
-"""EpiPilot ResearchBench-T1: offline, cost-capped tabular research qualification.
+"""EpiPilot ResearchBench-T1: cost-capped tabular research-policy qualification.
 
-The benchmark *does not call any coding agent or paid API*. It provides a
-frozen experiment surface for independently launched research agents and a
-held-out evaluator. All expensive or external-agent phases are opt-in.
+The reference and smoke stages are offline. Explicit Pilot mode can call the
+user's Codex CLI through the guarded Mac runner; all external-agent phases are
+opt-in and a sealed evaluator handles final holdout scoring.
 """
 
 from __future__ import annotations
@@ -10,8 +10,11 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import importlib.resources
+import io
 import json
 import os
+import random
 import subprocess
 import sys
 import tempfile
@@ -36,7 +39,10 @@ STAGES: dict[str, dict[str, Any]] = {
         "seeds": [42, 137],
         "per_cell_trials": 2,
         "trial_seconds": 15,
-        "total_seconds": 120,
+        "total_seconds": 240,
+        "max_model_decision_calls_per_cell": 4,
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "max",
         "final_eval_seconds": 20,
     },
     "full": {
@@ -50,7 +56,8 @@ STAGES: dict[str, dict[str, Any]] = {
     },
 }
 SPLIT_SEED = 20271025
-SCHEMA = 1
+EXECUTION_ORDER_SEED = 20271027
+SCHEMA = 4
 
 
 class BenchmarkError(ValueError):
@@ -63,6 +70,23 @@ def digest(data: bytes) -> str:
 
 def file_digest(path: Path) -> str:
     return digest(path.read_bytes())
+
+
+def _code_revision() -> str | None:
+    repo = Path(__file__).resolve().parents[2]
+    try:
+        revision = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=repo, stderr=subprocess.DEVNULL, timeout=5
+            )
+            .decode("ascii")
+            .strip()
+        )
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return None
+    return (
+        revision if len(revision) == 40 and all(c in "0123456789abcdef" for c in revision) else None
+    )
 
 
 def canonical(value: Any) -> bytes:
@@ -156,7 +180,7 @@ def load_data(dataset: str, source: Path | None) -> tuple[Any, Any, str]:
         bunch = load_breast_cancer(as_frame=True)
         data = bunch.data.copy()
         labels = bunch.target.copy()
-        return data, labels, "sklearn.datasets.load_breast_cancer"
+        return data, labels, file_digest(_source_path(dataset, source))
     if source is None or not source.is_file():
         raise BenchmarkError(
             f"{dataset}: supply an existing local raw UCI file; no download is attempted"
@@ -214,48 +238,92 @@ def load_data(dataset: str, source: Path | None) -> tuple[Any, Any, str]:
     return frame, labels, file_digest(source)
 
 
-def _write_dataset(
-    work: Path, vault: Path, dataset: str, source: Path | None, split_seed: int
-) -> dict[str, Any]:
+def _source_path(dataset: str, source: Path | None) -> Path:
+    if dataset == "wdbc":
+        return Path(
+            str(importlib.resources.files("sklearn.datasets.data").joinpath("breast_cancer.csv"))
+        )
+    if source is None or not source.is_file():
+        raise BenchmarkError(f"{dataset}: supply an existing local raw UCI file")
+    return source
+
+
+def _dataset_manifest(dataset: str, source: Path | None, split_seed: int) -> dict[str, Any]:
+    """Freeze the preregistered stratified split; this trusted controller keeps holdout private."""
     np, pd, sklearn, splitter = _dependencies()
     features, target, source_hash = load_data(dataset, source)
     y = pd.Series(np.asarray(target, dtype=int), name="target")
     if len(y.unique()) != 2 or y.value_counts().min() < 20:
         raise BenchmarkError("binary dataset needs two classes with at least 20 members each")
-    # Split once per dataset, independently of research agent seed.
     left, test = splitter(np.arange(len(y)), test_size=0.2, stratify=y, random_state=split_seed)
     train, dev = splitter(left, test_size=0.25, stratify=y.iloc[left], random_state=split_seed + 1)
     data = features.reset_index(drop=True).copy()
-    data.columns = [str(x) for x in data.columns]
+    data.columns = [str(value) for value in data.columns]
     if "target" in data.columns:
         raise BenchmarkError("features contain target column")
     data["target"] = y
-    public_dir = work / "public" / dataset
-    vault_dir = vault / dataset
-    public_dir.mkdir(parents=True, exist_ok=False)
-    vault_dir.mkdir(parents=True, exist_ok=False)
-    meta = {
+    frames = {
+        "train": data.iloc[train].reset_index(drop=True),
+        "dev": data.iloc[dev].reset_index(drop=True),
+        "test": data.iloc[test].reset_index(drop=True),
+    }
+    files: dict[str, Any] = {}
+    for name, frame in frames.items():
+        rendered = io.StringIO()
+        frame.to_csv(rendered, index=False, float_format="%.15g")
+        file_meta = (
+            {"rows": len(frame)}
+            if name == "test"
+            else {"sha256": digest(rendered.getvalue().encode("utf-8")), "rows": len(frame)}
+        )
+        if name == "test":
+            file_meta["materialized"] = False
+            holdout_hash = digest(rendered.getvalue().encode("utf-8"))
+        files[name] = file_meta
+    indices = {
+        "train": [int(value) for value in train],
+        "dev": [int(value) for value in dev],
+        "test": [int(value) for value in test],
+    }
+    return {
         "dataset": dataset,
         "source_hash": source_hash,
         "split_seed": split_seed,
+        "split_algorithm": (
+            "sklearn.train_test_split stratified 60/20/20, random_state=split_seed "
+            "then split_seed+1"
+        ),
         "rows": len(y),
-        "features": len(data.columns) - 1,
+        "features": len(frames["train"].columns) - 1,
         "versions": {
             "sklearn": sklearn.__version__,
             "pandas": pd.__version__,
             "numpy": np.__version__,
         },
-        "files": {},
+        "files": files,
+        "_indices": indices,
+        "_frames": frames,
+        "_holdout_sha256": holdout_hash,
     }
-    for name, ids, folder in [
-        ("train", train, public_dir),
-        ("dev", dev, public_dir),
-        ("test", test, vault_dir),
-    ]:
-        path = folder / f"{name}.csv"
-        data.iloc[ids].to_csv(path, index=False, float_format="%.15g")
-        meta["files"][name] = {"sha256": file_digest(path), "rows": len(ids)}
-    return meta
+
+
+def _write_dataset(
+    work: Path, dataset: str, source: Path | None, split_seed: int
+) -> tuple[dict[str, Any], dict[str, list[int]], str]:
+    meta = _dataset_manifest(dataset, source, split_seed)
+    frames = meta.pop("_frames")
+    indices = meta.pop("_indices")
+    holdout_hash = meta.pop("_holdout_sha256")
+    public_dir = work / "public" / dataset
+    public_dir.mkdir(parents=True, exist_ok=False)
+    for name in ("train", "dev"):
+        path = public_dir / f"{name}.csv"
+        rendered = io.StringIO()
+        frames[name].to_csv(rendered, index=False, float_format="%.15g")
+        path.write_text(rendered.getvalue(), encoding="utf-8")
+        if file_digest(path) != meta["files"][name]["sha256"]:
+            raise BenchmarkError("public split serialization changed during setup")
+    return meta, indices, holdout_hash
 
 
 def setup(
@@ -275,6 +343,17 @@ def setup(
             raise BenchmarkError(
                 f"{dataset}: supply an existing local raw UCI file; no download is attempted"
             )
+    profile = STAGES[stage]
+    code_revision = _code_revision()
+    if stage == "pilot" and code_revision is None:
+        raise BenchmarkError("Pilot requires a committed Git revision before any model call")
+    cell_count, per_cell_seconds, required_seconds = _budget_allocation(profile)
+    if profile["total_seconds"] < required_seconds:
+        raise BenchmarkError(
+            "global safety cap cannot fully fund equal per-cell training allowances: "
+            f"{cell_count} cells x {per_cell_seconds}s requires {required_seconds}s, "
+            f"but the frozen cap is {profile['total_seconds']}s"
+        )
     work, vault = work.resolve(), vault.resolve()
     if work == vault or work in vault.parents or vault in work.parents:
         raise BenchmarkError("public workspace and private vault must be disjoint")
@@ -284,20 +363,39 @@ def setup(
         raise BenchmarkError("private vault exists and is nonempty")
     work.mkdir(parents=True, exist_ok=True)
     vault.mkdir(parents=True, exist_ok=True)
-    spec = STAGES[stage]
+    spec = json.loads(canonical(profile))
     dataset_meta: dict[str, Any] = {}
+    private_sources: dict[str, str] = {}
+    private_indices: dict[str, dict[str, list[int]]] = {}
+    private_holdout_hashes: dict[str, str] = {}
     # Do not reuse the already-inspected smoke holdout in real policy comparisons.
     # Fix the split per stage BEFORE any research agent sees validation feedback.
     split_seed = SPLIT_SEED + {"smoke": 0, "pilot": 1000, "full": 2000}[stage]
     for dataset in spec["datasets"]:
-        dataset_meta[dataset] = _write_dataset(
-            work, vault, dataset, sources.get(dataset), split_seed
+        dataset_meta[dataset], private_indices[dataset], private_holdout_hashes[dataset] = (
+            _write_dataset(work, dataset, sources.get(dataset), split_seed)
         )
+        source_path = _source_path(dataset, sources.get(dataset))
+        private_sources[dataset] = str(source_path.resolve())
+    cells = [
+        (arm, dataset, seed)
+        for dataset in spec["datasets"]
+        for seed in spec["seeds"]
+        for arm in spec["arms"]
+    ]
+    random.Random(EXECUTION_ORDER_SEED).shuffle(cells)
     meta = {
         "schema": SCHEMA,
         "stage": stage,
+        "code_revision": code_revision,
         "profile": spec,
+        "cell_count": cell_count,
+        "per_cell_trial_budget_seconds": per_cell_seconds,
+        "required_development_seconds_for_all_cells": required_seconds,
         "datasets": dataset_meta,
+        "execution_order_seed": EXECUTION_ORDER_SEED,
+        "execution_order": [list(cell) for cell in cells],
+        "target_auroc": 0.95 if stage == "pilot" else None,
         "total_external_api_calls": 0,
         "final_holdout_is_off_limits_during_search": True,
     }
@@ -306,7 +404,9 @@ def setup(
         vault / "meta.json",
         {
             "public_meta_sha256": file_digest(work / "meta.json"),
-            "dataset_holdouts": {k: v["files"]["test"]["sha256"] for k, v in dataset_meta.items()},
+            "source_paths": private_sources,
+            "test_indices": private_indices,
+            "test_sha256": private_holdout_hashes,
         },
     )
     return {
@@ -449,11 +549,181 @@ def _unit(meta: dict[str, Any], arm: str, dataset: str, seed: int) -> None:
         raise BenchmarkError("arm/dataset/seed outside preregistered task matrix")
 
 
+def _budget_allocation(profile: dict[str, Any]) -> tuple[int, int, int]:
+    """Return cell count, independent per-cell cap, and full equal-allocation total."""
+    cell_count = len(profile["arms"]) * len(profile["datasets"]) * len(profile["seeds"])
+    per_cell_seconds = profile["per_cell_trials"] * profile["trial_seconds"]
+    return cell_count, per_cell_seconds, cell_count * per_cell_seconds
+
+
 def _spent(events: list[dict[str, Any]], timeout: int) -> float:
     ended = {e["id"] for e in events if e["kind"] in ("finished", "aborted")}
     return sum(float(e["seconds"]) for e in events if e["kind"] in ("finished", "aborted")) + sum(
         timeout for e in events if e["kind"] == "started" and e["id"] not in ended
     )
+
+
+def _spent_by_cell(
+    events: list[dict[str, Any]], timeout: int, arm: str, dataset: str, seed: int
+) -> float:
+    """Charge only this cell's finished work and reserve full timeout for an open run."""
+    started = {e["id"]: e for e in events if e["kind"] == "started"}
+    ended = {e["id"]: e for e in events if e["kind"] in ("finished", "aborted")}
+    ids = {
+        run_id
+        for run_id, event in started.items()
+        if (event["arm"], event["dataset"], event["seed"]) == (arm, dataset, seed)
+    }
+    return sum(float(ended[run_id]["seconds"]) for run_id in ids if run_id in ended) + sum(
+        timeout for run_id in ids if run_id not in ended
+    )
+
+
+def record_agent_call_started(
+    work: Path,
+    arm: str,
+    dataset: str,
+    seed: int,
+    call_id: str,
+    purpose: str,
+    model: str = "gpt-6-luna",
+    reasoning_effort: str = "max",
+) -> int:
+    """Reserve one CLI model-call attempt before launch; failed calls still consume it."""
+    work = work.resolve()
+    meta = _load_meta(work)
+    _unit(meta, arm, dataset, seed)
+    if (
+        meta["stage"] != "pilot"
+        or not call_id
+        or not purpose
+        or model != meta["profile"]["model"]
+        or reasoning_effort != meta["profile"]["model_reasoning_effort"]
+    ):
+        raise BenchmarkError("model calls are permitted only for frozen Pilot cells")
+    with exclusive(work):
+        history = ledger(work)
+        starts = [e for e in history if e["kind"] == "agent_call_started"]
+        ends = {e["call_id"] for e in history if e["kind"] == "agent_call_finished"}
+        if any(e["call_id"] not in ends for e in starts):
+            raise BenchmarkError("previous model call is unreconciled; do not retry")
+        cell_starts = [
+            e for e in starts if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+        ]
+        cap = meta["profile"]["max_model_decision_calls_per_cell"]
+        if len(cell_starts) >= cap:
+            raise BenchmarkError("per-cell model decision-call budget exhausted")
+        if any(e["call_id"] == call_id for e in starts):
+            raise BenchmarkError("duplicate model call identifier")
+        ordinal = len(cell_starts) + 1
+        event(
+            work,
+            {
+                "kind": "agent_call_started",
+                "call_id": call_id,
+                "call_ordinal": ordinal,
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "purpose": purpose,
+                "model": model,
+                "model_reasoning_effort": reasoning_effort,
+            },
+        )
+        return ordinal
+
+
+def record_agent_call_finished(
+    work: Path, call_id: str, outcome: str, telemetry: dict[str, Any] | None = None
+) -> None:
+    """Close exactly one reserved call without storing raw CLI output or transcripts."""
+    if outcome not in {"success", "invalid_output", "failed", "timeout", "tool_use_rejected"}:
+        raise BenchmarkError("invalid model-call outcome")
+    safe = telemetry or {}
+    allowed = {
+        "elapsed_seconds",
+        "turn_count",
+        "tool_event_count",
+        "input_tokens",
+        "output_tokens",
+        "cached_input_tokens",
+        "usage_available",
+        "retry_controls",
+        "process_started",
+    }
+    if set(safe) - allowed:
+        raise BenchmarkError("unexpected model-call telemetry field")
+    work = work.resolve()
+    with exclusive(work):
+        history = ledger(work)
+        starts = [
+            e for e in history if e["kind"] == "agent_call_started" and e["call_id"] == call_id
+        ]
+        ends = [
+            e for e in history if e["kind"] == "agent_call_finished" and e["call_id"] == call_id
+        ]
+        if len(starts) != 1 or ends:
+            raise BenchmarkError("model call is missing or already reconciled")
+        event(
+            work,
+            {"kind": "agent_call_finished", "call_id": call_id, "outcome": outcome, **safe},
+        )
+
+
+def record_cell_terminal(
+    work: Path,
+    arm: str,
+    dataset: str,
+    seed: int,
+    outcome: str,
+    reason: str = "",
+) -> None:
+    """Seal a research cell after all its Codex subprocesses and trials are finished."""
+    allowed = {"submitted", "stopped", "failed", "invalid"}
+    if outcome not in allowed:
+        raise BenchmarkError("invalid terminal cell outcome")
+    work = work.resolve()
+    meta = _load_meta(work)
+    _unit(meta, arm, dataset, seed)
+    with exclusive(work):
+        history = ledger(work)
+        cell = (arm, dataset, seed)
+        terminal = [
+            e
+            for e in history
+            if e["kind"] == "cell_terminal" and (e["arm"], e["dataset"], e["seed"]) == cell
+        ]
+        cell_starts = [
+            e
+            for e in history
+            if e["kind"] == "agent_call_started" and (e["arm"], e["dataset"], e["seed"]) == cell
+        ]
+        call_ends = {e["call_id"] for e in history if e["kind"] == "agent_call_finished"}
+        trial_starts = [
+            e
+            for e in history
+            if e["kind"] == "started" and (e["arm"], e["dataset"], e["seed"]) == cell
+        ]
+        trial_ends = {e["id"] for e in history if e["kind"] in ("finished", "aborted")}
+        if (
+            terminal
+            or any(e["call_id"] not in call_ends for e in cell_starts)
+            or any(e["id"] not in trial_ends for e in trial_starts)
+        ):
+            raise BenchmarkError(
+                "cell is already terminal or has an unreconciled call/training attempt"
+            )
+        event(
+            work,
+            {
+                "kind": "cell_terminal",
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "outcome": outcome,
+                "reason": reason[:300],
+            },
+        )
 
 
 def perform_trial(
@@ -478,12 +748,21 @@ def perform_trial(
             raise BenchmarkError("per-cell experiment count budget exhausted")
         if any(e["candidate_sha256"] == c_hash for e in matches):
             raise BenchmarkError("identical candidate already attempted for this research cell")
-        # Reserve one maximum-duration trial; crash counts conservatively.
+        # Enforce the same independent training allowance for every cell first.
+        per_cell_seconds = profile["per_cell_trials"] * profile["trial_seconds"]
+        if (
+            _spent_by_cell(history, profile["trial_seconds"], arm, dataset, seed)
+            + profile["trial_seconds"]
+            > per_cell_seconds + 1e-9
+        ):
+            raise BenchmarkError("per-cell CPU wall-budget exhausted, cannot reserve trial")
+        # The global cap is only a final safety ceiling. setup() refuses any stage
+        # whose cap cannot cover every cell's full equal allocation.
         if (
             _spent(history, profile["trial_seconds"]) + profile["trial_seconds"]
             > profile["total_seconds"] + 1e-9
         ):
-            raise BenchmarkError("global CPU wall-budget exhausted, cannot reserve trial")
+            raise BenchmarkError("global CPU wall safety cap exhausted, cannot reserve trial")
         run_id = f"trial-{len(started) + 1:04d}"
         run_dir = work / "runs" / run_id
         run_dir.mkdir(parents=True, exist_ok=False)
@@ -571,6 +850,11 @@ def perform_trial(
             "remaining_wall_seconds": max(
                 0, profile["total_seconds"] - _spent(ledger(work), profile["trial_seconds"])
             ),
+            "remaining_cell_seconds": max(
+                0,
+                per_cell_seconds
+                - _spent_by_cell(ledger(work), profile["trial_seconds"], arm, dataset, seed),
+            ),
         }
 
 
@@ -643,6 +927,8 @@ def task_prompt(work: Path, arm: str, dataset: str, seed: int) -> str:
     meta = _load_meta(work)
     _unit(meta, arm, dataset, seed)
     profile = meta["profile"]
+    per_cell_seconds = profile["per_cell_trials"] * profile["trial_seconds"]
+    max_model_calls = profile.get("max_model_decision_calls_per_cell")
     path = Path(__file__).resolve()
     src = work / "public" / dataset
     instructions = {
@@ -678,6 +964,12 @@ def task_prompt(work: Path, arm: str, dataset: str, seed: int) -> str:
         f"--dataset {dataset} --seed {seed} --candidate YOUR_CANDIDATE.json"
     )
     submit_cmd = f"python {path} submit --work {work} --arm {arm} --dataset {dataset} --seed {seed}"
+    call_budget_line = (
+        f"At most {max_model_calls} Codex decision calls for this cell, "
+        "including failed calls and retries."
+        if max_model_calls is not None
+        else "No model calls are used by this offline stage."
+    )
     return f"""ResearchBench-T1 {meta["stage"]} / {dataset} / seed {seed} / policy {arm}
 Goal: maximize held-out AUROC under a hard development experiment budget.
 Only train/dev are visible: {src}/train.csv and {src}/dev.csv.
@@ -686,7 +978,10 @@ Do not use web, external APIs, GPU or paid providers without separate authorizat
 The harness makes ZERO external model calls; Agent billing is NOT metered here.
 At most {profile["per_cell_trials"]} trials per cell.
 Each trial has a {profile["trial_seconds"]}-second hard wall-time cap.
-Total development budget: {profile["total_seconds"]} CPU wall seconds (fail closed).
+Independent per-cell development budget: {per_cell_seconds} worker wall seconds.
+The global {profile["total_seconds"]}-second ceiling is a safety cap shared by the stage,
+and the frozen profile guarantees it covers every cell's full allocation.
+{call_budget_line}
 Allowed interventions: logistic/forest parameter JSONs in candidates/.
 Instructions for this arm: {instructions[arm]}
 Memory notes available: {notes}
@@ -744,21 +1039,80 @@ def status(work: Path) -> dict[str, Any]:
     history = ledger(work)
     started = [e for e in history if e["kind"] == "started"]
     finished = [e for e in history if e["kind"] == "finished"]
+    model_calls = [e for e in history if e["kind"] == "agent_call_started"]
+    call_finishes = [e for e in history if e["kind"] == "agent_call_finished"]
+    completed_call_ids = {e["call_id"] for e in call_finishes}
+    usage_rows = [e for e in call_finishes if e.get("usage_available") is True]
+    process_rows = [e for e in call_finishes if e.get("process_started") is True]
+    terminals = [e for e in history if e["kind"] == "cell_terminal"]
+    incidents = [e for e in history if e["kind"] == "cell_incident"]
+    target = meta.get("target_auroc")
     return {
         "stage": meta["stage"],
         "total_started": len(started),
         "completed": len(finished),
         "reserved_or_spent_seconds": _spent(history, meta["profile"]["trial_seconds"]),
         "max_total_seconds": meta["profile"]["total_seconds"],
+        "per_cell_trial_budget_seconds": meta["profile"]["per_cell_trials"]
+        * meta["profile"]["trial_seconds"],
+        "required_development_seconds_for_all_cells": meta["cell_count"]
+        * meta["per_cell_trial_budget_seconds"],
         "submitted": len(list((work / "submissions").glob("*.json")))
         if (work / "submissions").exists()
         else 0,
         "required_submissions": len(meta["profile"]["datasets"])
         * len(meta["profile"]["arms"])
         * len(meta["profile"]["seeds"]),
-        "external_model_calls": "not metered; none invoked by this harness",
+        "model_call_attempts": len(model_calls),
+        "model_calls_completed": len(call_finishes),
+        "model_calls_open": len(model_calls) - len(completed_call_ids),
+        "codex_process_starts": len(process_rows),
+        "model_usage": {
+            "available_call_count": len(usage_rows),
+            "missing_call_count": len(call_finishes) - len(usage_rows),
+            "input_tokens": sum(e.get("input_tokens") or 0 for e in usage_rows),
+            "output_tokens": sum(e.get("output_tokens") or 0 for e in usage_rows),
+            "cached_input_tokens": sum(e.get("cached_input_tokens") or 0 for e in usage_rows),
+        },
+        "terminal_cells": len(terminals),
+        "invalid_events": sum(e["category"] == "invalid" for e in incidents),
+        "repeated_experiments": sum(e["category"] == "repeat" for e in incidents),
+        "unsupported_claim_events": sum(e["category"] == "unsupported_claim" for e in incidents),
+        "target_auroc": target,
+        "target_attained_trials": (
+            sum(
+                e.get("exit_code") == 0
+                and e.get("dev_auroc") is not None
+                and e["dev_auroc"] >= target
+                for e in finished
+            )
+            if target is not None
+            else None
+        ),
         "holdout_evaluated": (work / "final.started").exists(),
     }
+
+
+def record_cell_incident(
+    work: Path, arm: str, dataset: str, seed: int, category: str, reason: str
+) -> None:
+    if category not in {"invalid", "repeat", "unsupported_claim"}:
+        raise BenchmarkError("unknown cell incident category")
+    work = work.resolve()
+    meta = _load_meta(work)
+    _unit(meta, arm, dataset, seed)
+    with exclusive(work):
+        event(
+            work,
+            {
+                "kind": "cell_incident",
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "category": category,
+                "reason": reason[:300],
+            },
+        )
 
 
 def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, Any]:
@@ -794,8 +1148,27 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             )
         submissions = {}
         hist = ledger(work)
+        if meta["stage"] == "pilot":
+            terminals = [e for e in hist if e["kind"] == "cell_terminal"]
+            terminal_by_cell = {
+                (e["arm"], e["dataset"], e["seed"]): e["outcome"] for e in terminals
+            }
+            expected_cells = set(wanted)
+            if set(terminal_by_cell) != expected_cells or set(terminal_by_cell.values()) != {
+                "submitted"
+            }:
+                raise BenchmarkError(
+                    "all Pilot cells must be terminal and submitted before holdout"
+                )
+        agent_calls = [e for e in hist if e["kind"] == "agent_call_started"]
+        finished_calls = {e["call_id"] for e in hist if e["kind"] == "agent_call_finished"}
+        if any(e["call_id"] not in finished_calls for e in agent_calls):
+            raise BenchmarkError("an agent process is not reconciled; keep the holdout sealed")
         started = {e["id"]: e for e in hist if e["kind"] == "started"}
         finished = {e["id"]: e for e in hist if e["kind"] == "finished"}
+        trial_ends = {e["id"] for e in hist if e["kind"] in ("finished", "aborted")}
+        if any(run_id not in trial_ends for run_id in started):
+            raise BenchmarkError("a training process is unreconciled; keep the holdout sealed")
         for arm, dataset, seed in wanted:
             key = f"{arm}__{dataset}__{seed}"
             selection = read_json(work / "submissions" / f"{key}.json")
@@ -819,15 +1192,67 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             if file_digest(candidate) != selection["candidate_sha256"]:
                 raise BenchmarkError("submitted candidate changed after development")
             submissions[key] = (selection, candidate)
+        pending_holdouts: dict[str, Any] = {}
         for dataset in profile["datasets"]:
             private_test = vault / dataset / "test.csv"
-            if file_digest(private_test) != priv["dataset_holdouts"][dataset]:
-                raise BenchmarkError("private test file does not match frozen holdout")
+            if private_test.exists():
+                raise BenchmarkError(
+                    "private holdout was materialized before final submission freeze"
+                )
+            source = Path(priv["source_paths"][dataset])
+            public_dataset = meta["datasets"][dataset]
+            rebuilt = _dataset_manifest(dataset, source, public_dataset["split_seed"])
+            frames = rebuilt.pop("_frames")
+            indices = rebuilt.pop("_indices")
+            rebuilt_holdout_hash = rebuilt.pop("_holdout_sha256")
+            if rebuilt != public_dataset:
+                raise BenchmarkError(
+                    "dataset source or stratified split differs from the frozen manifest"
+                )
+            if indices != priv["test_indices"][dataset]:
+                raise BenchmarkError(
+                    "private held-out row membership differs from its vault record"
+                )
+            for name in ("train", "dev"):
+                public_file = work / "public" / dataset / f"{name}.csv"
+                if file_digest(public_file) != public_dataset["files"][name]["sha256"]:
+                    raise BenchmarkError("public split differs from the frozen source manifest")
+            rendered_test = io.StringIO()
+            frames["test"].to_csv(rendered_test, index=False, float_format="%.15g")
+            if (
+                digest(rendered_test.getvalue().encode("utf-8")) != priv["test_sha256"][dataset]
+                or rebuilt_holdout_hash != priv["test_sha256"][dataset]
+            ):
+                raise BenchmarkError("trusted holdout split differs from the private frozen digest")
+            pending_holdouts[dataset] = frames["test"]
         atomic_json(
             work / "final.started",
             {
                 "submission_hashes": {k: file_digest(v[1]) for k, v in submissions.items()},
-                "status": "sealed_for_one_time_evaluation",
+                "status": (
+                    "all_submissions_frozen_all_agent_calls_reconciled_final_evaluation_started"
+                ),
+            },
+        )
+        materialized: dict[str, str] = {}
+        for dataset, frame in pending_holdouts.items():
+            if set(frame["target"].unique()) != {0, 1}:
+                raise BenchmarkError("sealed holdout must contain both classes for AUROC")
+            private_test = vault / dataset / "test.csv"
+            private_test.parent.mkdir(parents=True, exist_ok=True)
+            rendered = io.StringIO()
+            frame.to_csv(rendered, index=False, float_format="%.15g")
+            private_test.write_text(rendered.getvalue(), encoding="utf-8")
+            materialized[dataset] = file_digest(private_test)
+        atomic_json(
+            vault / "holdout_manifest.json",
+            {
+                "release_started": file_digest(work / "final.started"),
+                "holdout_sha256": materialized,
+                "qualification": (
+                    "holdout materialized for evaluator only after all cell agents "
+                    "terminated and submissions froze"
+                ),
             },
         )
         evaluated = {}
@@ -934,7 +1359,14 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 "metric": "holdout_auroc",
                 "direction": "maximize",
                 "budget_unit": "measured_worker_wall_seconds",
-                "per_case_budget": profile["per_cell_trials"] * profile["trial_seconds"] * 1.2,
+                "per_case_budget": profile["per_cell_trials"] * profile["trial_seconds"],
+                "model_decision_call_cap_per_cell": profile.get(
+                    "max_model_decision_calls_per_cell", 0
+                ),
+                "model_decision_call_cap_total": profile.get("max_model_decision_calls_per_cell", 0)
+                * len(profile["datasets"])
+                * len(profile["arms"])
+                * len(profile["seeds"]),
                 "baseline": "agent_only",
                 "policies": profile["arms"],
                 "cases": [

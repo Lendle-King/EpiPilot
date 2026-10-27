@@ -24,7 +24,7 @@ from epipilot.research.decision_value import (
     rank_decision,
     score_estimate,
 )
-from epipilot.research.models import Proposal, ProposalKind
+from epipilot.research.models import Proposal, ProposalKind, ResearchGoal, ResearchState
 from epipilot.research.store import ResearchStore
 
 
@@ -46,6 +46,15 @@ def root(tmp_path: Path) -> Path:
     subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True, capture_output=True)
     return repo
+
+
+def test_fixed_budget_reserve_is_not_available_to_research_decisions() -> None:
+    state = ResearchState(
+        goal=ResearchGoal(statement="Pilot", budget=50.0),
+        fixed_reserve=20.0,
+    )
+    assert state.remaining == 30.0
+    assert state.overrun == 0.0
 
 
 def make_estimate(proposal_id: str = "P", option: str | None = "CHILD") -> DecisionEstimate:

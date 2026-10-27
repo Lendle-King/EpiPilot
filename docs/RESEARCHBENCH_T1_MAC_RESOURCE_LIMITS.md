@@ -2,7 +2,7 @@
 
 ## User-approved execution settings
 
-For the experimental macOS self-hosted runner, **only global physical memory
+For the experimental macOS runner, **only global physical memory
 usage is a resource hard limit**. The limit is **95% used**; on a 24-GiB Mac,
 the agent must leave at least **1.2 GiB available** at sampling points.
 
@@ -34,29 +34,44 @@ that swap pressure can never occur.
 
 ## Strict Codex model selection
 
-Every T1 Codex command MUST specify exactly `--model 'gpt-6-luna(max)'`
-in its argv. The T1 CLI rejects `default`, `gpt-6`, any other name, and
-omission is resolved only to the locked model. Remote-Control's request
-validator also requires that exact model identifier. If the Codex version
-or configured provider does not support this identifier, the experiment
-fails closed: **no fallback or substitution**.
+Every T1 Codex command MUST specify the exact model slug `gpt-6-luna` and
+the independent setting `-c 'model_reasoning_effort="max"'`. The pilot
+runner also uses `--no-daemon` and `--ephemeral`. The literal
+`gpt-6-luna(max)` is not a model slug. The current Remote-Control request
+validator still needs review before that workflow is reused. If the local
+Codex version or configured provider does not support the model/effort pair,
+the experiment fails closed: **no fallback or substitution**.
 
-The literal model identifier has not been verified against a published
-Codex model catalog; acceptance must be confirmed using an actual pinned
-Mac run. CC Switch or any upstream gateway could remap names without
-revealing the true backend. A CLI exit code alone therefore establishes
-only that the requested model name was accepted by the local Codex path,
-not independent proof of the underlying model identity.
+One local minimal CLI invocation using the corrected model slug and maximum
+reasoning setting returned `OK` on 2026-10-27. This verifies that the local
+CLI path accepted that request; CC Switch or another upstream gateway could
+remap model names, so it is not independent proof of the underlying backend.
+Provider request count and billing remain unobservable from this CLI receipt.
 
 ## Cost and research-validity boundaries
 
-A paid step permits at most ONE Codex CLI process, with its own bounded
-wall timeout and no automatic retry; provider-side API request count and
-billing remain unobservable. The workflow runs on the single private
-`epipilot-t1` Mac runner and exports sanitized metrics only. It does not
-expose the final holdout. The four-arm experiment remains incomplete; any
-results from previously executed Codex `default` runs are
-**not comparable as same-model results** to the locked-model protocol.
+The four-policy Pilot permits at most four serial Codex CLI attempts per cell
+and 32 across eight cells. Every attempt has a 150-second wall timeout, is
+accounted before launch, and is not automatically retried. A nonzero exit,
+invalid response, tool event, timeout, or resource refusal remains in the
+ledger. Usage data from Codex JSONL is recorded when present; provider request
+count and billing remain unobservable.
+
+The Pilot invocation disables the shell feature, web search and MCP servers,
+uses a read-only sandbox and ephemeral session, and runs in a fresh empty
+directory. It sends only a structured task, candidate schema, current-cell
+development summaries, and verified Memory Only notes. It does not send
+holdout rows or metrics. The trusted local controller uses the original
+stratified split and delays holdout materialization and evaluation until all
+eight cells have submitted and all calls have closed. This is a controlled
+same-user workflow; it is not a separate OS account or a cryptographic
+boundary against arbitrary malicious code running with the user's identity.
+
+The whole-Mac guard samples physical memory before and during each subprocess
+and refuses or terminates work above 95% used memory. A single-run `flock`
+prevents overlapping cooperating T1 controllers. It does not establish that
+no unrelated process is active on the Mac. Full T1 remains paused; prior
+default-model results are not comparable to this locked-model protocol.
 
 No full 36-cell study is launched automatically. A failure in authentication,
 model availability, memory budget, result schema, or execution is a stop

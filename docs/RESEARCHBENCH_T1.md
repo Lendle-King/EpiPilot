@@ -5,19 +5,19 @@ can choose better experiments at fixed cost. It is **not** a result claiming tha
 EpiPilot outperforms a Coding Agent. The smoke and same-candidate tests are
 algorithm/evaluator checks, not four independently run agent sessions.
 
-The benchmark adds **no network client, API key, nested Coding Agent, GPU job,
-or automatic LLM calls**. All outputs and data are local. Agent sessions, if
-eventually enabled, run using the user's existing Codex/Kimi setup and are
-not launched or billed by this harness. Costs from third-party agents cannot
-be metered by T1 and need explicit provider-side limits and independent audit.
+The default and smoke stages make no model calls. The explicit local Mac
+`pilot` mode launches bounded calls through the user's existing Codex CLI;
+provider request count and cost remain unobservable to T1. No API key is
+added, no local GPU job is used, and no model call occurs without the explicit
+`RUN_FOUR_POLICY_PILOT` operation.
 
 ## Stages and hard experiment caps
 
-| Stage | Research datasets | Policies | Seeds | Max trials per cell | Trial timeout | Shared development wall budget | Final evaluator timeout per cell | AI API calls by harness |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `smoke` (default) | WDBC (built into scikit-learn) | `offline_baseline` | 42 | 2 | 12 s | 30 s | 15 s | 0 |
-| `pilot` (explicit opt-in) | WDBC | Agent, Memory, EpiPilot heuristic, EpiPilot conditional | 42, 137 | 2 | 15 s | 120 s | 20 s | 0 |
-| `full` (explicit opt-in) | Adult, Bank Marketing, MAGIC Gamma Telescope | same four policies | 42, 137, 271 | 2 | 20 s | 900 s | 35 s | 0 |
+| Stage | Research datasets | Policies | Seeds | Max trials per cell | Trial timeout | Independent cell training budget | Stage safety ceiling | Max Codex decision calls per cell | Final evaluator timeout per cell |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `smoke` (default) | WDBC (built into scikit-learn) | `offline_baseline` | 42 | 2 | 12 s | 24 s | 30 s | 0 | 15 s |
+| `pilot` (explicit opt-in) | WDBC | Agent, Memory, EpiPilot heuristic, EpiPilot conditional | 42, 137 | 2 | 15 s | 30 s | 240 s | 4 (32 across eight cells) | 20 s |
+| `full` (explicit opt-in) | Adult, Bank Marketing, MAGIC Gamma Telescope | same four policies | 42, 137, 271 | 2 | 20 s | 40 s | 900 s — underfunded | not authorized | 35 s |
 
 To avoid leaking information from the already inspected smoke holdout,
 each stage freezes a **different stratified train/dev/final-test split seed**
@@ -25,9 +25,15 @@ each stage freezes a **different stratified train/dev/final-test split seed**
 the same stage shares exactly the same split. Formal pilot/full results must
 not reuse the smoke split or earlier same-candidate dry-run scores.
 
-The staged ceilings limit this research *evaluator*, not the tokens spent
-in manually launched Codex/Kimi sessions. In particular, `full` is **not**
-recommended until `pilot` is complete and reviewed. These are upper bounds,
+Each research cell has an independent trial-count and worker-time allowance.
+The stage ceiling is a final safety cap and must be large enough for every
+cell to receive its full allowance. Pilot reserves 30 worker seconds for each
+of eight cells (240 seconds total), with at most four Codex decision-call
+attempts per cell; failed invocations and retries count. The harness does not
+meter provider API requests, tokens, or cost. Full remains blocked: 36 cells
+at 40 seconds require 1,440 seconds, exceeding the frozen 900-second cap.
+Setup rejects an underfunded stage before creating the workspace. Do not
+increase the Full cap without a user budget decision. These are upper bounds,
 not target allocations. A failed or crashed trial consumes budget, and a
 lost execution can be reconciled only by explicitly recording a conservative
 full-timeout charge (never by silently relaunching it).
@@ -67,7 +73,8 @@ Its three modes are:
 - `offline_smoke`: run this branch's existing frozen WDBC smoke on the Mac;
   **zero** model calls.
 - `pilot_one_cell`: only after explicit `RUN_ONE_CELL` confirmation, issue
-  **one** Codex `exec --model 'gpt-6-luna(max)'` call for one frozen
+  **one** Codex `--no-daemon exec --model 'gpt-6-luna' -c
+  'model_reasoning_effort="max"'` call for one frozen
   `agent_only / wdbc / seed 42 or 137` cell, require an allowlisted
   candidate, run one real development trial, and submit it.
   This cannot support a four-policy efficiency claim.
@@ -77,11 +84,13 @@ Its three modes are:
 The source is pinned to an exact EpiPilot commit in the remote workflow so
 a new public PR commit cannot change what executes on the trusted Mac.
 Codex/CC Switch authentication is configured on the Mac itself; no secrets
-are copied to GitHub. **Only the exact `gpt-6-luna(max)` identifier is allowed**
-in this T1 pilot. The local Codex CLI receives it explicitly via `--model`;
-`default` and alternate names are rejected, and an unsupported name is a
-hard stop, never a reason to fall back. The underlying provider identity is
-not independently attested by this CLI argument. Whole-Mac physical memory
+are copied to GitHub. The exact model slug `gpt-6-luna` and independent
+`model_reasoning_effort="max"` setting are required. The old literal
+`gpt-6-luna(max)` is not a model slug. `default` and alternate names are
+rejected, and an unsupported name is a hard stop, never a reason to fall back.
+The underlying provider identity is not independently attested by this CLI
+argument. The current Remote-Control request validator still needs review
+before that workflow is reused. Whole-Mac physical memory
 is the only resource usage limit (95% used); task locking and timeouts remain
 for correctness and spending safety. See `RESEARCHBENCH_T1_MAC_RESOURCE_LIMITS.md`.
 A call that fails after it starts may still consume quota or money; the
@@ -92,113 +101,79 @@ runner account. A formal blind holdout must remain inaccessible to the
 Coding Agent through a separate account/host/security boundary. No final
 test is opened by the one-cell command.
 
-## Pilot: four controlled policy slots, no automatic paid model calls
+## Pilot: four controlled policy slots
 
-First initialize the matched pilot (manual approval is required for the
-stage; initialization alone does not invoke any Agent):
+The explicit Mac controller runs the eight preregistered cells sequentially
+in the randomized order stored in `meta.json`. It sends each model a
+constrained JSON decision request in a fresh empty working directory, with
+read-only sandboxing, shell/web/MCP tools disabled, and automatic request and
+stream retries set to zero. Every call must name `gpt-6-luna` and set
+`model_reasoning_effort="max"`. The exact argv, call purpose, outcome, turn
+count, tool events, and token usage when available are kept in the append-only
+cell ledger. Missing usage stays explicitly missing. Provider-side API calls
+and billing remain unknown.
 
-```bash
-python experiments/researchbench_t1/t1.py init \
-  --stage pilot --allow-agent-stage \
-  --work /tmp/t1-pilot-public --vault /tmp/t1-pilot-secret
+Each cell has the same candidate space, at most **two** real training trials,
+15 seconds per trial, 30 worker seconds total, and a ceiling of **four model
+calls**, including memory-note calls, failures and retries. The independent
+per-cell budgets total 240 worker seconds; the global cap is only a safety
+ceiling. No cell receives more than its own allocation. The descriptive dev
+target is AUROC 0.95, frozen before any calls; it is not a hypothesis test.
 
-python experiments/researchbench_t1/t1.py task \
-  --work /tmp/t1-pilot-public --arm epipilot_heuristic \
-  --dataset wdbc --seed 42
-```
+The four policies use distinct procedures:
 
-`task` prints instructions that can be supplied to a **separately launched**
-Codex or Kimi session. For each cell, the underlying Agent proposes a
-candidate JSON from the allowlisted model/preprocessing space:
+- `agent_only` receives only its current cell's development trial history and
+  proposes the next allowlisted candidate.
+- `memory_only` receives evidence-linked notes generated from validated runs
+  within that cell. Notes must exactly match the source run, candidate digest,
+  and measured dev AUROC. Notes never cross seed cells.
+- `epipilot_heuristic` proposes two candidate paths and passes them through
+  EpiPilot's actual `rank_proposals` two-step lookahead. Scores supplied by the
+  model are uncalibrated heuristics.
+- `epipilot_conditional` supplies the four canonical outcome probabilities and
+  branch utilities to EpiPilot's existing `_next_action(policy="conditional")`
+  decision code. Its net information value is explicitly uncalibrated; a
+  nonpositive result stops without fallback.
 
-```json
-{"model":"logistic","feature_mode":"all","C":1.0,"class_weight":"none"}
-```
+Research prompts include only the dataset name, allowed parameter schema,
+candidate choices, development AUROC history, and (for Memory Only) the
+cell-scoped validated notes. They do not contain train/dev rows, holdout rows,
+holdout scores, vault paths, or private manifests. The source split remains
+the original stratified 60/20/20 split. The trusted local controller reads
+labels to reproduce the split and freeze its digest, but creates no holdout
+file and evaluates no holdout metric until all eight candidates are submitted
+and all model calls are closed. It then materializes the holdout for the
+reference evaluator exactly once. This is a controlled same-user workflow,
+not an OS-level boundary against a malicious process with the user's account.
 
-or:
-
-```json
-{"model":"forest","feature_mode":"all","n_estimators":64,"max_depth":7,"min_samples_leaf":2,"class_weight":"balanced"}
-```
-
-The Agent cannot expand the search to arbitrary code or access the sealed
-holdout through the `trial` API. Numeric-only features, class balancing,
-model capacity and regularization offer bounded competing mechanisms.
-
-```bash
-python experiments/researchbench_t1/t1.py trial \
-  --work /tmp/t1-pilot-public --arm epipilot_heuristic \
-  --dataset wdbc --seed 42 \
-  --candidate experiments/researchbench_t1/candidates/logistic.json
-
-python experiments/researchbench_t1/t1.py submit \
-  --work /tmp/t1-pilot-public --arm epipilot_heuristic \
-  --dataset wdbc --seed 42
-```
-
-All four policies get identical data, estimator choices, evaluation
-protocol, seeds and CPU budgets. They should share the same coding model,
-model reasoning settings, allowed tools, instruction budget and provider
-spend ceiling, but **must not share each other's research memory**.
-
-- `agent_only`: plain coding agent, no persistent research history or EpiPilot
-  planner, beyond the current trial's development feedback.
-- `memory_only`: may call the `memory` command to write short, source-linked
-  lessons after successfully validated trials. The next `task` packet includes
-  up to six lessons from **this policy only**, without promoting notes to facts.
-- `epipilot_heuristic`: use a separate Git research worktree and its own
-  `.research` log, and actually use `epi iterate` to choose experiments.
-- `epipilot_conditional`: likewise isolated, but preregister a valid
-  four-outcome decision table and call `epi iterate --policy conditional`.
-  Do not quietly fall back to the heuristic if the table lacks net value.
-
-**Important:** the T1 runner controls ML experiments; it does not automatically
-establish that a manually operated Agent obeyed the declared policy. For
-scientific comparison, retain policy-specific `epi` logs, prompts, session
-transcripts/usage summaries and frozen candidate choices, then audit them
-before treating results as four strategy observations.
-
-### Submit and evaluate only after all arms finish
-
-Run `submit` for **every** frozen policy/dataset/seed cell before accessing the
-final evaluator. Submissions select the best observed development AUROC; they
-cannot overwrite a previous submission. Rejected/missing results do not
-magically become successful experiments.
-
-A separate operator must fill an audit JSON object with one exact key per
-cell (`agent_only__wdbc__42`, etc.), each with explicit nonnegative integers:
-
-```json
-{
-  "agent_only__wdbc__42": {
-    "human_interventions": 0,
-    "repeated_experiments": 0,
-    "unsupported_claims": 0
-  }
-}
-```
-
-This is only one illustrative entry, not a complete pilot audit. Counts must
-be derived from real session records; zero is **not** a default or an unknown
-value. The benchmark refuses incomplete audits.
-
-Then the operator (not the Agent) runs:
+First freeze and inspect the manifest. This phase makes no model calls:
 
 ```bash
-python experiments/researchbench_t1/t1.py finalize \
-  --work /tmp/t1-pilot-public --vault /tmp/t1-pilot-secret \
-  --audit /tmp/t1-pilot-audit.json
-
-epi --root /tmp/t1-pilot-public benchmark \
-  --manifest manifest.json --min-cases 2
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_prepare --provider ccswitch_codex --model gpt-6-luna \
+  --results /path/to/local/T1-Pilot-Results
 ```
 
-Finalization seals **all** preselected candidates before opening any test
-labels, verifies public/vault checksums, evaluates each cell with a hard
-process timeout and emits evaluator artifacts plus a manifest accepted by
-EpiPilot's existing equal-budget benchmark comparator. The final evaluation
-is single-use by design, including after an interrupted evaluation; automatic
-reruns are disallowed to prevent repeated test-set fishing.
+It records the committed code revision, fixed stratified split and hashes,
+randomized eight-cell order, and equal per-cell budgets. The `pilot` mode
+requires that untouched preparation directory and refuses changed code,
+manifest, data, or any prior ledger activity. After reviewing it, start the
+integrated controller:
+
+```bash
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot --provider ccswitch_codex --model gpt-6-luna \
+  --confirm RUN_FOUR_POLICY_PILOT \
+  --results /path/to/local/T1-Pilot-Results
+```
+
+The runner writes the execution order, split/source hashes, budgets, call and
+trial ledger, submissions, audit counts, holdout manifest, and final metrics
+under that results directory. A holdout evaluation runs only if all eight
+cells are terminal and submitted; a stopped cell without a candidate leaves
+the holdout sealed. Failed requests and training attempts remain in the
+ledger and are never silently replaced. The final evaluation is single-use;
+no automatic rerun is allowed.
 
 ### Full T1: original three real UCI data sets
 

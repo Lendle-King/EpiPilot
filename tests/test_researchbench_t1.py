@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
+from experiments.researchbench_t1 import t1 as t1_module
 from experiments.researchbench_t1.t1 import (
     STAGES,
     BenchmarkError,
@@ -46,10 +48,26 @@ def test_default_stage_and_caps_are_small_and_offline() -> None:
     assert STAGES["smoke"]["arms"] == ["offline_baseline"]
     assert STAGES["smoke"]["total_seconds"] <= 30
     assert STAGES["pilot"]["per_cell_trials"] == 2
+    assert STAGES["pilot"]["per_cell_trials"] * STAGES["pilot"]["trial_seconds"] == 30
+    assert STAGES["pilot"]["total_seconds"] == 240
+    assert STAGES["pilot"]["max_model_decision_calls_per_cell"] == 4
     assert STAGES["full"]["datasets"] == ["adult", "bank", "magic"]
     assert len(STAGES["full"]["arms"]) == 4
     assert len(STAGES["full"]["seeds"]) == 3
     assert STAGES["full"]["total_seconds"] <= 900
+
+
+def test_full_stage_refuses_global_cap_below_equal_cell_allocations(tmp_path: Path) -> None:
+    sources = {}
+    for dataset in STAGES["full"]["datasets"]:
+        path = tmp_path / f"{dataset}.data"
+        path.write_bytes(b"unparsed because the budget gate runs first")
+        sources[dataset] = path
+
+    with pytest.raises(BenchmarkError, match="cannot fully fund equal per-cell"):
+        setup(tmp_path / "public", tmp_path / "vault", "full", sources, True)
+    assert not (tmp_path / "public").exists()
+    assert not (tmp_path / "vault").exists()
 
 
 def test_candidate_allowlist_is_frozen_and_rejects_untrusted_execution() -> None:
@@ -177,9 +195,51 @@ def test_policy_prompt_and_scoped_memory(tmp_path: Path) -> None:
     message = task_prompt(work, "memory_only", "wdbc", 137)
     assert note in message
     assert "not metered" not in message  # instructions spell out this limitation explicitly
+    assert "Independent per-cell development budget: 30 worker wall seconds." in message
+    assert "At most 4 Codex decision calls for this cell" in message
     assert note not in task_prompt(work, "agent_only", "wdbc", 42)
     with pytest.raises(BenchmarkError):
         add_memory(work, "agent_only", "wdbc", 42, result["id"], note)
+
+
+def test_all_pilot_cells_get_their_full_equal_training_allocation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    work, vault = tmp_path / "work", tmp_path / "vault"
+    setup(work, vault, "pilot", {}, True)
+    candidates = [
+        _write(tmp_path / "candidate-logistic.json", _candidate()),
+        _write(tmp_path / "candidate-forest.json", _candidate("forest")),
+    ]
+    clock = [0.0]
+
+    def fake_worker(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        clock[0] += 15.0
+        output = Path(argv[argv.index("--output") + 1])
+        output.write_text('{"auroc":0.8}', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_worker)
+    monkeypatch.setattr(
+        t1_module,
+        "time",
+        type("FakeClock", (), {"monotonic": staticmethod(lambda: clock[0])})(),
+    )
+    for arm in STAGES["pilot"]["arms"]:
+        for seed in STAGES["pilot"]["seeds"]:
+            for candidate in candidates:
+                result = perform_trial(work, arm, "wdbc", seed, candidate)
+                assert result["exit_code"] == 0
+                assert result["seconds"] == 15.0
+                assert result["remaining_cell_seconds"] in {15.0, 0}
+
+    report = status(work)
+    assert report["completed"] == 16
+    assert report["reserved_or_spent_seconds"] == 240.0
+    assert report["per_cell_trial_budget_seconds"] == 30
+    assert report["required_development_seconds_for_all_cells"] == 240
 
 
 def test_manifest_source_hash_stays_pinned(tmp_path: Path) -> None:
@@ -204,9 +264,30 @@ def test_real_pilot_uses_a_fresh_holdout_from_inspected_smoke(tmp_path: Path) ->
     setup(pilot_work, pilot_vault, "pilot", {}, True)
     smoke_meta = json.loads((smoke_work / "meta.json").read_text(encoding="utf-8"))
     pilot_meta = json.loads((pilot_work / "meta.json").read_text(encoding="utf-8"))
+    smoke_vault_meta = json.loads((smoke_vault / "meta.json").read_text(encoding="utf-8"))
+    pilot_vault_meta = json.loads((pilot_vault / "meta.json").read_text(encoding="utf-8"))
     assert smoke_meta["datasets"]["wdbc"]["split_seed"] == 20271025
     assert pilot_meta["datasets"]["wdbc"]["split_seed"] == 20272025
-    assert (
-        smoke_meta["datasets"]["wdbc"]["files"]["test"]["sha256"]
-        != (pilot_meta["datasets"]["wdbc"]["files"]["test"]["sha256"])
+    assert smoke_vault_meta["test_sha256"]["wdbc"] != pilot_vault_meta["test_sha256"]["wdbc"]
+    assert smoke_meta["datasets"]["wdbc"]["files"]["test"]["materialized"] is False
+    assert not (smoke_vault / "wdbc" / "test.csv").exists()
+    assert not (smoke_work / "public" / "wdbc" / "test.csv").exists()
+
+
+def test_setup_freezes_holdout_privately_without_materializing_it(tmp_path: Path) -> None:
+    pytest.importorskip("sklearn")
+    work, vault = tmp_path / "work", tmp_path / "vault"
+    setup(work, vault, "pilot", {}, True)
+    manifest = json.loads((work / "meta.json").read_text(encoding="utf-8"))
+    private = json.loads((vault / "meta.json").read_text(encoding="utf-8"))
+    assert manifest["datasets"]["wdbc"]["split_algorithm"].startswith(
+        "sklearn.train_test_split stratified 60/20/20"
     )
+    assert "wdbc" in private["test_sha256"]
+    assert manifest["datasets"]["wdbc"]["files"]["test"] == {
+        "rows": 114,
+        "materialized": False,
+    }
+    assert not (vault / "wdbc" / "test.csv").exists()
+    assert not (work / "public" / "wdbc" / "test.csv").exists()
+    assert not (work / "final.started").exists()

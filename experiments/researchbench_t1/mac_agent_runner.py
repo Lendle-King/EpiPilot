@@ -1,4 +1,4 @@
-"""Manual Mac T1 control: zero-LLM checks and one bounded Codex proposal.
+"""Manual Mac T1 control: offline checks, a one-cell probe, or four-policy Pilot.
 
 GitHub Actions runs this module only on a trusted macOS self-hosted runner.
 The host is not itself a secret-free sandbox. The public T1 reference holdout
@@ -22,19 +22,39 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from experiments.researchbench_t1.resource_guard import (
+# Make the checked-out repository sources importable for both direct CLI use and
+# the isolated Mac runner without installing or changing user-global packages.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+for _path in (REPO_ROOT / "src", REPO_ROOT):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+from experiments.researchbench_t1.pilot_controller import run_pilot  # noqa: E402
+from experiments.researchbench_t1.resource_guard import (  # noqa: E402
     ResourceRefusal,
     guarded_run,
     inspect_host,
     single_runner_lock,
 )
-from experiments.researchbench_t1.t1 import canonical, normalize_candidate
+from experiments.researchbench_t1.t1 import (  # noqa: E402
+    BenchmarkError,
+    canonical,
+    normalize_candidate,
+)
 
 T1 = Path(__file__).resolve().parent / "t1.py"
 MODEL_TIMEOUT = 150
-REQUIRED_MODEL = "gpt-6-luna(max)"
+REQUIRED_MODEL = "gpt-6-luna"
+REQUIRED_REASONING_EFFORT = "max"
 ALLOWED_PROVIDERS = ("codex_chatgpt", "ccswitch_codex")
-ALLOWED_MODES = ("diagnose", "resource_probe", "offline_smoke", "pilot_one_cell")
+ALLOWED_MODES = (
+    "diagnose",
+    "resource_probe",
+    "offline_smoke",
+    "pilot_one_cell",
+    "pilot_prepare",
+    "pilot",
+)
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
 
 
@@ -45,8 +65,29 @@ class MacRunBlocked(RuntimeError):
 def _model_name(model: str) -> str:
     """Never use a default, alternate, or provider-fallback model for T1."""
     if model != REQUIRED_MODEL:
-        raise MacRunBlocked(f"T1 permits only the exact Codex model {REQUIRED_MODEL}")
+        raise MacRunBlocked(
+            f"T1 permits only model {REQUIRED_MODEL} with reasoning effort "
+            f"{REQUIRED_REASONING_EFFORT}"
+        )
     return REQUIRED_MODEL
+
+
+def _codex_command(codex: str, response: Path) -> list[str]:
+    """Freeze the exact model slug and independent reasoning-effort setting."""
+    return [
+        codex,
+        "--no-daemon",
+        "exec",
+        "--model",
+        REQUIRED_MODEL,
+        "-c",
+        'model_reasoning_effort="max"',
+        "--sandbox",
+        "read-only",
+        "--ephemeral",
+        "--output-last-message",
+        str(response),
+    ]
 
 
 def parse_frozen_candidate_reply(raw: str) -> tuple[dict[str, Any], str]:
@@ -88,9 +129,14 @@ def _python_ready() -> bool:
 
 def _codex() -> str:
     found = shutil.which("codex")
-    if not found:
-        raise MacRunBlocked("Codex CLI not installed in the runner account PATH")
-    return found
+    bundled = Path(
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+    )
+    if found:
+        return found
+    if bundled.is_file():
+        return str(bundled)
+    raise MacRunBlocked("Codex CLI not installed in PATH or the known ChatGPT app bundle")
 
 
 def _check_chatgpt_login(codex: str) -> bool:
@@ -135,6 +181,33 @@ def _redacted_agent_env() -> dict[str, str]:
             "ACTIONS_RUNTIME_TOKEN",
         }
     } | {"GIT_TERMINAL_PROMPT": "0", "CI": "1"}
+
+
+def _count_pilot_calls(root: Path) -> int:
+    events = root / "pilot_work" / "events.jsonl"
+    if not events.is_file():
+        return 0
+    try:
+        return sum(
+            json.loads(line).get("kind") == "agent_call_started"
+            for line in events.read_text(encoding="utf-8").splitlines()
+        )
+    except (OSError, ValueError):
+        return 0
+
+
+def _count_pilot_processes(root: Path) -> int:
+    events = root / "pilot_work" / "events.jsonl"
+    if not events.is_file():
+        return 0
+    try:
+        return sum(
+            json.loads(line).get("process_started") is True
+            for line in events.read_text(encoding="utf-8").splitlines()
+            if json.loads(line).get("kind") == "agent_call_finished"
+        )
+    except (OSError, ValueError):
+        return 0
 
 
 def diagnose(provider: str) -> dict[str, Any]:
@@ -243,16 +316,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str, seed: int = 42
         "No other keys or text; this is a ONE-TRY pilot with a fixed budget."
     )
     response = root / "codex_response_PRIVATE.txt"
-    command = [
-        codex,
-        "exec",
-        "--model",
-        REQUIRED_MODEL,
-        "--sandbox",
-        "read-only",
-        "--output-last-message",
-        str(response),
-    ]
+    command = _codex_command(codex, response)
     command.append(request)
     # The guard itself writes the attempt marker only after the OS starts Codex.
     before = time.monotonic()
@@ -313,6 +377,7 @@ def one_cell(root: Path, provider: str, model: str, confirm: str, seed: int = 42
         "minimum_mac_available_gib": outcome.minimum_mac_available_gib,
         "backend": provider,
         "requested_model": model,
+        "model_reasoning_effort": REQUIRED_REASONING_EFFORT,
         "model_output_format": reply_format,
         "trial_completed": True,
         "seed": seed,
@@ -395,6 +460,56 @@ def run(
         }
     if mode == "offline_smoke":
         return offline_smoke(root)
+    if mode == "pilot_prepare":
+        inspect_host()
+        try:
+            prepared = _t1(
+                "init",
+                "--stage",
+                "pilot",
+                "--allow-agent-stage",
+                "--work",
+                str(root / "pilot_work"),
+                "--vault",
+                str(root / "pilot_vault"),
+                timeout=90,
+            )
+        except MacRunBlocked as exc:
+            raise BenchmarkError("guarded Pilot preparation failed") from exc
+        frozen = json.loads((root / "pilot_work" / "meta.json").read_text(encoding="utf-8"))
+        return {
+            **prepared,
+            "code_revision": frozen["code_revision"],
+            "execution_order_seed": frozen["execution_order_seed"],
+            "execution_order": frozen["execution_order"],
+            "per_cell_trial_budget_seconds": frozen["per_cell_trial_budget_seconds"],
+            "required_development_seconds_for_all_cells": frozen[
+                "required_development_seconds_for_all_cells"
+            ],
+            "model_call_cap_per_cell": frozen["profile"]["max_model_decision_calls_per_cell"],
+            "holdout_materialized": False,
+            "model_calls_started": 0,
+        }
+    if mode == "pilot":
+        if confirm != "RUN_FOUR_POLICY_PILOT":
+            raise MacRunBlocked("four-policy Pilot requires RUN_FOUR_POLICY_PILOT")
+        inspect_host()
+        codex = _codex()
+
+        def pilot_t1_call(*args: str, timeout: int = 60) -> dict[str, Any]:
+            try:
+                return _t1(*args, timeout=timeout)
+            except MacRunBlocked as exc:
+                raise BenchmarkError("guarded local T1 command failed") from exc
+
+        return run_pilot(
+            root=root,
+            codex=codex,
+            confirm=confirm,
+            guarded_call=guarded_run,
+            t1_call=pilot_t1_call,
+            inspect=inspect_host,
+        )
     if confirm != "RUN_ONE_CELL":
         raise MacRunBlocked("one-cell agent invocation requires explicit RUN_ONE_CELL")
     # Refuse before paid inference if physical RAM use already exceeds 95%.
@@ -412,8 +527,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, choices=[42, 137], default=42)
     parser.add_argument("--results", type=Path, required=True)
     args = parser.parse_args(argv)
-    root = args.results.resolve()
-    root.mkdir(parents=True, exist_ok=False, mode=0o700)
+    root = args.results.absolute()
+    if args.mode == "pilot":
+        expected_entries = {"pilot_work", "pilot_vault", "prepare_summary.json"}
+        if (
+            not root.is_dir()
+            or root.is_symlink()
+            or {path.name for path in root.iterdir()} != expected_entries
+        ):
+            print(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "mode": args.mode,
+                        "safe_reason": (
+                            "run pilot_prepare first and use its untouched results directory"
+                        ),
+                    }
+                )
+            )
+            return 2
+    else:
+        root.mkdir(parents=True, exist_ok=False, mode=0o700)
     started = datetime.now(UTC).isoformat()
     began = time.monotonic()
     summary: dict[str, Any] = {
@@ -421,6 +556,7 @@ def main(argv: list[str] | None = None) -> int:
         "provider": args.provider,
         "requested_model": args.model,
         "required_model": REQUIRED_MODEL,
+        "model_reasoning_effort": REQUIRED_REASONING_EFFORT,
         "started_at_utc": started,
         "status": "blocked",
         "provider_request_count": "not_observable",
@@ -437,9 +573,14 @@ def main(argv: list[str] | None = None) -> int:
         returncode = 2
     finally:
         summary["elapsed_wall_seconds"] = round(time.monotonic() - began, 3)
-        summary["model_attempt_started"] = (root / "agent_attempt.started").exists()
-        summary["codex_process_attempts"] = int(summary["model_attempt_started"])
-        (root / "summary.json").write_text(
+        pilot_calls = _count_pilot_calls(root)
+        pilot_processes = _count_pilot_processes(root)
+        one_cell_started = (root / "agent_attempt.started").exists()
+        summary["model_attempt_started"] = bool(pilot_processes or one_cell_started)
+        summary["model_call_attempts"] = pilot_calls
+        summary["codex_process_attempts"] = pilot_processes + int(one_cell_started)
+        summary_name = "prepare_summary.json" if args.mode == "pilot_prepare" else "summary.json"
+        (root / summary_name).write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         print(
@@ -450,7 +591,7 @@ def main(argv: list[str] | None = None) -> int:
                     "readiness": summary.get("readiness"),
                     "model_attempt_started": summary["model_attempt_started"],
                     "safe_reason": summary.get("safe_reason"),
-                    "summary_json": str(root / "summary.json"),
+                    "summary_json": str(root / summary_name),
                 },
                 ensure_ascii=False,
             )

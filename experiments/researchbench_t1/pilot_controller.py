@@ -1,0 +1,1171 @@
+"""Sequential four-policy T1 pilot controller with bounded Codex decisions."""
+
+from __future__ import annotations
+
+import json
+import os
+import random
+import shutil
+import tempfile
+import time
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+from epipilot.research.cli import _next_action
+from epipilot.research.decision_models import (
+    DecisionBranch,
+    DecisionEstimate,
+    DecisionOption,
+    OutcomeKind,
+)
+from epipilot.research.decision_value import rank_decision
+from epipilot.research.models import (
+    EvidenceRecord,
+    Experiment,
+    Proposal,
+    ProposalKind,
+    ResearchGoal,
+    ResearchState,
+    Unknown,
+)
+from epipilot.research.planner import rank_proposals
+from experiments.researchbench_t1.resource_guard import ResourceRefusal
+from experiments.researchbench_t1.t1 import (
+    EXECUTION_ORDER_SEED,
+    STAGES,
+    BenchmarkError,
+    _code_revision,
+    add_memory,
+    canonical,
+    digest,
+    event,
+    exclusive,
+    file_digest,
+    ledger,
+    normalize_candidate,
+    read_json,
+    record_agent_call_finished,
+    record_agent_call_started,
+    record_cell_incident,
+    record_cell_terminal,
+    select,
+    status,
+)
+
+CandidateSchema: dict[str, Any] = {
+    "oneOf": [
+        {
+            "type": "object",
+            "properties": {
+                "model": {"const": "logistic"},
+                "feature_mode": {"enum": ["all", "numeric_only"]},
+                "C": {"type": "number", "minimum": 0.01, "maximum": 10},
+                "class_weight": {"enum": ["none", "balanced"]},
+            },
+            "required": ["model", "feature_mode", "C", "class_weight"],
+            "additionalProperties": False,
+        },
+        {
+            "type": "object",
+            "properties": {
+                "model": {"const": "forest"},
+                "feature_mode": {"enum": ["all", "numeric_only"]},
+                "n_estimators": {"type": "integer", "minimum": 20, "maximum": 120},
+                "max_depth": {"type": "integer", "minimum": 2, "maximum": 16},
+                "min_samples_leaf": {"type": "integer", "minimum": 1, "maximum": 10},
+                "class_weight": {"enum": ["none", "balanced"]},
+            },
+            "required": [
+                "model",
+                "feature_mode",
+                "n_estimators",
+                "max_depth",
+                "min_samples_leaf",
+                "class_weight",
+            ],
+            "additionalProperties": False,
+        },
+    ]
+}
+
+
+def _schema(arm: str, purpose: str) -> dict[str, Any]:
+    if purpose == "memory_note":
+        return {
+            "type": "object",
+            "properties": {"note": {"type": "string", "minLength": 20, "maxLength": 500}},
+            "required": ["note"],
+            "additionalProperties": False,
+        }
+    if arm in {"agent_only", "memory_only"}:
+        return {
+            "type": "object",
+            "properties": {"candidate": CandidateSchema},
+            "required": ["candidate"],
+            "additionalProperties": False,
+        }
+    if arm == "epipilot_heuristic":
+        proposal = {
+            "type": "object",
+            "properties": {
+                "hypothesis": {"type": "string", "minLength": 8, "maxLength": 240},
+                "candidate": CandidateSchema,
+                "kind": {"enum": ["explore", "optimize", "verify"]},
+                "information_gain": {"type": "number", "minimum": 0, "maximum": 1},
+                "expected_improvement": {"type": "number", "minimum": 0, "maximum": 1},
+                "unlock_value": {"type": "number", "minimum": 0, "maximum": 1},
+                "novelty": {"type": "number", "minimum": 0, "maximum": 1},
+                "risk": {"type": "number", "minimum": 0, "maximum": 1},
+                "followup_hypothesis": {"type": "string", "minLength": 8, "maxLength": 240},
+                "followup_candidate": CandidateSchema,
+                "followup_kind": {"enum": ["explore", "optimize", "verify"]},
+                "followup_information_gain": {"type": "number", "minimum": 0, "maximum": 1},
+                "followup_expected_improvement": {"type": "number", "minimum": 0, "maximum": 1},
+                "followup_unlock_value": {"type": "number", "minimum": 0, "maximum": 1},
+                "followup_novelty": {"type": "number", "minimum": 0, "maximum": 1},
+                "followup_risk": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            "required": [
+                "hypothesis",
+                "candidate",
+                "kind",
+                "information_gain",
+                "expected_improvement",
+                "unlock_value",
+                "novelty",
+                "risk",
+                "followup_hypothesis",
+                "followup_candidate",
+                "followup_kind",
+                "followup_information_gain",
+                "followup_expected_improvement",
+                "followup_unlock_value",
+                "followup_novelty",
+                "followup_risk",
+            ],
+            "additionalProperties": False,
+        }
+        return {
+            "type": "object",
+            "properties": {
+                "proposals": {"type": "array", "minItems": 2, "maxItems": 2, "items": proposal}
+            },
+            "required": ["proposals"],
+            "additionalProperties": False,
+        }
+    if arm == "epipilot_conditional":
+        decision = {
+            "type": "object",
+            "properties": {
+                "hypothesis": {"type": "string", "minLength": 8, "maxLength": 240},
+                "candidate": CandidateSchema,
+                "risk": {"type": "number", "minimum": 0, "maximum": 1},
+                "probabilities": {
+                    "type": "array",
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "branch_utilities": {
+                    "type": "array",
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "stop": {"type": "number", "minimum": 0, "maximum": 1},
+                            "alternative": {"type": "number", "minimum": 0, "maximum": 1},
+                        },
+                        "required": ["stop", "alternative"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["hypothesis", "candidate", "risk", "probabilities", "branch_utilities"],
+            "additionalProperties": False,
+        }
+        return {
+            "type": "object",
+            "properties": {
+                "decisions": {"type": "array", "minItems": 2, "maxItems": 2, "items": decision}
+            },
+            "required": ["decisions"],
+            "additionalProperties": False,
+        }
+    raise ValueError("unknown Pilot model-call schema")
+
+
+def _strict_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def parse_model_json(raw: str) -> dict[str, Any]:
+    if len(raw.encode("utf-8")) > 20_000:
+        raise ValueError("model reply exceeded the frozen output cap")
+    decoded = json.loads(raw, object_pairs_hook=_strict_object_pairs)
+    if not isinstance(decoded, dict):
+        raise ValueError("model reply must be one JSON object")
+    return decoded
+
+
+def _build_research_state(
+    proposals: list[Proposal], prior_trials: list[dict[str, Any]]
+) -> ResearchState:
+    state = ResearchState(
+        goal=ResearchGoal(
+            statement=(
+                "Maximize WDBC development AUROC under two 15-second trials, with a reserved "
+                "20-second final-evaluator ceiling."
+            ),
+            success_metrics=["development AUROC"],
+            constraints=[
+                "Only the isolated train/dev split is available; final evaluation time is reserved "
+                "and unavailable to research decisions."
+            ],
+            budget=50.0,
+        ),
+        fixed_reserve=20.0,
+        unknowns={
+            "u-validation-response": Unknown(
+                id="u-validation-response",
+                question="Which candidate decision is most useful on the current dev split?",
+                importance=0.7,
+                decision_sensitivity=0.7,
+            )
+        },
+    )
+    for old in prior_trials:
+        proposal_record = old.get("planner_proposal")
+        if not isinstance(proposal_record, dict):
+            continue
+        proposal = Proposal.model_validate({**proposal_record, "status": "completed"})
+        state.proposals[proposal.id] = proposal
+        experiment_id = f"exp-{old['run_id']}"
+        evidence_id = f"evidence-{old['run_id']}"
+        evidence = EvidenceRecord(
+            id=evidence_id,
+            experiment_id=experiment_id,
+            summary=(
+                f"T1 worker measured development AUROC {old['dev_auroc']:.6f}; "
+                "descriptive split-specific result."
+            ),
+            artifact_refs=[f"runs/{old['run_id']}/metric.json"],
+            independently_verified=True,
+            measurement_validated=True,
+            validated_metrics={"development_auroc": float(old["dev_auroc"])},
+            artifact_sha256=old.get("metric_sha256"),
+        )
+        state.evidence[evidence_id] = evidence
+        state.experiments[experiment_id] = Experiment(
+            id=experiment_id,
+            proposal_id=proposal.id,
+            summary=f"Observed development AUROC {old['dev_auroc']:.6f} on the frozen T1 split.",
+            outcome="inconclusive",
+            actual_cost=float(old["seconds"]),
+            git_revision="0" * 40,
+            config_ref=f"sha256:{old['candidate_sha256']}",
+            dataset_ref="ResearchBench-T1/WDBC/dev",
+            seeds=[int(old["seed"])],
+            metrics={"development_auroc": float(old["dev_auroc"])},
+            evidence_id=evidence_id,
+        )
+    for proposal in proposals:
+        state.proposals[proposal.id] = proposal
+    return state
+
+
+def _proposal(
+    raw: dict[str, Any], proposal_id: str, *, parent: str | None = None, followup: bool = False
+) -> tuple[Proposal, dict[str, Any]]:
+    prefix = "followup_" if followup else ""
+    candidate = normalize_candidate(raw[f"{prefix}candidate"])
+    kind = ProposalKind(raw[f"{prefix}kind"])
+    proposal = Proposal(
+        id=proposal_id,
+        title=f"T1 {kind.value} candidate {proposal_id}",
+        kind=kind,
+        rationale=raw[f"{prefix}hypothesis"],
+        acceptance="Controller executed this candidate within the preregistered worker limit.",
+        unknown_ids=["u-validation-response"],
+        depends_on=[parent] if parent else [],
+        information_gain=float(raw[f"{prefix}information_gain"]),
+        expected_improvement=float(raw[f"{prefix}expected_improvement"]),
+        unlock_value=float(raw[f"{prefix}unlock_value"]),
+        novelty=float(raw[f"{prefix}novelty"]),
+        estimated_cost=15.0,
+        risk=float(raw[f"{prefix}risk"]),
+    )
+    return proposal, candidate
+
+
+def choose_heuristic(
+    payload: dict[str, Any], prior_trials: list[dict[str, Any]], call_no: int
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if set(payload) != {"proposals"} or len(payload["proposals"]) != 2:
+        raise ValueError("heuristic decision needs exactly two proposal paths")
+    proposals: list[Proposal] = []
+    candidates: dict[str, dict[str, Any]] = {}
+    for i, raw in enumerate(payload["proposals"], 1):
+        proposal_id = f"call{call_no}_p{i}"
+        root, candidate = _proposal(raw, proposal_id)
+        child, _child_candidate = _proposal(
+            raw, f"call{call_no}_p{i}_next", parent=proposal_id, followup=True
+        )
+        proposals.extend((root, child))
+        candidates[proposal_id] = candidate
+    state = _build_research_state(proposals, prior_trials)
+    ranked = rank_proposals(state, limit=2)
+    if not ranked:
+        raise ValueError("EpiPilot rank_proposals found no feasible candidate")
+    selected = ranked[0].proposal
+    decision = {
+        "selection_policy": "epipilot.research.planner.rank_proposals",
+        "phase": ranked[0].phase,
+        "selected_proposal_id": selected.id,
+        "ranked_proposals": [
+            {
+                "proposal_id": row.proposal.id,
+                "score": row.score,
+                "phase": row.phase,
+                "rationale": row.rationale,
+            }
+            for row in ranked
+        ],
+        "lookahead": (
+            "two-step feasible immediate-successor bonus; heuristic, not calibrated planning"
+        ),
+    }
+    return candidates[selected.id], {
+        **decision,
+        "planner_proposal": selected.model_dump(mode="json"),
+    }
+
+
+def choose_conditional(
+    payload: dict[str, Any], prior_trials: list[dict[str, Any]], call_no: int
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    if set(payload) != {"decisions"} or len(payload["decisions"]) != 2:
+        raise ValueError("conditional decision needs exactly two candidate estimates")
+    proposals: list[Proposal] = []
+    decisions = payload["decisions"]
+    candidate_by_id: dict[str, dict[str, Any]] = {}
+    for i, raw in enumerate(decisions, 1):
+        candidate = normalize_candidate(raw["candidate"])
+        proposal_id = f"call{call_no}_c{i}"
+        proposal = Proposal(
+            id=proposal_id,
+            title=f"T1 conditional candidate {proposal_id}",
+            kind=ProposalKind.OPTIMIZE,
+            rationale=raw["hypothesis"],
+            acceptance="Controller executed this candidate within the preregistered worker limit.",
+            unknown_ids=["u-validation-response"],
+            information_gain=0.5,
+            expected_improvement=0.5,
+            estimated_cost=15.0,
+            risk=float(raw["risk"]),
+        )
+        proposals.append(proposal)
+        candidate_by_id[proposal_id] = candidate
+    state = _build_research_state(proposals, prior_trials)
+    for index, raw in enumerate(decisions):
+        proposal_id = f"call{call_no}_c{index + 1}"
+        alt_id = f"call{call_no}_c{2 if index == 0 else 1}"
+        probabilities = tuple(float(value) for value in raw["probabilities"])
+        if (
+            any(
+                type(value) is not float and type(value) is not int
+                for value in raw["probabilities"]
+            )
+            or abs(sum(probabilities) - 1.0) > 1e-8
+        ):
+            raise ValueError("conditional outcome probabilities must sum to one")
+        if len(raw["branch_utilities"]) != 4:
+            raise ValueError("conditional decision table must contain four outcomes")
+        options = (
+            DecisionOption(
+                key="stop",
+                prior_utility=sum(
+                    p * float(branch["stop"])
+                    for p, branch in zip(probabilities, raw["branch_utilities"], strict=True)
+                ),
+            ),
+            DecisionOption(
+                key="alternative-after-result",
+                proposal_id=alt_id,
+                prior_utility=sum(
+                    p * float(branch["alternative"])
+                    for p, branch in zip(probabilities, raw["branch_utilities"], strict=True)
+                ),
+            ),
+        )
+        branches = tuple(
+            DecisionBranch(
+                outcome=kind,
+                probability=probabilities[i],
+                utilities=(
+                    float(raw["branch_utilities"][i]["stop"]),
+                    float(raw["branch_utilities"][i]["alternative"]),
+                ),
+            )
+            for i, kind in enumerate(OutcomeKind)
+        )
+        estimate = DecisionEstimate(
+            proposal_id=proposal_id,
+            predictor="agent-supplied-uncalibrated-heuristic",
+            utility_version="researchbench-t1-pilot-v1",
+            group="wdbc",
+            rationale=raw["hypothesis"],
+            options=options,
+            branches=branches,
+        )
+        state.decision_estimates[estimate.proposal_id] = estimate
+    action = _next_action(state, policy="conditional")
+    scored = [
+        rank_decision(state, estimate).model_dump(mode="json")
+        for estimate in state.decision_estimates.values()
+    ]
+    if action["status"] == "decision_value_stop":
+        return None, {
+            "selection_policy": "epipilot.research.cli._next_action(policy='conditional')",
+            "action": action,
+            "decision_scores": scored,
+            "forecast_qualification": (
+                "agent-supplied, uncalibrated four-outcome heuristic; not observed causal value"
+            ),
+            "stopped_without_fallback": True,
+        }
+    if action["status"] != "ready_for_agent":
+        raise ValueError(f"conditional policy did not produce a decision: {action['status']}")
+    selected_id = str(action["decision_score"]["proposal_id"])
+    return candidate_by_id[selected_id], {
+        "selection_policy": "epipilot.research.cli._next_action(policy='conditional')",
+        "action": action,
+        "decision_scores": scored,
+        "forecast_qualification": (
+            "agent-supplied, uncalibrated four-outcome heuristic; not observed causal value"
+        ),
+        "stopped_without_fallback": False,
+        "planner_proposal": state.proposals[selected_id].model_dump(mode="json"),
+    }
+
+
+def _call_prompt(
+    arm: str, purpose: str, dataset: str, seed: int, history: list[dict[str, Any]], notes: list[str]
+) -> str:
+    context = {
+        "task": (
+            "Select bounded hyperparameters to improve development AUROC on "
+            "Wisconsin diagnostic breast cancer."
+        ),
+        "dataset": dataset,
+        "seed": seed,
+        "candidate_space": {
+            "models": "regularized logistic regression or random forest",
+            "feature_mode": ["all", "numeric_only"],
+            "class_weight": ["none", "balanced"],
+            "metric": "development AUROC",
+            "trials_remaining": max(0, 2 - len(history)),
+        },
+        "development_history": [
+            {"run_id": row["run_id"], "dev_auroc": row["dev_auroc"], "candidate": row["candidate"]}
+            for row in (history if arm != "memory_only" or purpose == "memory_note" else [])
+        ],
+        "memory_notes": notes if arm == "memory_only" else [],
+        "strategy": arm,
+    }
+    text = (
+        "Make one controlled T1 research decision. You cannot run commands, inspect files, "
+        "browse, or access the holdout. "
+        "Use only development measurements. State no result as established; any rationale is a "
+        "hypothesis. Return one JSON object conforming to the output schema, without retries, "
+        "tools, explanations, or markdown.\n"
+    )
+    if purpose == "memory_note":
+        text += (
+            "Return this grounded note format using the supplied values: `On frozen split, run "
+            "<run_id>, candidate sha256 <hash>, development AUROC "
+            "<score-to-six-decimals>; scope=current cell only.` Add no other claim or scope.\n"
+        )
+        context = {
+            "strategy": arm,
+            "dataset": dataset,
+            "seed": seed,
+            "verified_trial": (
+                {
+                    "run_id": history[-1]["run_id"],
+                    "candidate_sha256": history[-1]["candidate_sha256"],
+                    "dev_auroc": history[-1]["dev_auroc"],
+                    "candidate": history[-1]["candidate"],
+                }
+                if history
+                else None
+            ),
+        }
+    elif arm == "agent_only":
+        text += "Use ordinary trial feedback only. No planner and no saved experiment memory.\n"
+    elif arm == "memory_only":
+        text += (
+            "Use trial feedback and evidence-linked memory notes only; do not use "
+            "an EpiPilot planner. Memory is isolated to this seed cell.\n"
+        )
+    elif arm == "epipilot_heuristic":
+        text += (
+            "For exactly two paths, provide a root proposal and a feasible follow-up proposal "
+            "with bounded heuristic scores. The controller passes them to EpiPilot rank_proposals, "
+            "which applies its two-step lookahead. Scores are uncalibrated inputs, not facts.\n"
+        )
+    elif arm == "epipilot_conditional":
+        text += (
+            "For two candidate experiments, provide probability forecasts in canonical outcome "
+            "order [improved, no_gain, inconclusive, infrastructure_failure], summing to one, and "
+            "utilities for [stop, alternative] under each outcome. The controller uses EpiPilot's "
+            "existing net information-value function. Forecasts are uncalibrated heuristics. A "
+            "nonpositive net value must stop without fallback.\n"
+        )
+    return (
+        text
+        + "Cell information (no train/dev rows or labels):\n"
+        + json.dumps(context, sort_keys=True, separators=(",", ":"))
+    )
+
+
+def _usage_from_jsonl(raw: str) -> tuple[int, int, int, int, int, bool]:
+    turns = 0
+    tools = 0
+    input_tokens = output_tokens = cached_tokens = 0
+    usage_available = 0
+    for line in raw.splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        if record.get("type") == "turn.completed":
+            turns += 1
+            usage = record.get("usage") or record.get("total_token_usage") or {}
+            if isinstance(usage, dict):
+                details = usage.get("input_tokens_details") or {}
+                if "input_tokens" in usage or "output_tokens" in usage:
+                    usage_available += 1
+                    input_tokens += int(usage.get("input_tokens", 0) or 0)
+                    output_tokens += int(usage.get("output_tokens", 0) or 0)
+                    cached_tokens += int(
+                        details.get("cached_tokens", usage.get("cached_input_tokens", 0)) or 0
+                    )
+        item = record.get("item")
+        item_type = item.get("type", "") if isinstance(item, dict) else ""
+        if "tool" in str(item_type).lower() or item_type in {
+            "command_execution",
+            "shell_command",
+            "web_search",
+            "mcp_tool_call",
+        }:
+            tools += 1
+    return (
+        turns,
+        tools,
+        input_tokens,
+        output_tokens,
+        cached_tokens if usage_available else 0,
+        bool(usage_available),
+    )
+
+
+def model_call(
+    *,
+    work: Path,
+    codex: str,
+    arm: str,
+    dataset: str,
+    seed: int,
+    call_id: str,
+    call_no: int,
+    purpose: str,
+    history: list[dict[str, Any]],
+    notes: list[str],
+    guarded_call: Callable[..., Any],
+    max_timeout: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    record_agent_call_started(
+        work,
+        arm,
+        dataset,
+        seed,
+        call_id,
+        purpose,
+        model="gpt-6-luna",
+        reasoning_effort="max",
+    )
+    call_dir = Path(tempfile.mkdtemp(prefix="t1-call-", dir=work.parent))
+    schema_path, response_path = call_dir / "schema.json", call_dir / "response.json"
+    started_marker = call_dir / "process_attempt.started"
+    schema = _schema(arm, purpose)
+    schema_path.write_text(json.dumps(schema, separators=(",", ":")), encoding="utf-8")
+    prompt = _call_prompt(arm, purpose, dataset, seed, history, notes)
+    argv = [
+        codex,
+        "--no-daemon",
+        "exec",
+        "--model",
+        "gpt-6-luna",
+        "-c",
+        'model_reasoning_effort="max"',
+        "-c",
+        "features.shell_tool=false",
+        "-c",
+        'web_search="disabled"',
+        "-c",
+        "mcp_servers={}",
+        "-c",
+        "model_providers.cc-switch-official.request_max_retries=0",
+        "-c",
+        "model_providers.cc-switch-official.stream_max_retries=0",
+        "--sandbox",
+        "read-only",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--json",
+        "--output-schema",
+        str(schema_path),
+        "--output-last-message",
+        str(response_path),
+        "-C",
+        str(call_dir),
+        prompt,
+    ]
+    begin = time.monotonic()
+    outcome = "failed"
+    telemetry: dict[str, Any] = {
+        "usage_available": False,
+        "retry_controls": "request_max_retries=0,stream_max_retries=0",
+    }
+    try:
+        result = guarded_call(
+            argv,
+            cwd=call_dir,
+            env=_agent_environment(),
+            timeout=max_timeout,
+            started_marker=started_marker,
+        )
+        elapsed = time.monotonic() - begin
+        stdout = result.stdout
+        turns, tool_events, input_tokens, output_tokens, cached_tokens, usage_available = (
+            _usage_from_jsonl(stdout)
+        )
+        telemetry.update(
+            {
+                "elapsed_seconds": round(elapsed, 4),
+                "turn_count": turns,
+                "tool_event_count": tool_events,
+                "usage_available": usage_available,
+                "process_started": started_marker.exists(),
+            }
+        )
+        if usage_available:
+            telemetry.update(
+                {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "cached_input_tokens": cached_tokens,
+                }
+            )
+        if tool_events:
+            outcome = "tool_use_rejected"
+            raise ValueError("tool event appeared despite restricted CLI configuration")
+        if result.returncode != 0 or turns != 1 or not response_path.is_file():
+            outcome = "timeout" if elapsed >= max_timeout else "failed"
+            raise ValueError("Codex did not return exactly one schema-qualified turn")
+        raw = response_path.read_text(encoding="utf-8")
+        payload = parse_model_json(raw)
+        outcome = "success"
+        record_agent_call_finished(work, call_id, outcome, telemetry)
+        return payload, {
+            "turn_count": turns,
+            "tool_event_count": tool_events,
+            "usage_available": telemetry["usage_available"],
+            **{
+                k: telemetry[k]
+                for k in ("input_tokens", "output_tokens", "cached_input_tokens")
+                if k in telemetry
+            },
+        }
+    except ResourceRefusal as exc:
+        outcome = "timeout" if "timeout" in str(exc).lower() else "failed"
+        telemetry["elapsed_seconds"] = round(time.monotonic() - begin, 4)
+        telemetry.setdefault("turn_count", 0)
+        telemetry.setdefault("tool_event_count", 0)
+        telemetry["process_started"] = started_marker.exists()
+        record_agent_call_finished(work, call_id, outcome, telemetry)
+        raise
+    except Exception as exc:
+        if outcome != "tool_use_rejected":
+            outcome = "invalid_output" if response_path.exists() else outcome
+        telemetry.setdefault("elapsed_seconds", round(time.monotonic() - begin, 4))
+        telemetry.setdefault("turn_count", 0)
+        telemetry.setdefault("tool_event_count", 0)
+        telemetry["process_started"] = started_marker.exists()
+        record_agent_call_finished(work, call_id, outcome, telemetry)
+        raise BenchmarkError(f"model_call_{outcome}: {type(exc).__name__}") from exc
+    finally:
+        shutil.rmtree(call_dir, ignore_errors=True)
+
+
+def _agent_environment() -> dict[str, str]:
+    result = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("GITHUB_", "ACTIONS_", "RUNNER_"))
+        and key not in {"GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK", "ACTIONS_RUNTIME_TOKEN"}
+    }
+    result["GIT_TERMINAL_PROMPT"] = "0"
+    result["CI"] = "1"
+    return result
+
+
+def _record_strategy_decision(
+    work: Path, arm: str, dataset: str, seed: int, call_no: int, decision: dict[str, Any]
+) -> None:
+    with exclusive(work):
+        event(
+            work,
+            {
+                "kind": "strategy_decision",
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "decision_call": call_no,
+                "decision": decision,
+            },
+        )
+
+
+def _reconcile_open_cell_trials(
+    *,
+    work: Path,
+    arm: str,
+    dataset: str,
+    seed: int,
+    t1_call: Callable[..., dict[str, Any]],
+    inspect: Callable[[], Any],
+) -> bool:
+    history = ledger(work)
+    starts = [
+        row
+        for row in history
+        if row["kind"] == "started"
+        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+    ]
+    ends = {row["id"] for row in history if row["kind"] in {"finished", "aborted"}}
+    open_ids = [row["id"] for row in starts if row["id"] not in ends]
+    if not open_ids:
+        return True
+    try:
+        inspect()
+        for run_id in open_ids:
+            t1_call(
+                "abort-interrupted",
+                "--work",
+                str(work),
+                "--id",
+                run_id,
+                "--reason",
+                "Guarded T1 subprocess interrupted; charge full trial timeout and do not retry.",
+                timeout=20,
+            )
+    except (BenchmarkError, ResourceRefusal):
+        return False
+    return True
+
+
+def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    try:
+        meta = read_json(work / "meta.json")
+        vault_meta = read_json(vault / "meta.json")
+    except (OSError, ValueError) as exc:
+        raise BenchmarkError(
+            "prepare and freeze the Pilot manifest before launching model calls"
+        ) from exc
+    if meta.get("stage") != "pilot" or meta.get("profile") != STAGES["pilot"]:
+        raise BenchmarkError("prepared manifest does not match the frozen Pilot profile")
+    if meta.get("code_revision") != _code_revision():
+        raise BenchmarkError("Pilot code revision changed after the manifest was prepared")
+    if meta.get("execution_order_seed") != EXECUTION_ORDER_SEED:
+        raise BenchmarkError("Pilot execution-order seed differs from the frozen protocol")
+    expected = [
+        (arm, dataset, seed)
+        for dataset in meta["profile"]["datasets"]
+        for seed in meta["profile"]["seeds"]
+        for arm in meta["profile"]["arms"]
+    ]
+    random.Random(EXECUTION_ORDER_SEED).shuffle(expected)
+    if meta.get("execution_order") != [list(cell) for cell in expected]:
+        raise BenchmarkError("Pilot execution order differs from the deterministic frozen order")
+    if (
+        meta.get("cell_count") != 8
+        or meta.get("per_cell_trial_budget_seconds") != 30
+        or meta.get("required_development_seconds_for_all_cells") != 240
+        or meta.get("target_auroc") != 0.95
+        or meta.get("final_holdout_is_off_limits_during_search") is not True
+        or vault_meta.get("public_meta_sha256") != file_digest(work / "meta.json")
+        or bool(ledger(work))
+        or list((work / "submissions").glob("*.json"))
+        or (work / "final.started").exists()
+    ):
+        raise BenchmarkError(
+            "Pilot manifest is altered or the prepared workspace has already been used"
+        )
+    if any((vault / dataset / "test.csv").exists() for dataset in meta["profile"]["datasets"]):
+        raise BenchmarkError("holdout data was materialized before Pilot execution")
+    for dataset, dataset_meta in meta["datasets"].items():
+        for split in ("train", "dev"):
+            path = work / "public" / dataset / f"{split}.csv"
+            if file_digest(path) != dataset_meta["files"][split]["sha256"]:
+                raise BenchmarkError("prepared public split changed after manifest freeze")
+    return meta, work, vault
+
+
+def run_pilot(
+    *,
+    root: Path,
+    codex: str,
+    confirm: str,
+    guarded_call: Callable[..., Any],
+    t1_call: Callable[..., dict[str, Any]],
+    inspect: Callable[[], Any],
+) -> dict[str, Any]:
+    """Run frozen cells sequentially. A model attempt is never retried."""
+    if confirm != "RUN_FOUR_POLICY_PILOT":
+        raise BenchmarkError("four-policy Pilot requires RUN_FOUR_POLICY_PILOT")
+    meta, work, vault = _load_frozen_pilot(root)
+    order = meta["execution_order"]
+    cells: list[dict[str, Any]] = []
+    stopped_for_resource = False
+    for arm, dataset, seed in order:
+        try:
+            inspect()
+        except ResourceRefusal:
+            stopped_for_resource = True
+            break
+        history: list[dict[str, Any]] = []
+        notes: list[str] = []
+        call_number = 0
+        cell_outcome = "failed"
+        reason = "no successful trial"
+        for trial_index in range(2):
+            purpose = "decision"
+            call_number += 1
+            call_id = f"{arm}-{dataset}-{seed}-call-{call_number}"
+            try:
+                payload, _model_telemetry = model_call(
+                    work=work,
+                    codex=codex,
+                    arm=arm,
+                    dataset=dataset,
+                    seed=seed,
+                    call_id=call_id,
+                    call_no=call_number,
+                    purpose=purpose,
+                    history=history,
+                    notes=notes,
+                    guarded_call=guarded_call,
+                    max_timeout=150,
+                )
+                if arm in {"agent_only", "memory_only"}:
+                    if set(payload) != {"candidate"}:
+                        raise ValueError("candidate response must contain exactly candidate")
+                    candidate = normalize_candidate(payload["candidate"])
+                    decision = {
+                        "selection_policy": "ordinary-model-candidate",
+                        "candidate_sha256": digest(canonical(candidate)),
+                    }
+                    plan_proposal = None
+                elif arm == "epipilot_heuristic":
+                    candidate, decision = choose_heuristic(payload, history, call_number)
+                    plan_proposal = decision["planner_proposal"]
+                else:
+                    candidate, decision = choose_conditional(payload, history, call_number)
+                    plan_proposal = decision.get("planner_proposal")
+                    if candidate is None:
+                        _record_strategy_decision(work, arm, dataset, seed, call_number, decision)
+                        if history:
+                            cell_outcome, reason = (
+                                "submitted",
+                                "conditional policy stopped; submitted best trained candidate",
+                            )
+                        else:
+                            cell_outcome, reason = (
+                                "stopped",
+                                "conditional policy returned nonpositive net information value",
+                            )
+                        break
+                _record_strategy_decision(work, arm, dataset, seed, call_number, decision)
+                candidate_hash = digest(canonical(candidate))
+                if any(row["candidate_sha256"] == candidate_hash for row in history):
+                    record_cell_incident(
+                        work,
+                        arm,
+                        dataset,
+                        seed,
+                        "repeat",
+                        "model proposed an identical candidate already attempted in this cell",
+                    )
+                    cell_outcome, reason = (
+                        "invalid",
+                        "repeated candidate proposal; no replacement attempt",
+                    )
+                    break
+                candidate_path = root / f"candidate-{arm}-{dataset}-{seed}-{trial_index + 1}.json"
+                candidate_path.write_bytes(canonical(candidate))
+                trial = t1_call(
+                    "trial",
+                    "--work",
+                    str(work),
+                    "--arm",
+                    arm,
+                    "--dataset",
+                    dataset,
+                    "--seed",
+                    str(seed),
+                    "--candidate",
+                    str(candidate_path),
+                    timeout=80,
+                )
+                candidate_path.unlink(missing_ok=True)
+                if trial.get("exit_code") != 0:
+                    record_cell_incident(
+                        work,
+                        arm,
+                        dataset,
+                        seed,
+                        "invalid",
+                        f"T1 training attempt failed with exit code {trial.get('exit_code')}",
+                    )
+                    reason = "T1 training attempt failed; no automatic retry"
+                    break
+                row = {
+                    "run_id": trial["id"],
+                    "seed": seed,
+                    "candidate": candidate,
+                    "candidate_sha256": candidate_hash,
+                    "dev_auroc": trial["dev_auroc"],
+                    "seconds": trial["seconds"],
+                    "metric_sha256": trial["metric_sha256"],
+                }
+                if plan_proposal is not None:
+                    row["planner_proposal"] = plan_proposal
+                history.append(row)
+                if arm == "memory_only":
+                    note_call_id = f"{arm}-{dataset}-{seed}-call-{call_number + 1}"
+                    call_number += 1
+                    try:
+                        note_payload, _note_telemetry = model_call(
+                            work=work,
+                            codex=codex,
+                            arm=arm,
+                            dataset=dataset,
+                            seed=seed,
+                            call_id=note_call_id,
+                            call_no=call_number,
+                            purpose="memory_note",
+                            history=history,
+                            notes=notes,
+                            guarded_call=guarded_call,
+                            max_timeout=150,
+                        )
+                        note = note_payload.get("note")
+                        expected_note = (
+                            f"On frozen split, run {row['run_id']}, candidate sha256 "
+                            f"{row['candidate_sha256']}, "
+                            f"development AUROC {row['dev_auroc']:.6f}; scope=current cell only."
+                        )
+                        if (
+                            set(note_payload) != {"note"}
+                            or not isinstance(note, str)
+                            or note.strip() != expected_note
+                        ):
+                            record_cell_incident(
+                                work,
+                                arm,
+                                dataset,
+                                seed,
+                                "unsupported_claim",
+                                "memory note did not exactly match its verified source measurement",
+                            )
+                            raise ValueError("memory note was not source-verifiable")
+                        add_memory(work, arm, dataset, seed, row["run_id"], note)
+                        notes.append(note.strip())
+                    except (BenchmarkError, ValueError) as exc:
+                        record_cell_incident(
+                            work,
+                            arm,
+                            dataset,
+                            seed,
+                            "invalid",
+                            "memory note call or validation failed",
+                        )
+                        reason = str(exc)
+                        break
+                if trial_index == 1:
+                    cell_outcome, reason = "submitted", "two bounded training attempts completed"
+            except ResourceRefusal:
+                stopped_for_resource = True
+                reason = "whole-Mac memory guard refused a model or training launch"
+                if history:
+                    try:
+                        select(work, arm, dataset, seed)
+                        cell_outcome = "submitted"
+                    except BenchmarkError:
+                        cell_outcome = "failed"
+                else:
+                    cell_outcome = "failed"
+                break
+            except (BenchmarkError, ValueError, KeyError, TypeError) as exc:
+                record_cell_incident(
+                    work, arm, dataset, seed, "invalid", f"decision rejected: {type(exc).__name__}"
+                )
+                reason = f"decision failed: {type(exc).__name__}; no retry"
+                break
+        reconciled = _reconcile_open_cell_trials(
+            work=work,
+            arm=arm,
+            dataset=dataset,
+            seed=seed,
+            t1_call=t1_call,
+            inspect=inspect,
+        )
+        if not reconciled:
+            stopped_for_resource = True
+            cells.append(
+                {
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "outcome": "unreconciled",
+                    "reason": "trial remains open because the guard refused reconciliation",
+                    "training_attempts": sum(
+                        row["kind"] == "started"
+                        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                        for row in ledger(work)
+                    ),
+                    "model_calls": call_number,
+                    "successful_trials": len(history),
+                }
+            )
+            break
+        if history:
+            try:
+                select(work, arm, dataset, seed)
+                cell_outcome = "submitted"
+                if "submitted" not in reason:
+                    reason = reason + "; best previously trained candidate submitted"
+            except BenchmarkError:
+                cell_outcome = "failed"
+                reason = reason + "; no validated submission could be frozen"
+        elif cell_outcome == "submitted":
+            cell_outcome = "failed"
+            reason = "cell cannot be submitted without a validated trial"
+        record_cell_terminal(work, arm, dataset, seed, cell_outcome, reason)
+        cell_events = ledger(work)
+        cell_trial_starts = [
+            row
+            for row in cell_events
+            if row["kind"] == "started"
+            and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+        ]
+        trial_ids = {row["id"] for row in cell_trial_starts}
+        measured_seconds = sum(
+            float(row["seconds"])
+            for row in cell_events
+            if row["kind"] in {"finished", "aborted"} and row.get("id") in trial_ids
+        )
+        cells.append(
+            {
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "outcome": cell_outcome,
+                "reason": reason,
+                "training_attempts": len(cell_trial_starts),
+                "model_calls": call_number,
+                "successful_trials": len(history),
+                "training_seconds": round(measured_seconds, 6),
+                "best_dev_auroc": max((row["dev_auroc"] for row in history), default=None),
+            }
+        )
+        if stopped_for_resource:
+            break
+    summary = status(work)
+    final_result: dict[str, Any] | None = None
+    expected_cells = len(meta["execution_order"])
+    if (
+        not stopped_for_resource
+        and len(cells) == expected_cells
+        and summary["submitted"] == expected_cells
+        and summary["model_calls_open"] == 0
+    ):
+        history_events = ledger(work)
+        audit: dict[str, Any] = {}
+        for arm, dataset, seed in meta["execution_order"]:
+            key = f"{arm}__{dataset}__{seed}"
+            repeats = sum(
+                row.get("category") == "repeat"
+                and (row.get("arm"), row.get("dataset"), row.get("seed")) == (arm, dataset, seed)
+                for row in history_events
+                if row["kind"] == "cell_incident"
+            )
+            audit[key] = {
+                "human_interventions": 0,
+                "repeated_experiments": repeats,
+                "unsupported_claims": sum(
+                    row.get("category") == "unsupported_claim"
+                    and (row.get("arm"), row.get("dataset"), row.get("seed"))
+                    == (arm, dataset, seed)
+                    for row in history_events
+                    if row["kind"] == "cell_incident"
+                ),
+            }
+        audit_path = work / "audit.json"
+        audit_path.write_bytes(canonical(audit))
+        final_result = t1_call(
+            "finalize",
+            "--work",
+            str(work),
+            "--vault",
+            str(vault),
+            "--audit",
+            str(audit_path),
+            timeout=200,
+        )
+        summary = status(work)
+    return {
+        "work": str(work),
+        "vault": str(vault),
+        "execution_order": order,
+        "cells": cells,
+        "cell_count_completed_or_terminal": len(cells),
+        "stopped_for_resource_guard": stopped_for_resource,
+        "training_trials": summary["completed"],
+        "model_call_attempts": summary["model_call_attempts"],
+        "codex_process_starts": summary["codex_process_starts"],
+        "model_call_usage": summary["model_usage"],
+        "target_auroc": summary["target_auroc"],
+        "target_attained_trials": summary["target_attained_trials"],
+        "invalid_events": summary["invalid_events"],
+        "repeated_experiments": summary["repeated_experiments"],
+        "manual_interventions": 0,
+        "unsupported_claims": summary["unsupported_claim_events"],
+        "holdout_evaluated": summary["holdout_evaluated"],
+        "final_evaluation": final_result,
+        "qualification": (
+            "Pilot. Holdout opens only after every cell has a submitted candidate "
+            "and all model calls are closed."
+        ),
+    }
