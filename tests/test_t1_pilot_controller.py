@@ -13,6 +13,7 @@ from experiments.researchbench_t1 import pilot_controller
 from experiments.researchbench_t1 import t1 as t1_module
 from experiments.researchbench_t1.t1 import (
     finalize,
+    ledger,
     perform_trial,
     read_json,
     record_agent_call_finished,
@@ -364,6 +365,167 @@ def test_nonzero_cli_exit_is_redacted_and_pauses_after_first_cell(
     assert finished["stderr_excerpt_redacted"].count("[REDACTED") >= 2
     assert status(work)["model_call_attempts"] == 1
     assert status(work)["terminal_cells"] == 1
+
+
+def test_guard_timeout_preserves_prior_candidate_and_allows_next_cell_inspection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    root = tmp_path / "pilot-timeout-results"
+    root.mkdir(mode=0o700)
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "d" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "d" * 40)
+    setup(work, vault, "pilot", {}, True)
+    calls = 0
+    inspections = 0
+
+    def fake_model(
+        argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int, started_marker: Path
+    ) -> Any:
+        nonlocal calls
+        calls += 1
+        started_marker.write_text("started", encoding="utf-8")
+        assert argv[argv.index("--model") + 1] == "gpt-6-luna"
+        assert argv[argv.index("-c") + 1] == 'model_reasoning_effort="max"'
+        assert timeout == 150
+        if calls == 2:
+            raise pilot_controller.ResourceRefusal(
+                "research subprocess exceeded fixed wall timeout"
+            )
+        schema = json.loads(Path(argv[argv.index("--output-schema") + 1]).read_text())
+        if "candidate" in schema.get("properties", {}):
+            payload = {"candidate": _candidate(1.1)}
+        elif "proposals" in schema.get("properties", {}):
+            payload = _heuristic_response(1)
+        elif "decisions" in schema.get("properties", {}):
+            payload = _conditional_response()
+        else:
+            raise AssertionError("unexpected pilot schema")
+        Path(argv[argv.index("--output-last-message") + 1]).write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "type": "turn.completed",
+                    "usage": {"input_tokens": 20, "output_tokens": 10},
+                }
+            ),
+            stderr="",
+        )
+
+    def fake_worker(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        output_path = Path(argv[argv.index("--output") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"auroc":0.83}', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(t1_module.subprocess, "run", fake_worker)
+
+    def fake_t1(*args: str, timeout: int = 60) -> dict[str, Any]:
+        assert args[0] == "trial" and timeout == 80
+        values = list(args[1:])
+        return perform_trial(
+            Path(values[values.index("--work") + 1]),
+            values[values.index("--arm") + 1],
+            values[values.index("--dataset") + 1],
+            int(values[values.index("--seed") + 1]),
+            Path(values[values.index("--candidate") + 1]),
+        )
+
+    def inspect() -> None:
+        nonlocal inspections
+        inspections += 1
+        if inspections == 2:
+            raise pilot_controller.ResourceRefusal(
+                "Mac whole-machine physical memory usage exceeds 95%"
+            )
+
+    result = pilot_controller.run_pilot(
+        root=root,
+        codex="/mock/codex",
+        confirm="RUN_FOUR_POLICY_PILOT",
+        guarded_call=fake_model,
+        t1_call=fake_t1,
+        inspect=inspect,
+    )
+    first = tuple(read_json(work / "meta.json")["execution_order"][0])
+    events = [json.loads(row) for row in (work / "events.jsonl").read_text().splitlines()]
+    call_finishes = [row for row in events if row["kind"] == "agent_call_finished"]
+    terminal = next(row for row in events if row["kind"] == "cell_terminal")
+    submission = read_json(work / "submissions" / f"{first[0]}__{first[1]}__{first[2]}.json")
+    assert calls == 2 and inspections == 2
+    assert call_finishes[-1]["outcome"] == "timeout"
+    assert call_finishes[-1]["failure_classification"] == "guard_timeout"
+    assert terminal["outcome"] == "submitted"
+    assert "valid_prior_candidate_with_timeout" in terminal["reason"]
+    assert submission["run_id"] == "trial-0001"
+    assert result["isolated_timeouts"] == [
+        {
+            "arm": first[0],
+            "dataset": first[1],
+            "seed": first[2],
+            "call_id": f"{first[0]}-{first[1]}-{first[2]}-call-2",
+            "classification": "guard_timeout",
+        }
+    ]
+    assert result["cell_count_completed_or_terminal"] == 1
+    assert result["stopped_for_resource_guard"] is True
+    assert result["training_trials"] == 1
+    assert result["holdout_evaluated"] is False
+    assert status(work)["model_call_attempts"] == 2
+
+
+def test_guard_timeout_without_candidate_remains_failed_and_has_no_submission(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    root = tmp_path / "pilot-timeout-no-candidate"
+    root.mkdir(mode=0o700)
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "e" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "e" * 40)
+    setup(work, vault, "pilot", {}, True)
+    inspections = 0
+
+    def timeout_model(
+        argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int, started_marker: Path
+    ) -> Any:
+        started_marker.write_text("started", encoding="utf-8")
+        raise pilot_controller.ResourceRefusal("research subprocess exceeded fixed wall timeout")
+
+    def no_training(*_args: str, **_kwargs: Any) -> dict[str, Any]:
+        raise AssertionError("a timed-out request cannot launch training")
+
+    def inspect() -> None:
+        nonlocal inspections
+        inspections += 1
+        if inspections == 2:
+            raise pilot_controller.ResourceRefusal(
+                "Mac whole-machine physical memory usage exceeds 95%"
+            )
+
+    result = pilot_controller.run_pilot(
+        root=root,
+        codex="/mock/codex",
+        confirm="RUN_FOUR_POLICY_PILOT",
+        guarded_call=timeout_model,
+        t1_call=no_training,
+        inspect=inspect,
+    )
+    first = tuple(read_json(work / "meta.json")["execution_order"][0])
+    events = [json.loads(row) for row in (work / "events.jsonl").read_text().splitlines()]
+    terminal = next(row for row in events if row["kind"] == "cell_terminal")
+    assert terminal["outcome"] == "failed"
+    assert "timeout_without_valid_prior_candidate" in terminal["reason"]
+    assert not (work / "submissions" / f"{first[0]}__{first[1]}__{first[2]}.json").exists()
+    assert result["training_trials"] == 0
+    assert result["holdout_evaluated"] is False
+    assert status(work)["model_call_attempts"] == 1
 
 
 def test_cli_output_schemas_are_strict_and_preserve_candidate_semantics() -> None:
@@ -872,9 +1034,7 @@ def test_serial_recovery_imports_verified_successful_trial_without_retraining(
     prior.mkdir(mode=0o700)
     monkeypatch.setattr(t1_module, "_code_revision", lambda: "b" * 40)
     monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "b" * 40)
-    pilot_controller.prepare_pilot_recovery(
-        root=prior, origin_root=origin, t1_call=setup_t1
-    )
+    pilot_controller.prepare_pilot_recovery(root=prior, origin_root=origin, t1_call=setup_t1)
     prior_work = prior / "pilot_work"
     prior_call = f"{first[0]}-{first[1]}-{first[2]}-call-2"
     record_agent_call_started(prior_work, *first, prior_call, "decision")
@@ -1022,3 +1182,156 @@ def test_serial_recovery_imports_verified_successful_trial_without_retraining(
     assert status(work)["submitted"] == 7
     assert status(work)["completed"] >= 2
     assert worker_calls.count("trial-0001") == 1
+
+
+def test_serial_resume_preserves_valid_candidate_after_timeout_and_skips_terminal_cell(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    origin = tmp_path / "T1_Pilot_Results"
+    origin.mkdir(mode=0o700)
+    origin_work, origin_vault = origin / "pilot_work", origin / "pilot_vault"
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "a" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "a" * 40)
+    setup(origin_work, origin_vault, "pilot", {}, True)
+    origin_meta = read_json(origin_work / "meta.json")
+    for arm, dataset, seed in origin_meta["execution_order"]:
+        call_id = f"{arm}-{dataset}-{seed}-call-1"
+        record_agent_call_started(origin_work, arm, dataset, seed, call_id, "decision")
+        record_agent_call_finished(
+            origin_work,
+            call_id,
+            "failed",
+            {"usage_available": False, "process_started": True, "turn_count": 0},
+        )
+        record_cell_terminal(origin_work, arm, dataset, seed, "failed", "origin request failed")
+    (origin / "summary.json").write_text(
+        json.dumps(
+            {
+                "status": "paused_for_infrastructure",
+                "model_call_attempts": 8,
+                "training_trials": 0,
+                "holdout_evaluated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def setup_t1(*args: str, timeout: int = 60) -> dict[str, Any]:
+        assert args[0] == "init" and timeout == 90
+        values = list(args[1:])
+        return setup(
+            Path(values[values.index("--work") + 1]),
+            Path(values[values.index("--vault") + 1]),
+            "pilot",
+            {},
+            True,
+        )
+
+    prior = tmp_path / "T1_Pilot_Recovery_1"
+    prior.mkdir(mode=0o700)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "b" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "b" * 40)
+    pilot_controller.prepare_pilot_recovery(root=prior, origin_root=origin, t1_call=setup_t1)
+    prior_work = prior / "pilot_work"
+    first = tuple(origin_meta["execution_order"][0])
+    second = tuple(origin_meta["execution_order"][1])
+    timeout_call_id = f"{first[0]}-{first[1]}-{first[2]}-call-2"
+    record_agent_call_started(prior_work, *first, timeout_call_id, "decision")
+    record_agent_call_finished(
+        prior_work,
+        timeout_call_id,
+        "timeout",
+        {
+            "usage_available": False,
+            "process_started": True,
+            "turn_count": 0,
+            "exit_code": None,
+            "failure_classification": "guard_timeout",
+            "stderr_excerpt_redacted": "research subprocess exceeded fixed wall timeout",
+            "stdout_event_types": [],
+            "stdout_error_events": [],
+            "elapsed_seconds": 150.2254,
+        },
+    )
+
+    def fake_worker(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        output_path = Path(argv[argv.index("--output") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"auroc":0.87}', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(t1_module.subprocess, "run", fake_worker)
+    candidate_path = prior / "candidate.json"
+    candidate_path.write_bytes(t1_module.canonical(_candidate(1.25)))
+    trial = perform_trial(prior_work, *first, candidate_path)
+    candidate_path.unlink()
+    prior_submission = select(prior_work, *first)
+    record_cell_terminal(
+        prior_work,
+        *first,
+        "failed",
+        "whole-Mac resource guard reported timeout after a validated prior trial",
+    )
+    (prior / "summary.json").write_text(
+        json.dumps(
+            {
+                "status": "paused_for_resource_guard",
+                "model_call_attempts": 9,
+                "training_trials": 1,
+                "holdout_evaluated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    recovery = tmp_path / "T1_Pilot_Recovery_2"
+    recovery.mkdir(mode=0o700)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "c" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "c" * 40)
+    prepared = pilot_controller.prepare_pilot_single_step_recovery(
+        root=recovery,
+        origin_root=origin,
+        prior_root=prior,
+        t1_call=setup_t1,
+        arm=second[0],
+        dataset=second[1],
+        seed=second[2],
+        serial_resume=True,
+    )
+    pilot_controller._load_frozen_pilot(recovery)
+    recovery_work = recovery / "pilot_work"
+    first_key = f"{first[0]}__{first[1]}__{first[2]}"
+    audit = prepared["prior_terminal_audit"][first_key]
+    terminal = next(
+        row
+        for row in ledger(recovery_work)
+        if row.get("kind") == "cell_terminal"
+        and (row.get("arm"), row.get("dataset"), row.get("seed")) == first
+    )
+    recovered_submission = read_json(recovery_work / "submissions" / f"{first_key}.json")
+    assert prepared["prior_call_attempts"] == 9
+    assert prepared["remaining_total_call_budget"] == 23
+    assert prepared["resume_start_cell"] == list(second)
+    assert prepared["resume_policy_deviation"].startswith(
+        "isolated model-call timeouts remain failed"
+    )
+    assert audit["classification"] == "valid_prior_candidate_with_timeout"
+    assert audit["source_submission"]["valid"] is True
+    assert audit["source_submission"]["artifact_sha256"] == t1_module.file_digest(
+        prior_work / "submissions" / f"{first_key}.json"
+    )
+    assert audit["source_submission"]["run_id"] == prior_submission["run_id"] == trial["id"]
+    assert audit["source_submission"]["candidate_sha256"] == prior_submission["candidate_sha256"]
+    assert terminal["outcome"] == "submitted"
+    assert "valid_prior_candidate_with_timeout" in terminal["reason"]
+    assert recovered_submission["candidate_sha256"] == prior_submission["candidate_sha256"]
+    assert not any(
+        row.get("kind") == "cell_terminal"
+        and (row.get("arm"), row.get("dataset"), row.get("seed")) == second
+        for row in ledger(recovery_work)
+    )
+    assert status(recovery_work)["model_call_attempts"] == 9
+    assert status(recovery_work)["holdout_evaluated"] is False
+    assert not (recovery / "pilot_vault" / "wdbc" / "test.csv").exists()

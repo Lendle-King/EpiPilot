@@ -953,6 +953,100 @@ def _reconcile_open_cell_trials(
     return True
 
 
+def _prepared_submissions_match_recovery(
+    work: Path, recovery: dict[str, Any] | None, events: list[dict[str, Any]]
+) -> bool:
+    paths = list((work / "submissions").glob("*.json"))
+    if recovery is None:
+        return not paths
+    audit = recovery.get("prior_terminal_audit", {})
+    if not isinstance(audit, dict):
+        return False
+    expected = {
+        key
+        for key, row in audit.items()
+        if isinstance(key, str)
+        and isinstance(row, dict)
+        and row.get("effective_outcome") == "submitted"
+        and isinstance(row.get("source_submission"), dict)
+        and row["source_submission"].get("valid") is True
+    }
+    if {path.stem for path in paths} != expected:
+        return False
+    for key in expected:
+        arm, dataset, seed_text = key.rsplit("__", 2)
+        if not seed_text.isdigit():
+            return False
+        cell = (arm, dataset, int(seed_text))
+        path = work / "submissions" / f"{key}.json"
+        if path.is_symlink() or path.parent.is_symlink():
+            return False
+        try:
+            selection = read_json(path)
+            if (
+                set(selection)
+                != {
+                    "arm",
+                    "dataset",
+                    "seed",
+                    "run_id",
+                    "candidate_sha256",
+                    "dev_auroc",
+                }
+                or (selection["arm"], selection["dataset"], selection["seed"]) != cell
+            ):
+                return False
+            run_id = selection["run_id"]
+            if not isinstance(run_id, str) or re.fullmatch(r"trial-[0-9]{4}", run_id) is None:
+                return False
+            start = next(
+                (
+                    row
+                    for row in events
+                    if row.get("kind") == "started"
+                    and row.get("id") == run_id
+                    and (row.get("arm"), row.get("dataset"), row.get("seed")) == cell
+                ),
+                None,
+            )
+            finish = next(
+                (
+                    row
+                    for row in events
+                    if row.get("kind") == "finished" and row.get("id") == run_id
+                ),
+                None,
+            )
+            candidate = work / "runs" / run_id / "candidate.json"
+            metric = work / "runs" / run_id / "metric.json"
+            terminal = any(
+                row.get("kind") == "cell_terminal"
+                and row.get("outcome") == "submitted"
+                and (row.get("arm"), row.get("dataset"), row.get("seed")) == cell
+                for row in events
+            )
+            if (
+                not terminal
+                or start is None
+                or finish is None
+                or finish.get("exit_code") != 0
+                or finish.get("dev_auroc") != selection["dev_auroc"]
+                or start.get("candidate_sha256") != selection["candidate_sha256"]
+                or candidate.is_symlink()
+                or metric.is_symlink()
+                or not candidate.is_file()
+                or not metric.is_file()
+                or file_digest(candidate) != selection["candidate_sha256"]
+                or digest(canonical(read_json(candidate))) != selection["candidate_sha256"]
+                or file_digest(metric) != finish.get("metric_sha256")
+                or read_json(metric).get("auroc") != selection["dev_auroc"]
+            ):
+                return False
+        except (BenchmarkError, OSError, ValueError, KeyError, TypeError):
+            return False
+    return True
+
+
 def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
     work, vault = root / "pilot_work", root / "pilot_vault"
     try:
@@ -987,7 +1081,7 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
         or meta.get("final_holdout_is_off_limits_during_search") is not True
         or vault_meta.get("public_meta_sha256") != file_digest(work / "meta.json")
         or (bool(events) and not isinstance(recovery, dict))
-        or list((work / "submissions").glob("*.json"))
+        or not _prepared_submissions_match_recovery(work, recovery, events)
         or (work / "final.started").exists()
     ):
         raise BenchmarkError(
@@ -1007,6 +1101,8 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
             origin.get("origin_manifest_sha256") != recovery.get("origin_manifest_sha256")
             or origin.get("origin_ledger_sha256") != recovery.get("origin_ledger_sha256")
             or file_digest(work / "recovery_origin.json") != recovery.get("recovery_origin_sha256")
+            or origin.get("prior_terminal_audit", {}) != recovery.get("prior_terminal_audit", {})
+            or origin.get("resume_policy_deviation") != recovery.get("resume_policy_deviation")
             or not events
             or events[0].get("kind") != "recovery_origin"
             or any(
@@ -1049,18 +1145,18 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
                 )
         if recovery.get("serial_resume") is True:
             start = recovery.get("resume_start_cell")
+            prior_terminal_audit = recovery.get("prior_terminal_audit", {})
             if (
                 origin.get("serial_resume") is not True
+                or not isinstance(prior_terminal_audit, dict)
                 or not isinstance(start, dict)
                 or set(start) != {"arm", "dataset", "seed"}
                 or (start.get("arm"), start.get("dataset"), start.get("seed"))
                 not in {tuple(cell) for cell in meta["execution_order"]}
                 or sum(
-                    int(value)
-                    for value in recovery.get("prior_call_attempts_by_cell", {}).values()
+                    int(value) for value in recovery.get("prior_call_attempts_by_cell", {}).values()
                 )
-                > meta["cell_count"]
-                * meta["profile"]["max_model_decision_calls_per_cell"]
+                > meta["cell_count"] * meta["profile"]["max_model_decision_calls_per_cell"]
                 or any(
                     int(value) > meta["profile"]["max_model_decision_calls_per_cell"]
                     for value in recovery.get("prior_call_attempts_by_cell", {}).values()
@@ -1292,8 +1388,7 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
                 key not in calls_by_cell
                 or row.get("model") != "gpt-6-luna"
                 or row.get("model_reasoning_effort") != "max"
-                or finish.get("outcome")
-                not in {"failed", "timeout", "invalid_output", "success"}
+                or finish.get("outcome") not in {"failed", "timeout", "invalid_output", "success"}
                 or finish.get("process_started") is not True
                 or (finish.get("outcome") == "success" and finish.get("turn_count") != 1)
                 or event_positions[id(finish)] <= event_positions[id(row)]
@@ -1363,9 +1458,11 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
                     and item.get("candidate_sha256") == imported["candidate_sha256"]
                     and item.get("metric_sha256") == imported["metric_sha256"]
                 ]
-                if len(prior_matches) != 1 or row.get("candidate_sha256") != imported[
-                    "candidate_sha256"
-                ] or end.get("metric_sha256") != imported["metric_sha256"]:
+                if (
+                    len(prior_matches) != 1
+                    or row.get("candidate_sha256") != imported["candidate_sha256"]
+                    or end.get("metric_sha256") != imported["metric_sha256"]
+                ):
                     raise BenchmarkError("recovery generation imported an unverified trial")
                 continue
             trials_by_cell[key] += 1
@@ -1398,9 +1495,7 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
                 terminal_outcomes[key] = row["outcome"]
         return starts, started_trials, finishes
 
-    _, origin_trials, _ = consume_ledger(
-        origin_events, origin_work, expected_call_count=8
-    )
+    _, origin_trials, _ = consume_ledger(origin_events, origin_work, expected_call_count=8)
     origin_terminals = [row for row in origin_events if row.get("kind") == "cell_terminal"]
     if len(origin_trials) != 0 or len(origin_terminals) != 8 or len(terminal_outcomes) != 8:
         raise BenchmarkError("root origin does not contain eight failed terminal cells")
@@ -1665,6 +1760,163 @@ def prepare_pilot_single_step_recovery(
     prior_terminal_outcomes = lineage["terminal_outcomes"]
     prior_call_ids = lineage["call_ids"]
     total_prior_calls = lineage["total_calls"]
+    prior_work = prior_root / "pilot_work"
+    prior_events = ledger(prior_work)
+    prior_local_terminals = {
+        (row["arm"], row["dataset"], row["seed"]): row
+        for row in prior_events
+        if row.get("kind") == "cell_terminal"
+    }
+    finishes_by_call_id = {
+        row["call_id"]: row for row in prior_events if row.get("kind") == "agent_call_finished"
+    }
+    starts_by_cell: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
+    for row in prior_events:
+        if row.get("kind") == "agent_call_started":
+            key = (row["arm"], row["dataset"], row["seed"])
+            starts_by_cell.setdefault(key, []).append(row)
+
+    def validated_prior_submission(cell: tuple[str, str, int]) -> dict[str, Any]:
+        arm_name, dataset_name, seed_value = cell
+        key = f"{arm_name}__{dataset_name}__{seed_value}"
+        path = prior_work / "submissions" / f"{key}.json"
+        if path.parent.is_symlink() or path.is_symlink() or not path.is_file():
+            return {"present": False, "valid": False}
+        artifact_hash = file_digest(path)
+        try:
+            selection = read_json(path)
+            if (
+                set(selection)
+                != {
+                    "arm",
+                    "dataset",
+                    "seed",
+                    "run_id",
+                    "candidate_sha256",
+                    "dev_auroc",
+                }
+                or (selection["arm"], selection["dataset"], selection["seed"]) != cell
+            ):
+                return {"present": True, "valid": False, "artifact_sha256": artifact_hash}
+            run_id = selection["run_id"]
+            if not isinstance(run_id, str) or re.fullmatch(r"trial-[0-9]{4}", run_id) is None:
+                return {"present": True, "valid": False, "artifact_sha256": artifact_hash}
+            trial_start = next(
+                (
+                    row
+                    for row in prior_events
+                    if row.get("kind") == "started"
+                    and row.get("id") == run_id
+                    and (row.get("arm"), row.get("dataset"), row.get("seed")) == cell
+                ),
+                None,
+            )
+            trial_end = next(
+                (
+                    row
+                    for row in prior_events
+                    if row.get("kind") == "finished" and row.get("id") == run_id
+                ),
+                None,
+            )
+            candidate_path = prior_work / "runs" / str(run_id) / "candidate.json"
+            metric_path = prior_work / "runs" / str(run_id) / "metric.json"
+            valid = (
+                trial_start is not None
+                and trial_end is not None
+                and trial_end.get("exit_code") == 0
+                and trial_end.get("dev_auroc") == selection.get("dev_auroc")
+                and trial_start.get("candidate_sha256") == selection.get("candidate_sha256")
+                and not candidate_path.is_symlink()
+                and candidate_path.is_file()
+                and file_digest(candidate_path) == selection.get("candidate_sha256")
+                and digest(canonical(read_json(candidate_path)))
+                == selection.get("candidate_sha256")
+                and not metric_path.is_symlink()
+                and metric_path.is_file()
+                and file_digest(metric_path) == trial_end.get("metric_sha256")
+                and read_json(metric_path).get("auroc") == selection.get("dev_auroc")
+            )
+            return {
+                "present": True,
+                "valid": bool(valid),
+                "artifact_sha256": artifact_hash,
+                "run_id": run_id if valid else None,
+                "candidate_sha256": selection.get("candidate_sha256") if valid else None,
+                "dev_auroc": selection.get("dev_auroc") if valid else None,
+                "artifact_mtime_ns": path.stat().st_mtime_ns,
+                "candidate_mtime_ns": candidate_path.stat().st_mtime_ns if valid else None,
+                "metric_mtime_ns": metric_path.stat().st_mtime_ns if valid else None,
+            }
+        except (BenchmarkError, OSError, ValueError, KeyError, TypeError):
+            return {"present": True, "valid": False, "artifact_sha256": artifact_hash}
+
+    prior_terminal_audit: dict[str, dict[str, Any]] = {}
+    for cell, terminal in prior_local_terminals.items():
+        arm_name, dataset_name, seed_value = cell
+        key = f"{arm_name}__{dataset_name}__{seed_value}"
+        matching_calls = starts_by_cell.get(cell, [])
+        latest_call = (
+            finishes_by_call_id.get(matching_calls[-1]["call_id"]) if matching_calls else None
+        )
+        timed_out = latest_call is not None and (
+            latest_call.get("outcome") == "timeout"
+            or latest_call.get("failure_classification") == "guard_timeout"
+        )
+        exhausted = (
+            prior_calls_by_cell.get(key, 0)
+            >= prior_meta["profile"]["max_model_decision_calls_per_cell"]
+            or prior_trials_by_cell.get(key, 0) >= prior_meta["profile"]["per_cell_trials"]
+        )
+        submission = validated_prior_submission(cell)
+        outcome = terminal.get("outcome")
+        retryable = (
+            outcome == "failed" and not timed_out and not exhausted and not submission["valid"]
+        )
+        if submission["valid"]:
+            effective_outcome = "submitted"
+            if timed_out:
+                classification = "valid_prior_candidate_with_timeout"
+                reason = (
+                    "valid_prior_candidate_with_timeout: the earlier timed-out model call remains "
+                    "failed and will not be retried"
+                )
+            elif outcome == "submitted":
+                classification = "validated_prior_submission"
+                reason = (
+                    "prior submitted candidate revalidated against its completed development trial"
+                )
+            else:
+                classification = "valid_prior_candidate_after_terminal_failure"
+                reason = "prior candidate revalidated against its completed development trial"
+        elif retryable:
+            effective_outcome = None
+            classification = "retryable_failure"
+            reason = terminal.get("reason") or "prior failed cell has remaining frozen budget"
+        else:
+            effective_outcome = outcome if outcome in {"failed", "stopped", "invalid"} else "failed"
+            classification = (
+                "timeout_without_valid_prior_candidate"
+                if timed_out
+                else "terminal_candidate_missing_or_untrusted"
+                if outcome == "submitted"
+                else "terminal_failure_preserved"
+            )
+            reason = terminal.get("reason") or "prior terminal failure preserved"
+        prior_terminal_audit[key] = {
+            "prior_outcome": outcome,
+            "prior_reason": str(terminal.get("reason", ""))[:300],
+            "latest_call_outcome": latest_call.get("outcome") if latest_call else None,
+            "latest_call_classification": latest_call.get("failure_classification")
+            if latest_call
+            else None,
+            "source_submission": submission,
+            "classification": classification,
+            "effective_outcome": effective_outcome,
+            "retryable": retryable,
+            "reason": reason[:300],
+        }
+
     target_key = f"{arm}__{dataset}__{seed}"
     execution_order = [tuple(cell) for cell in prior_meta["execution_order"]]
     if (arm, dataset, seed) not in set(execution_order):
@@ -1677,8 +1929,10 @@ def prepare_pilot_single_step_recovery(
             < prior_meta["profile"]["max_model_decision_calls_per_cell"]
             and prior_trials_by_cell.get(f"{cell[0]}__{cell[1]}__{cell[2]}", 0)
             < prior_meta["profile"]["per_cell_trials"]
-            and prior_terminal_outcomes.get(f"{cell[0]}__{cell[1]}__{cell[2]}")
-            in {None, "failed"}
+            and (
+                f"{cell[0]}__{cell[1]}__{cell[2]}" not in prior_terminal_audit
+                or prior_terminal_audit[f"{cell[0]}__{cell[1]}__{cell[2]}"]["retryable"]
+            )
         ),
         None,
     )
@@ -1688,7 +1942,9 @@ def prepare_pilot_single_step_recovery(
         )
     if (
         prior_trials_by_cell.get(target_key, 0) >= 2
-        or prior_terminal_outcomes.get(target_key) != "failed"
+        or (
+            target_key in prior_terminal_audit and not prior_terminal_audit[target_key]["retryable"]
+        )
         or total_prior_calls >= 32
         or prior_calls_by_cell.get(target_key, 0) >= 4
         or any(value > 4 for value in prior_calls_by_cell.values())
@@ -1735,6 +1991,15 @@ def prepare_pilot_single_step_recovery(
         "prior_successful_trials_by_cell": prior_successful_trials_by_cell,
         "prior_call_ids": prior_call_ids,
         "prior_terminal_outcomes_by_cell": prior_terminal_outcomes,
+        "prior_terminal_audit": prior_terminal_audit,
+        "resume_policy_deviation": (
+            "isolated model-call timeouts remain failed cell events; later frozen cells may resume"
+            if any(
+                row.get("classification") == "valid_prior_candidate_with_timeout"
+                for row in prior_terminal_audit.values()
+            )
+            else "failed cells with remaining budget may resume; terminal submissions are preserved"
+        ),
         "recovery_ancestor_directories": [path.name for path in lineage["chain"]],
         "serial_resume": serial_resume,
         "provider_usage_and_cost": "unknown; prior run had no usage telemetry",
@@ -1761,6 +2026,8 @@ def prepare_pilot_single_step_recovery(
         "prior_successful_trials_by_cell": prior_successful_trials_by_cell,
         "prior_call_ids": prior_call_ids,
         "prior_terminal_outcomes_by_cell": prior_terminal_outcomes,
+        "prior_terminal_audit": prior_terminal_audit,
+        "resume_policy_deviation": receipt["resume_policy_deviation"],
         "serial_resume": serial_resume,
         "recovery_origin_sha256": file_digest(work / "recovery_origin.json"),
     }
@@ -1855,6 +2122,30 @@ def prepare_pilot_single_step_recovery(
                     "error": "inherited development evidence; no training rerun",
                 },
             )
+    for cell in execution_order:
+        key = f"{cell[0]}__{cell[1]}__{cell[2]}"
+        audit = prior_terminal_audit.get(key)
+        if audit is None or audit.get("retryable"):
+            continue
+        effective_outcome = audit.get("effective_outcome")
+        if effective_outcome == "submitted":
+            try:
+                select(work, *cell)
+            except BenchmarkError as exc:
+                raise BenchmarkError(
+                    "validated prior candidate could not be reselected in the recovery workspace"
+                ) from exc
+        terminal_outcome = (
+            effective_outcome
+            if effective_outcome in {"submitted", "stopped", "failed", "invalid"}
+            else "failed"
+        )
+        record_cell_terminal(
+            work,
+            *cell,
+            terminal_outcome,
+            str(audit.get("reason", "prior terminal outcome preserved")),
+        )
     return {
         "origin_manifest_sha256": root_manifest_sha,
         "prior_manifest_sha256": prior_manifest_sha,
@@ -1867,6 +2158,9 @@ def prepare_pilot_single_step_recovery(
         "target_remaining_call_budget": 4 - prior_calls_by_cell[target_key],
         "prior_training_attempts": sum(prior_trials_by_cell.values()),
         "prior_successful_trials": imported_count,
+        "prior_terminal_audit": prior_terminal_audit,
+        "resume_start_cell": [arm, dataset, seed] if serial_resume else None,
+        "resume_policy_deviation": receipt["resume_policy_deviation"],
         "serial_resume": serial_resume,
         "single_step_calls_per_invocation": None if serial_resume else 1,
         "holdout_materialized": False,
@@ -1894,6 +2188,7 @@ def run_pilot(
     cells: list[dict[str, Any]] = []
     stopped_for_resource = False
     stopped_for_infrastructure = False
+    isolated_timeouts: list[dict[str, Any]] = []
     prior_call_counts = recovery.get("prior_call_attempts_by_cell", {})
     prior_trial_counts = recovery.get("prior_training_attempts_by_cell", {})
     existing_terminals = {
@@ -1906,11 +2201,28 @@ def run_pilot(
         terminal = existing_terminals.get((arm, dataset, seed))
         if terminal:
             cell_key = f"{arm}__{dataset}__{seed}"
+            terminal_events = ledger(work)
+            terminal_history, _terminal_notes = _single_step_history(work, arm, dataset, seed)
+            local_trial_ids = {
+                row["id"]
+                for row in terminal_events
+                if row["kind"] == "started"
+                and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                and row.get("recovery_imported_from") is None
+            }
             local_attempts = sum(
                 row["kind"] == "started"
                 and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
                 and row.get("recovery_imported_from") is None
-                for row in ledger(work)
+                for row in terminal_events
+            )
+            local_seconds = sum(
+                float(row.get("seconds", 0.0))
+                for row in terminal_events
+                if row["kind"] in {"finished", "aborted"} and row.get("id") in local_trial_ids
+            )
+            prior_seconds = float(
+                recovery.get("prior_training_seconds_by_cell", {}).get(cell_key, 0.0)
             )
             cells.append(
                 {
@@ -1918,21 +2230,19 @@ def run_pilot(
                     "dataset": dataset,
                     "seed": seed,
                     "outcome": terminal["outcome"],
-                    "reason": "previously terminal cell preserved during recovery",
-                    "training_attempts": int(prior_trial_counts.get(cell_key, 0))
-                    + local_attempts,
+                    "reason": terminal.get("reason")
+                    or "previously terminal cell preserved during recovery",
+                    "training_attempts": int(prior_trial_counts.get(cell_key, 0)) + local_attempts,
                     "model_calls": int(prior_call_counts.get(f"{arm}__{dataset}__{seed}", 0))
                     + sum(
                         row["kind"] == "agent_call_started"
                         and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
                         for row in ledger(work)
                     ),
-                    "successful_trials": sum(
-                        row["kind"] == "finished"
-                        and row.get("exit_code") == 0
-                        and row.get("dev_auroc") is not None
-                        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
-                        for row in ledger(work)
+                    "successful_trials": len(terminal_history),
+                    "training_seconds": round(prior_seconds + local_seconds, 6),
+                    "best_dev_auroc": max(
+                        (row["dev_auroc"] for row in terminal_history), default=None
                     ),
                 }
             )
@@ -2075,6 +2385,7 @@ def run_pilot(
                     if calls_used < meta["profile"]["max_model_decision_calls_per_cell"]:
                         note_call_id = f"{arm}-{dataset}-{seed}-call-{call_number + 1}"
                         call_number += 1
+                        call_id = note_call_id
                         try:
                             note_payload, _note_telemetry = model_call(
                                 work=work,
@@ -2143,17 +2454,29 @@ def run_pilot(
                         )
                 if trial_index + 1 == trial_slots:
                     cell_outcome, reason = "submitted", "two bounded training attempts completed"
-            except ResourceRefusal:
-                stopped_for_resource = True
-                reason = "whole-Mac memory guard refused a model or training launch"
-                if history:
-                    try:
-                        select(work, arm, dataset, seed)
-                        cell_outcome = "submitted"
-                    except BenchmarkError:
-                        cell_outcome = "failed"
+            except ResourceRefusal as exc:
+                if "exceeded fixed wall timeout" in str(exc):
+                    # The call is failed and charged, but a bounded subprocess
+                    # timeout does not imply a whole-machine resource refusal.
+                    isolated_timeouts.append(
+                        {
+                            "arm": arm,
+                            "dataset": dataset,
+                            "seed": seed,
+                            "call_id": call_id,
+                            "classification": "guard_timeout",
+                        }
+                    )
+                    reason = (
+                        "valid_prior_candidate_with_timeout: the timed-out model call remains "
+                        "failed; an earlier completed development trial remains eligible"
+                        if history
+                        else "timeout_without_valid_prior_candidate: model call remains failed; "
+                        "the cell is terminal without a candidate"
+                    )
                 else:
-                    cell_outcome = "failed"
+                    stopped_for_resource = True
+                    reason = "whole-Mac memory guard refused a model or training launch"
                 break
             except ModelCallFailure as exc:
                 record_cell_incident(
@@ -2229,15 +2552,12 @@ def run_pilot(
         ]
         prior_seconds = float(recovery.get("prior_training_seconds_by_cell", {}).get(cell_key, 0.0))
         local_actual_trial_ids = {
-            row["id"]
-            for row in cell_trial_starts
-            if row.get("recovery_imported_from") is None
+            row["id"] for row in cell_trial_starts if row.get("recovery_imported_from") is None
         }
         measured_seconds = prior_seconds + sum(
             float(row["seconds"])
             for row in cell_events
-            if row["kind"] in {"finished", "aborted"}
-            and row.get("id") in local_actual_trial_ids
+            if row["kind"] in {"finished", "aborted"} and row.get("id") in local_actual_trial_ids
         )
         cells.append(
             {
@@ -2333,6 +2653,8 @@ def run_pilot(
         "repeated_experiments": summary["repeated_experiments"],
         "manual_interventions": 0,
         "unsupported_claims": summary["unsupported_claim_events"],
+        "isolated_timeouts": isolated_timeouts,
+        "prior_terminal_audit": recovery.get("prior_terminal_audit", {}),
         "holdout_evaluated": summary["holdout_evaluated"],
         "pilot_run_status": (
             "paused_for_infrastructure"
