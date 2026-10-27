@@ -60,10 +60,10 @@ CandidateSchema: dict[str, Any] = {
         {
             "type": "object",
             "properties": {
-                "model": {"const": "logistic"},
-                "feature_mode": {"enum": ["all", "numeric_only"]},
+                "model": {"type": "string", "const": "logistic"},
+                "feature_mode": {"type": "string", "enum": ["all", "numeric_only"]},
                 "C": {"type": "number", "minimum": 0.01, "maximum": 10},
-                "class_weight": {"enum": ["none", "balanced"]},
+                "class_weight": {"type": "string", "enum": ["none", "balanced"]},
             },
             "required": ["model", "feature_mode", "C", "class_weight"],
             "additionalProperties": False,
@@ -71,12 +71,12 @@ CandidateSchema: dict[str, Any] = {
         {
             "type": "object",
             "properties": {
-                "model": {"const": "forest"},
-                "feature_mode": {"enum": ["all", "numeric_only"]},
+                "model": {"type": "string", "const": "forest"},
+                "feature_mode": {"type": "string", "enum": ["all", "numeric_only"]},
                 "n_estimators": {"type": "integer", "minimum": 20, "maximum": 120},
                 "max_depth": {"type": "integer", "minimum": 2, "maximum": 16},
                 "min_samples_leaf": {"type": "integer", "minimum": 1, "maximum": 10},
-                "class_weight": {"enum": ["none", "balanced"]},
+                "class_weight": {"type": "string", "enum": ["none", "balanced"]},
             },
             "required": [
                 "model",
@@ -215,7 +215,7 @@ def _schema(arm: str, purpose: str) -> dict[str, Any]:
             "properties": {
                 "hypothesis": {"type": "string", "minLength": 8, "maxLength": 240},
                 "candidate": CandidateSchema,
-                "kind": {"enum": ["explore", "optimize", "verify"]},
+                "kind": {"type": "string", "enum": ["explore", "optimize", "verify"]},
                 "information_gain": {"type": "number", "minimum": 0, "maximum": 1},
                 "expected_improvement": {"type": "number", "minimum": 0, "maximum": 1},
                 "unlock_value": {"type": "number", "minimum": 0, "maximum": 1},
@@ -223,7 +223,10 @@ def _schema(arm: str, purpose: str) -> dict[str, Any]:
                 "risk": {"type": "number", "minimum": 0, "maximum": 1},
                 "followup_hypothesis": {"type": "string", "minLength": 8, "maxLength": 240},
                 "followup_candidate": CandidateSchema,
-                "followup_kind": {"enum": ["explore", "optimize", "verify"]},
+                "followup_kind": {
+                    "type": "string",
+                    "enum": ["explore", "optimize", "verify"],
+                },
                 "followup_information_gain": {"type": "number", "minimum": 0, "maximum": 1},
                 "followup_expected_improvement": {"type": "number", "minimum": 0, "maximum": 1},
                 "followup_unlock_value": {"type": "number", "minimum": 0, "maximum": 1},

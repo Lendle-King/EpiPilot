@@ -377,6 +377,8 @@ def test_cli_output_schemas_are_strict_and_preserve_candidate_semantics() -> Non
         if not isinstance(node, dict):
             return
         assert "oneOf" not in node
+        if "const" in node or "enum" in node:
+            assert node.get("type") == "string"
         if node.get("type") == "object":
             properties = node.get("properties", {})
             assert node.get("additionalProperties") is False
