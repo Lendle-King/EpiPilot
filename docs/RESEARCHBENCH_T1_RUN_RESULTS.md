@@ -198,3 +198,11 @@ environment, and construct identical-cost `agent_only`, `memory_only`,
 `epipilot_heuristic`, and `epipilot_conditional` sessions, initially
 on at most two pilot seeds. Require an explicit model-call and monetary
 budget before additional paid work.
+
+## Final local Pilot handoff — 2026-10-27
+
+Recovery 7 brought the frozen eight-cell Pilot to terminal status, but three
+cells had no candidate and holdout evaluation remained sealed. The full
+cumulative ledger, Conditional stop audit, candidate-hash findings, and
+recommendations for a new frozen Pilot are in
+[`RESEARCHBENCH_T1_FINAL_HANDOFF.md`](RESEARCHBENCH_T1_FINAL_HANDOFF.md).
