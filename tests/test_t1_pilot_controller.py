@@ -726,6 +726,10 @@ def test_protocol_v2_trains_common_baseline_and_evaluates_only_after_all_freeze(
     assert continuation_outcome["completed_continuation_cells"] == 8
     assert continuation_outcome["new_training_attempts"] == 16
     assert continuation_outcome["new_completed_training_attempts"] == 16
+    assert sum(cell["new_successful_fits"] for cell in continuation_outcome["cells"]) == 16
+    assert sum(
+        cell["new_training_seconds"] for cell in continuation_outcome["cells"]
+    ) == pytest.approx(continuation_outcome["new_training_seconds"])
     assert continuation_outcome["new_model_call_attempts"] <= 32
     assert continuation_outcome["cumulative_model_call_attempts"] == (
         continuation_outcome["new_model_call_attempts"] + 10

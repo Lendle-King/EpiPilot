@@ -4754,6 +4754,9 @@ def run_pilot_v2_continuation(
         for row in final_events
         if row["kind"] == "agent_call_finished" and row.get("continuation_segment") is True
     }
+    training_finishes = {
+        row["id"]: row for row in final_events if row["kind"] in {"finished", "aborted"}
+    }
     summary = status(work)
     cell_summaries = []
     for arm, dataset, seed in order:
@@ -4773,7 +4776,9 @@ def run_pilot_v2_continuation(
             for row in own
             if row["kind"] == "started" and row.get("continuation_segment") is True
         ]
-        fit_finishes = {row["id"]: row for row in own if row["kind"] in {"finished", "aborted"}}
+        fit_finishes = [
+            training_finishes[row["id"]] for row in fits if row["id"] in training_finishes
+        ]
         selection_path = work / "submissions" / f"{key}.json"
         selected_submission = read_json(selection_path) if selection_path.is_file() else None
         calls_finished = [
@@ -4800,15 +4805,9 @@ def run_pilot_v2_continuation(
                 ],
                 "new_training_attempts": len(fits),
                 "new_successful_fits": sum(
-                    row.get("exit_code") == 0 and row.get("continuation_segment") is True
-                    for row in own
-                    if row["kind"] == "finished"
+                    row["kind"] == "finished" and row.get("exit_code") == 0 for row in fit_finishes
                 ),
-                "new_training_seconds": sum(
-                    float(fit_finishes[row["id"]].get("seconds", 0.0))
-                    for row in fits
-                    if row["id"] in fit_finishes
-                ),
+                "new_training_seconds": sum(float(row.get("seconds", 0.0)) for row in fit_finishes),
                 "new_model_call_seconds": sum(
                     float(row.get("elapsed_seconds", 0.0)) for row in calls_finished
                 ),

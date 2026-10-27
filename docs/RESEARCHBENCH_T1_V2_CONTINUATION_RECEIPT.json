@@ -1,0 +1,912 @@
+{
+  "aggregate_usage_when_reported": {
+    "cached_input_tokens": 23808,
+    "calls_missing_usage": 1,
+    "calls_with_usage": 20,
+    "input_tokens": 260214,
+    "output_tokens": 18758,
+    "provider_cost": "not_metered",
+    "provider_request_count": "not_observable"
+  },
+  "audit": {
+    "all_research_calls_closed_before_finalization": true,
+    "human_interventions": 0,
+    "invalid_events": 0,
+    "repeated_proposals": 9,
+    "unsupported_claims": 0
+  },
+  "budget": {
+    "new_adaptive_training_cap_per_cell": 2,
+    "new_call_cap_per_cell": 4,
+    "new_call_cap_total": 32,
+    "new_failed_training_attempts": 0,
+    "new_model_call_attempts": 21,
+    "new_model_call_wall_seconds": 538.9112,
+    "new_successful_model_calls": 20,
+    "new_successful_training_attempts": 11,
+    "new_timeout_calls": 1,
+    "new_training_attempts": 11,
+    "new_training_seconds": 8.920247,
+    "new_training_seconds_cap_per_cell": 30,
+    "new_training_seconds_global_safety_cap": 240,
+    "parent_v2_calls": 10,
+    "parent_v2_training_attempts": 16,
+    "resource_guard_triggered": false,
+    "seconds_per_new_fit_cap": 15,
+    "unused_new_training_slots": 5,
+    "unused_parent_allowance_rollover": false
+  },
+  "cells": [
+    {
+      "continuation": {
+        "call_cap": 4,
+        "calls_missing_usage": 0,
+        "calls_started": 4,
+        "failed_training_attempts": 0,
+        "invalid_events": 0,
+        "model_call_wall_seconds": 64.5828,
+        "new_adaptive_candidates": [],
+        "repeated_parent_candidates": [
+          {
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "repeat_proposals": 4
+          }
+        ],
+        "successful_calls": 4,
+        "successful_training_attempts": 0,
+        "terminal_reason": "repeat proposal recorded and skipped without training",
+        "timeout_calls": 0,
+        "training_attempt_cap": 2,
+        "training_attempts": 0,
+        "training_seconds": 0.0,
+        "unused_call_slots": 0,
+        "unused_training_slots": 2,
+        "usage": {
+          "cached_input_tokens": 0,
+          "input_tokens": 50919,
+          "output_tokens": 2857
+        }
+      },
+      "dataset": "WDBC",
+      "estimator_seed": 137,
+      "parent": {
+        "candidates": [
+          {
+            "candidate": {
+              "C": 1.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "dev_auroc": 0.9875532263347527,
+            "role": "common_baseline"
+          },
+          {
+            "candidate": {
+              "C": 0.1,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+            "dev_auroc": 0.9836226662299378,
+            "role": "adaptive_candidate"
+          }
+        ],
+        "initial_best_dev_auroc": 0.9875532263347527,
+        "model_call_attempts": 2,
+        "training_attempts": 2
+      },
+      "selected": {
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "dev_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "strategy": "memory_only"
+    },
+    {
+      "continuation": {
+        "call_cap": 4,
+        "calls_missing_usage": 0,
+        "calls_started": 2,
+        "failed_training_attempts": 0,
+        "invalid_events": 0,
+        "model_call_wall_seconds": 54.4426,
+        "new_adaptive_candidates": [
+          {
+            "adaptive_attempt": 1,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 3.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "099313e7523cec14ef2eb0eea8fcd9edd56260fa4dd05b54c2e80cc64889cb62",
+            "cumulative_fit_count": 3,
+            "status": "success",
+            "training_seconds": 0.798219,
+            "trial_dev_auroc": 0.9849328529315428
+          },
+          {
+            "adaptive_attempt": 2,
+            "best_dev_auroc_after_fit": 0.9882083196855552,
+            "candidate": {
+              "C": 0.7,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "4056f0b235eec02068cadeb2ee8b8f2fc83133b09e4a6d2715060b87641b2e99",
+            "cumulative_fit_count": 4,
+            "status": "success",
+            "training_seconds": 0.826092,
+            "trial_dev_auroc": 0.9882083196855552
+          }
+        ],
+        "repeated_parent_candidates": [],
+        "successful_calls": 2,
+        "successful_training_attempts": 2,
+        "terminal_reason": "candidate fit completed; selection uses only measured dev AUROC",
+        "timeout_calls": 0,
+        "training_attempt_cap": 2,
+        "training_attempts": 2,
+        "training_seconds": 1.624311,
+        "unused_call_slots": 2,
+        "unused_training_slots": 0,
+        "usage": {
+          "cached_input_tokens": 0,
+          "input_tokens": 26525,
+          "output_tokens": 3306
+        }
+      },
+      "dataset": "WDBC",
+      "estimator_seed": 137,
+      "parent": {
+        "candidates": [
+          {
+            "candidate": {
+              "C": 1.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "dev_auroc": 0.9875532263347527,
+            "role": "common_baseline"
+          },
+          {
+            "candidate": {
+              "C": 0.3,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "9b7f72c9d7669318efa92975cfe889d68af31a15db37d7f84196d88072de3f3d",
+            "dev_auroc": 0.9872256796593515,
+            "role": "adaptive_candidate"
+          }
+        ],
+        "initial_best_dev_auroc": 0.9875532263347527,
+        "model_call_attempts": 1,
+        "training_attempts": 2
+      },
+      "selected": {
+        "candidate_sha256": "4056f0b235eec02068cadeb2ee8b8f2fc83133b09e4a6d2715060b87641b2e99",
+        "dev_auroc": 0.9882083196855552,
+        "holdout_auroc": 1.0
+      },
+      "strategy": "epipilot_heuristic"
+    },
+    {
+      "continuation": {
+        "call_cap": 4,
+        "calls_missing_usage": 0,
+        "calls_started": 3,
+        "failed_training_attempts": 0,
+        "invalid_events": 0,
+        "model_call_wall_seconds": 44.586,
+        "new_adaptive_candidates": [
+          {
+            "adaptive_attempt": 1,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 10.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "cc8d3dc51a0ff447433ff66ca643a2bb11fa4400edef7f6069f6d1475cca795e",
+            "cumulative_fit_count": 3,
+            "status": "success",
+            "training_seconds": 0.797754,
+            "trial_dev_auroc": 0.9810022928267278
+          },
+          {
+            "adaptive_attempt": 2,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 2.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "2e94c3b1c0a8ffe54115d316cc7ee2cc8ea32d7af2b7bef895508dfdc75ab570",
+            "cumulative_fit_count": 4,
+            "status": "success",
+            "training_seconds": 0.806824,
+            "trial_dev_auroc": 0.9859154929577465
+          }
+        ],
+        "repeated_parent_candidates": [
+          {
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "repeat_proposals": 1
+          }
+        ],
+        "successful_calls": 3,
+        "successful_training_attempts": 2,
+        "terminal_reason": "candidate fit completed; selection uses only measured dev AUROC",
+        "timeout_calls": 0,
+        "training_attempt_cap": 2,
+        "training_attempts": 2,
+        "training_seconds": 1.604578,
+        "unused_call_slots": 1,
+        "unused_training_slots": 0,
+        "usage": {
+          "cached_input_tokens": 0,
+          "input_tokens": 38076,
+          "output_tokens": 830
+        }
+      },
+      "dataset": "WDBC",
+      "estimator_seed": 42,
+      "parent": {
+        "candidates": [
+          {
+            "candidate": {
+              "C": 1.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "dev_auroc": 0.9875532263347527,
+            "role": "common_baseline"
+          },
+          {
+            "candidate": {
+              "C": 0.1,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+            "dev_auroc": 0.9836226662299378,
+            "role": "adaptive_candidate"
+          }
+        ],
+        "initial_best_dev_auroc": 0.9875532263347527,
+        "model_call_attempts": 1,
+        "training_attempts": 2
+      },
+      "selected": {
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "dev_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "strategy": "agent_only"
+    },
+    {
+      "continuation": {
+        "call_cap": 4,
+        "calls_missing_usage": 0,
+        "calls_started": 2,
+        "failed_training_attempts": 0,
+        "invalid_events": 0,
+        "model_call_wall_seconds": 28.2754,
+        "new_adaptive_candidates": [
+          {
+            "adaptive_attempt": 1,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 10.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "cc8d3dc51a0ff447433ff66ca643a2bb11fa4400edef7f6069f6d1475cca795e",
+            "cumulative_fit_count": 3,
+            "status": "success",
+            "training_seconds": 0.831344,
+            "trial_dev_auroc": 0.9810022928267278
+          },
+          {
+            "adaptive_attempt": 2,
+            "best_dev_auroc_after_fit": 0.9882083196855552,
+            "candidate": {
+              "C": 0.5,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "2cca73176fe7220102c2194f83dcfda3b1807644fa0764431a5c85ca9cc6f936",
+            "cumulative_fit_count": 4,
+            "status": "success",
+            "training_seconds": 0.805223,
+            "trial_dev_auroc": 0.9882083196855552
+          }
+        ],
+        "repeated_parent_candidates": [],
+        "successful_calls": 2,
+        "successful_training_attempts": 2,
+        "terminal_reason": "candidate fit completed; selection uses only measured dev AUROC",
+        "timeout_calls": 0,
+        "training_attempt_cap": 2,
+        "training_attempts": 2,
+        "training_seconds": 1.6365669999999999,
+        "unused_call_slots": 2,
+        "unused_training_slots": 0,
+        "usage": {
+          "cached_input_tokens": 0,
+          "input_tokens": 25368,
+          "output_tokens": 937
+        }
+      },
+      "dataset": "WDBC",
+      "estimator_seed": 137,
+      "parent": {
+        "candidates": [
+          {
+            "candidate": {
+              "C": 1.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "dev_auroc": 0.9875532263347527,
+            "role": "common_baseline"
+          },
+          {
+            "candidate": {
+              "C": 0.1,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+            "dev_auroc": 0.9836226662299378,
+            "role": "adaptive_candidate"
+          }
+        ],
+        "initial_best_dev_auroc": 0.9875532263347527,
+        "model_call_attempts": 1,
+        "training_attempts": 2
+      },
+      "selected": {
+        "candidate_sha256": "2cca73176fe7220102c2194f83dcfda3b1807644fa0764431a5c85ca9cc6f936",
+        "dev_auroc": 0.9882083196855552,
+        "holdout_auroc": 1.0
+      },
+      "strategy": "agent_only"
+    },
+    {
+      "continuation": {
+        "call_cap": 4,
+        "calls_missing_usage": 0,
+        "calls_started": 2,
+        "failed_training_attempts": 0,
+        "invalid_events": 0,
+        "model_call_wall_seconds": 60.4253,
+        "new_adaptive_candidates": [
+          {
+            "adaptive_attempt": 1,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 0.3,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "9b7f72c9d7669318efa92975cfe889d68af31a15db37d7f84196d88072de3f3d",
+            "cumulative_fit_count": 3,
+            "status": "success",
+            "training_seconds": 0.813085,
+            "trial_dev_auroc": 0.9872256796593515
+          },
+          {
+            "adaptive_attempt": 2,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 2.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "2e94c3b1c0a8ffe54115d316cc7ee2cc8ea32d7af2b7bef895508dfdc75ab570",
+            "cumulative_fit_count": 4,
+            "status": "success",
+            "training_seconds": 0.816019,
+            "trial_dev_auroc": 0.9859154929577465
+          }
+        ],
+        "repeated_parent_candidates": [],
+        "successful_calls": 2,
+        "successful_training_attempts": 2,
+        "terminal_reason": "candidate fit completed; selection uses only measured dev AUROC",
+        "timeout_calls": 0,
+        "training_attempt_cap": 2,
+        "training_attempts": 2,
+        "training_seconds": 1.6291039999999999,
+        "unused_call_slots": 2,
+        "unused_training_slots": 0,
+        "usage": {
+          "cached_input_tokens": 0,
+          "input_tokens": 27634,
+          "output_tokens": 4544
+        }
+      },
+      "dataset": "WDBC",
+      "estimator_seed": 137,
+      "parent": {
+        "candidates": [
+          {
+            "candidate": {
+              "C": 1.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "dev_auroc": 0.9875532263347527,
+            "role": "common_baseline"
+          },
+          {
+            "candidate": {
+              "class_weight": "none",
+              "feature_mode": "all",
+              "max_depth": 5,
+              "min_samples_leaf": 2,
+              "model": "forest",
+              "n_estimators": 40
+            },
+            "candidate_sha256": "653b9e505d38827026e256787cb5021595c96ce3cd78a24160675489a440f579",
+            "dev_auroc": 0.9767441860465117,
+            "role": "adaptive_candidate"
+          }
+        ],
+        "initial_best_dev_auroc": 0.9875532263347527,
+        "model_call_attempts": 1,
+        "training_attempts": 2
+      },
+      "selected": {
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "dev_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "strategy": "epipilot_conditional"
+    },
+    {
+      "continuation": {
+        "call_cap": 4,
+        "calls_missing_usage": 1,
+        "calls_started": 2,
+        "failed_training_attempts": 0,
+        "invalid_events": 0,
+        "model_call_wall_seconds": 181.4878,
+        "new_adaptive_candidates": [
+          {
+            "adaptive_attempt": 1,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 3.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "099313e7523cec14ef2eb0eea8fcd9edd56260fa4dd05b54c2e80cc64889cb62",
+            "cumulative_fit_count": 3,
+            "status": "success",
+            "training_seconds": 0.806968,
+            "trial_dev_auroc": 0.9849328529315428
+          }
+        ],
+        "repeated_parent_candidates": [],
+        "successful_calls": 1,
+        "successful_training_attempts": 1,
+        "terminal_reason": "charged continuation call was refused or timed out",
+        "timeout_calls": 1,
+        "training_attempt_cap": 2,
+        "training_attempts": 1,
+        "training_seconds": 0.806968,
+        "unused_call_slots": 2,
+        "unused_training_slots": 1,
+        "usage": {
+          "cached_input_tokens": 0,
+          "input_tokens": 13162,
+          "output_tokens": 1778
+        }
+      },
+      "dataset": "WDBC",
+      "estimator_seed": 42,
+      "parent": {
+        "candidates": [
+          {
+            "candidate": {
+              "C": 1.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "dev_auroc": 0.9875532263347527,
+            "role": "common_baseline"
+          },
+          {
+            "candidate": {
+              "C": 0.3,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "9b7f72c9d7669318efa92975cfe889d68af31a15db37d7f84196d88072de3f3d",
+            "dev_auroc": 0.9872256796593515,
+            "role": "adaptive_candidate"
+          }
+        ],
+        "initial_best_dev_auroc": 0.9875532263347527,
+        "model_call_attempts": 1,
+        "training_attempts": 2
+      },
+      "selected": {
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "dev_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "strategy": "epipilot_heuristic"
+    },
+    {
+      "continuation": {
+        "call_cap": 4,
+        "calls_missing_usage": 0,
+        "calls_started": 4,
+        "failed_training_attempts": 0,
+        "invalid_events": 0,
+        "model_call_wall_seconds": 52.916,
+        "new_adaptive_candidates": [],
+        "repeated_parent_candidates": [
+          {
+            "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+            "repeat_proposals": 2
+          },
+          {
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "repeat_proposals": 2
+          }
+        ],
+        "successful_calls": 4,
+        "successful_training_attempts": 0,
+        "terminal_reason": "repeat proposal recorded and skipped without training",
+        "timeout_calls": 0,
+        "training_attempt_cap": 2,
+        "training_attempts": 0,
+        "training_seconds": 0.0,
+        "unused_call_slots": 0,
+        "unused_training_slots": 2,
+        "usage": {
+          "cached_input_tokens": 23808,
+          "input_tokens": 50850,
+          "output_tokens": 1553
+        }
+      },
+      "dataset": "WDBC",
+      "estimator_seed": 42,
+      "parent": {
+        "candidates": [
+          {
+            "candidate": {
+              "C": 1.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "dev_auroc": 0.9875532263347527,
+            "role": "common_baseline"
+          },
+          {
+            "candidate": {
+              "C": 0.1,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+            "dev_auroc": 0.9836226662299378,
+            "role": "adaptive_candidate"
+          }
+        ],
+        "initial_best_dev_auroc": 0.9875532263347527,
+        "model_call_attempts": 2,
+        "training_attempts": 2
+      },
+      "selected": {
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "dev_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "strategy": "memory_only"
+    },
+    {
+      "continuation": {
+        "call_cap": 4,
+        "calls_missing_usage": 0,
+        "calls_started": 2,
+        "failed_training_attempts": 0,
+        "invalid_events": 0,
+        "model_call_wall_seconds": 52.1953,
+        "new_adaptive_candidates": [
+          {
+            "adaptive_attempt": 1,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 0.3,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "9b7f72c9d7669318efa92975cfe889d68af31a15db37d7f84196d88072de3f3d",
+            "cumulative_fit_count": 3,
+            "status": "success",
+            "training_seconds": 0.822922,
+            "trial_dev_auroc": 0.9872256796593515
+          },
+          {
+            "adaptive_attempt": 2,
+            "best_dev_auroc_after_fit": 0.9875532263347527,
+            "candidate": {
+              "C": 0.1,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+            "cumulative_fit_count": 4,
+            "status": "success",
+            "training_seconds": 0.795797,
+            "trial_dev_auroc": 0.9836226662299378
+          }
+        ],
+        "repeated_parent_candidates": [],
+        "successful_calls": 2,
+        "successful_training_attempts": 2,
+        "terminal_reason": "candidate fit completed; selection uses only measured dev AUROC",
+        "timeout_calls": 0,
+        "training_attempt_cap": 2,
+        "training_attempts": 2,
+        "training_seconds": 1.618719,
+        "unused_call_slots": 2,
+        "unused_training_slots": 0,
+        "usage": {
+          "cached_input_tokens": 0,
+          "input_tokens": 27680,
+          "output_tokens": 2953
+        }
+      },
+      "dataset": "WDBC",
+      "estimator_seed": 42,
+      "parent": {
+        "candidates": [
+          {
+            "candidate": {
+              "C": 1.0,
+              "class_weight": "none",
+              "feature_mode": "all",
+              "model": "logistic"
+            },
+            "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+            "dev_auroc": 0.9875532263347527,
+            "role": "common_baseline"
+          },
+          {
+            "candidate": {
+              "class_weight": "none",
+              "feature_mode": "all",
+              "max_depth": 4,
+              "min_samples_leaf": 2,
+              "model": "forest",
+              "n_estimators": 100
+            },
+            "candidate_sha256": "f891bb4d933baa98d58ee932255eb1d34f972047efd95648612d95345f0038da",
+            "dev_auroc": 0.9793645594497216,
+            "role": "adaptive_candidate"
+          }
+        ],
+        "initial_best_dev_auroc": 0.9875532263347527,
+        "model_call_attempts": 1,
+        "training_attempts": 2
+      },
+      "selected": {
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "dev_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "strategy": "epipilot_conditional"
+    }
+  ],
+  "dataset": {
+    "development_rows": 114,
+    "estimator_seeds": [
+      42,
+      137
+    ],
+    "features": 30,
+    "holdout_data_or_hash_published": false,
+    "holdout_rows": 114,
+    "name": "WDBC",
+    "rows": 569,
+    "seed_interpretation": "Paired estimator seeds on the same split, not independent dataset samples.",
+    "split": "Frozen stratified 60/20/20 split, random_state=20272025; the continuation reused the existing split."
+  },
+  "evidence_artifacts": {
+    "continuation_manifest.json": "cd99d5eda4ece02ae12bc66b7a2dbfa17e53974783f5760417ba1b0bbc0bdc28",
+    "pilot_work/events.jsonl": "b6a2de12da26224404ab47b0a861dce7beb14b46652c2c41ffdd7304de45f1a5",
+    "pilot_work/final.completed": "fcf9f9ab31a01938a7c6bc3487f4c23135e3775d5e610b0508626c5e9bdc474e",
+    "pilot_work/final.started": "7135a5c1f304f2e3d9e8fc6df1385ea8e15491dfaa5c4a67a43fdae2dda4514d",
+    "pilot_work/meta.json": "4af768e0e1e1856bed4446ea5756407d9bc7a52d90e32577f0a462ce183e5365",
+    "summary.json": "db7d7ac39010cc5413d555a16c12d106b7500929382e2578a7bcf755648e6b62"
+  },
+  "execution_code_revision": "031a41085c7330d634c15ab34aa7996f22acc11e",
+  "holdout_evaluation": {
+    "common_baseline_holdout_auroc_by_seed": {
+      "137": 1.0,
+      "42": 1.0
+    },
+    "continuation_submission_holdout_auroc_by_cell": {
+      "agent_only__wdbc__137": 1.0,
+      "agent_only__wdbc__42": 1.0,
+      "epipilot_conditional__wdbc__137": 1.0,
+      "epipilot_conditional__wdbc__42": 1.0,
+      "epipilot_heuristic__wdbc__137": 1.0,
+      "epipilot_heuristic__wdbc__42": 1.0,
+      "memory_only__wdbc__137": 1.0,
+      "memory_only__wdbc__42": 1.0
+    },
+    "evaluation_records": 10,
+    "frozen_submission_count": 8,
+    "opened_after_all_cells_and_calls_frozen": true,
+    "qualification": "descriptive re-evaluation of a previously accessed holdout; continuation researchers received no test rows or scores"
+  },
+  "interpretation": "Bounded continuation of the same WDBC split after the holdout had already been evaluated. Descriptive only; the ceiling holdout scores and two paired estimator seeds do not establish a strategy advantage or long-horizon research capability.",
+  "model": {
+    "reasoning_effort": "max",
+    "requested": "gpt-6-luna"
+  },
+  "parent_protocol_revision": "b045629f898e7fea49346cc64a74b452fbe540a9",
+  "post_run_aggregate_correction": {
+    "correction": "This receipt joins immutable training-start and terminal events by stable trial ID; the runner now builds the same derived per-cell summary and a regression test checks its totals.",
+    "experiment_rerun": false,
+    "issue": "The original runner summary filtered terminal fit events by cell metadata they do not carry, so its per-cell new_successful_fits and new_training_seconds appeared as zero.",
+    "ledger_mutated": false
+  },
+  "protocol_version": 2,
+  "publication_limits": {
+    "holdout_data_or_hash_included": false,
+    "local_machine_paths_included": false,
+    "raw_event_ledger_included": false,
+    "raw_model_prompts_or_outputs_included": false
+  },
+  "randomization": {
+    "cell_order": [
+      {
+        "dataset": "WDBC",
+        "estimator_seed": 137,
+        "strategy": "memory_only"
+      },
+      {
+        "dataset": "WDBC",
+        "estimator_seed": 137,
+        "strategy": "epipilot_heuristic"
+      },
+      {
+        "dataset": "WDBC",
+        "estimator_seed": 42,
+        "strategy": "agent_only"
+      },
+      {
+        "dataset": "WDBC",
+        "estimator_seed": 137,
+        "strategy": "agent_only"
+      },
+      {
+        "dataset": "WDBC",
+        "estimator_seed": 137,
+        "strategy": "epipilot_conditional"
+      },
+      {
+        "dataset": "WDBC",
+        "estimator_seed": 42,
+        "strategy": "epipilot_heuristic"
+      },
+      {
+        "dataset": "WDBC",
+        "estimator_seed": 42,
+        "strategy": "memory_only"
+      },
+      {
+        "dataset": "WDBC",
+        "estimator_seed": 42,
+        "strategy": "epipilot_conditional"
+      }
+    ],
+    "execution_order_seed": 20271029
+  },
+  "recorded_date": "2026-10-27",
+  "schema_version": 1,
+  "status": "completed",
+  "strategy_rollups": {
+    "agent_only": {
+      "cells": 2,
+      "holdout_aurocs": [
+        1.0,
+        1.0
+      ],
+      "mean_final_dev_auroc": 0.987880773010154,
+      "mean_final_dev_change_from_parent_best": 0.0003275466754012468,
+      "new_calls": 5,
+      "new_training_attempts": 4,
+      "repeated_proposals": 1,
+      "successful_calls": 5,
+      "successful_training_attempts": 4,
+      "timeouts": 0
+    },
+    "epipilot_conditional": {
+      "cells": 2,
+      "holdout_aurocs": [
+        1.0,
+        1.0
+      ],
+      "mean_final_dev_auroc": 0.9875532263347527,
+      "mean_final_dev_change_from_parent_best": 0.0,
+      "new_calls": 4,
+      "new_training_attempts": 4,
+      "repeated_proposals": 0,
+      "successful_calls": 4,
+      "successful_training_attempts": 4,
+      "timeouts": 0
+    },
+    "epipilot_heuristic": {
+      "cells": 2,
+      "holdout_aurocs": [
+        1.0,
+        1.0
+      ],
+      "mean_final_dev_auroc": 0.987880773010154,
+      "mean_final_dev_change_from_parent_best": 0.0003275466754012468,
+      "new_calls": 4,
+      "new_training_attempts": 3,
+      "repeated_proposals": 0,
+      "successful_calls": 3,
+      "successful_training_attempts": 3,
+      "timeouts": 1
+    },
+    "memory_only": {
+      "cells": 2,
+      "holdout_aurocs": [
+        1.0,
+        1.0
+      ],
+      "mean_final_dev_auroc": 0.9875532263347527,
+      "mean_final_dev_change_from_parent_best": 0.0,
+      "new_calls": 8,
+      "new_training_attempts": 0,
+      "repeated_proposals": 8,
+      "successful_calls": 8,
+      "successful_training_attempts": 0,
+      "timeouts": 0
+    }
+  },
+  "study": "ResearchBench-T1 WDBC budgeted continuation"
+}
