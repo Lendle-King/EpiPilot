@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -84,12 +85,21 @@ def test_guarded_run_preserves_the_stderr_tail_after_startup_noise(
 
     monkeypatch.setattr(guard, "_psutil", lambda: FakePsutil)
     code = (
-        "import sys; "
+        "import json, sys; "
+        "sys.stdout.write(json.dumps({'type':'info','message':'Initialize ' + ('x' * 10000)})); "
+        "sys.stdout.write('\\n'); "
+        "sys.stdout.write(json.dumps({'type':'error','error':{'type':'invalid_request_error',"
+        "'code':'bad_schema','message':'server rejected schema'}})); "
+        "sys.stdout.write('\\n'); sys.stdout.flush(); "
         "sys.stderr.write('STARTUP_PREFIX_ONLY' + ('x' * 10000)); "
         "sys.stderr.write('\\nFINAL_DIAGNOSTIC: bad_schema')"
     )
     result = guard.guarded_run([sys.executable, "-c", code], cwd=tmp_path, timeout=4)
     assert result.returncode == 0
+    output_rows = [json.loads(line) for line in result.stdout.splitlines()]
+    assert output_rows[0]["message"].startswith("Initialize ")
+    assert output_rows[1]["type"] == "error"
+    assert output_rows[1]["error"]["message"] == "server rejected schema"
     assert "FINAL_DIAGNOSTIC: bad_schema" in result.stderr
     assert "STARTUP_PREFIX_ONLY" not in result.stderr
 
