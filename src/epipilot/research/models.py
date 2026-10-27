@@ -45,6 +45,22 @@ class ProposalKind(StrEnum):
     VERIFY = "verify"
 
 
+class ExplorationStage(StrEnum):
+    EXPLORATION = "exploration"
+    OPTIMIZATION = "optimization"
+
+
+class ExplorationDimension(StrEnum):
+    EVALUATION = "evaluation_reliability"
+    BOTTLENECK = "bottleneck"
+    SOLUTION_SPACE = "solution_space"
+    CONDITIONAL = "conditional_dependence"
+    INTERACTION = "interaction"
+    BOUNDS = "attainable_bounds"
+    ROBUSTNESS = "robustness"
+    COST = "resource_cost"
+
+
 class MetricDirection(StrEnum):
     AT_LEAST = "at_least"
     AT_MOST = "at_most"
@@ -67,6 +83,16 @@ class ResearchGoal(Record):
     user_approved: bool = True
 
 
+class ExplorationConfig(Record):
+    """Opt-in research-stage gate; all experimental evidence stays in the v2 event log."""
+
+    enabled: bool = True
+    stage: ExplorationStage = ExplorationStage.EXPLORATION
+    budget_share: float = Field(default=0.2, gt=0, le=1, allow_inf_nan=False)
+    reason: str = Field(min_length=8)
+    acknowledged_reopenings: list[str] = Field(default_factory=list)
+
+
 class Unknown(Record):
     id: str = Field(min_length=1)
     question: str = Field(min_length=1)
@@ -87,6 +113,21 @@ class Claim(Record):
     contradicting_evidence_ids: list[str] = Field(default_factory=list)
     inconclusive_evidence_ids: list[str] = Field(default_factory=list)
     superseded_by: str | None = None
+
+
+class ProblemInsight(Record):
+    """Agent-authored algorithm guidance; never a scientifically validated fact."""
+
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    dimension: ExplorationDimension
+    scope: str = Field(min_length=1)
+    claim_statuses: dict[str, ClaimStatus] = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+    recommendation: str = Field(min_length=1)
+    avoidance: str = ""
+    rationale: str = Field(min_length=8)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class Proposal(Record):
@@ -291,6 +332,8 @@ class OnboardingSnapshot(Record):
 
 class ResearchState(Record):
     goal: ResearchGoal | None = None
+    exploration: ExplorationConfig | None = None
+    problem_insights: dict[str, ProblemInsight] = Field(default_factory=dict)
     unknowns: dict[str, Unknown] = Field(default_factory=dict)
     claims: dict[str, Claim] = Field(default_factory=dict)
     proposals: dict[str, Proposal] = Field(default_factory=dict)
@@ -329,6 +372,43 @@ class ResearchState(Record):
     @property
     def remaining(self) -> float:
         return 0.0 if self.goal is None else max(0.0, self.goal.budget - self.spent - self.reserved)
+
+    @property
+    def exploration_spent(self) -> float:
+        """Actual exploratory costs, including failed Scout and aborted probe runs."""
+        experiments = sum(
+            exp.actual_cost
+            for exp in self.experiments.values()
+            if self.proposals[exp.proposal_id].kind is ProposalKind.EXPLORE
+        )
+        aborted = sum(
+            contract.aborted_cost
+            for contract in self.contracts.values()
+            if self.proposals[contract.proposal_id].kind is ProposalKind.EXPLORE
+        )
+        return experiments + aborted + sum(run.actual_cost for run in self.scout_runs.values())
+
+    @property
+    def exploration_reserved(self) -> float:
+        contracts = sum(
+            contract.max_cost
+            for contract in self.contracts.values()
+            if contract.status is ContractStatus.RUNNING
+            and self.proposals[contract.proposal_id].kind is ProposalKind.EXPLORE
+        )
+        scout = sum(
+            run.reserved_cost
+            for run in self.scout_runs.values()
+            if run.status is ScoutStatus.RUNNING
+        )
+        return contracts + scout
+
+    @property
+    def exploration_remaining(self) -> float:
+        if self.exploration is None or self.goal is None:
+            return 0.0
+        cap = self.goal.budget * self.exploration.budget_share
+        return max(0.0, min(self.remaining, cap - self.exploration_spent - self.exploration_reserved))
 
     @property
     def overrun(self) -> float:
