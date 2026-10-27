@@ -408,7 +408,9 @@ class ResearchState(Record):
         if self.exploration is None or self.goal is None:
             return 0.0
         cap = self.goal.budget * self.exploration.budget_share
-        return max(0.0, min(self.remaining, cap - self.exploration_spent - self.exploration_reserved))
+        return max(
+            0.0, min(self.remaining, cap - self.exploration_spent - self.exploration_reserved)
+        )
 
     @property
     def overrun(self) -> float:
