@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-10-27",
+  "study": "ResearchBench-T1 bounded four-policy WDBC Pilot",
+  "status": "incomplete_missing_cells",
+  "interpretation": "Incomplete descriptive Pilot; no complete paired comparison or strategy advantage claim is supported.",
+  "runtime": {
+    "model": "gpt-6-luna",
+    "model_reasoning_effort": "max",
+    "controller_revision": "54b5501c33709f5a3141080ed39c50fb66162555",
+    "recovery_revisions": [
+      "f47ec2d919953781e2b3411472d6beec169dd731",
+      "c7264d3f74f157813a38ecdabfc46e332bdc8d7b",
+      "95f9670be040ebf4e0c7852e9ae4564c04ce43ee",
+      "432a104597e9158e45b23affa7790223b350185d",
+      "256e15bfe484f49835852d2ff39aee4c9b2ecd02",
+      "cb51ae75edc5c8ce5a31293bc70299d542cfe7e0",
+      "9fcf4f57bb261a269fbff5bed3d6e0d905169a0d",
+      "54b5501c33709f5a3141080ed39c50fb66162555"
+    ]
+  },
+  "dataset": {
+    "name": "WDBC",
+    "source_sha256": "fed3eb72d0575ef6192293f5093c6e801b1476b577d0386bf4455504522172ed",
+    "split": "stratified 60/20/20; shared by all cells",
+    "split_seed": 20272025,
+    "train_rows": 341,
+    "train_sha256": "ce81c90eaf146955abae45bb2f071abaaf153b727adfc19813da5ab1a7c02d7d",
+    "development_rows": 114,
+    "development_sha256": "ba4f0ff2eda9f4111cc65f2829f5a6009869acc66facd60737474a5868774c1a",
+    "holdout_rows": 114,
+    "holdout_materialized": false,
+    "holdout_evaluated": false
+  },
+  "frozen_budget": {
+    "cells": 8,
+    "call_cap_per_cell": 4,
+    "global_call_cap": 32,
+    "training_cap_per_cell": 2,
+    "seconds_per_training_cap": 15,
+    "training_seconds_cap_per_cell": 30
+  },
+  "cumulative_execution": {
+    "unique_model_call_attempts": 25,
+    "model_call_outcomes": {
+      "success": 12,
+      "failed": 12,
+      "timeout": 1
+    },
+    "open_calls": 0,
+    "duplicate_call_ids": 0,
+    "completed_training_attempts": 8,
+    "training_worker_seconds": 6.413077,
+    "development_target_auroc": 0.95,
+    "training_trials_attaining_target": 8,
+    "submitted_candidates": 5,
+    "cells_without_candidate": 3,
+    "provider_request_count": "unknown",
+    "provider_cost": "not metered"
+  },
+  "usage_when_available": {
+    "calls_with_usage": 12,
+    "calls_missing_usage": 13,
+    "input_tokens": 151867,
+    "output_tokens": 15097,
+    "cached_input_tokens": 11904
+  },
+  "audit_counts": {
+    "invalid_call_or_response_incidents": 12,
+    "repeated_candidate_incidents": 1,
+    "unsupported_claim_incidents": 0,
+    "human_interventions": 0
+  },
+  "cells": [
+    {
+      "strategy": "memory_only",
+      "seed": 42,
+      "calls": 4,
+      "training_attempts": 0,
+      "best_development_auroc": null,
+      "submitted": false,
+      "terminal_outcome": "failed",
+      "terminal_reason": "per-cell model-call budget exhausted"
+    },
+    {
+      "strategy": "agent_only",
+      "seed": 42,
+      "calls": 4,
+      "training_attempts": 2,
+      "best_development_auroc": 0.9875532263347527,
+      "best_candidate": {
+        "model": "logistic",
+        "C": 1,
+        "feature_mode": "numeric_only",
+        "class_weight": "none"
+      },
+      "best_candidate_sha256": "8e6879c43e8e772e23231234ebb6d87e342c5d33fee477aab79cfb5d278c80a5",
+      "submitted": true,
+      "terminal_outcome": "submitted"
+    },
+    {
+      "strategy": "memory_only",
+      "seed": 137,
+      "calls": 4,
+      "training_attempts": 1,
+      "best_development_auroc": 0.9875532263347527,
+      "best_candidate": {
+        "model": "logistic",
+        "C": 1.0,
+        "feature_mode": "all",
+        "class_weight": "none"
+      },
+      "best_candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+      "submitted": true,
+      "terminal_outcome": "submitted",
+      "notes": "A repeated candidate was recorded; no replacement trial was run."
+    },
+    {
+      "strategy": "epipilot_heuristic",
+      "seed": 137,
+      "calls": 3,
+      "training_attempts": 1,
+      "best_development_auroc": 0.9875532263347527,
+      "best_candidate": {
+        "model": "logistic",
+        "C": 1,
+        "feature_mode": "all",
+        "class_weight": "none"
+      },
+      "best_candidate_sha256": "bc833fa4e1a16f81d53736748b073bc26634137159d1bb23313178996e269916",
+      "submitted": true,
+      "terminal_outcome": "submitted",
+      "notes": "A later timed-out call remains failed; this candidate was independently hash-verified from an earlier completed training trial."
+    },
+    {
+      "strategy": "epipilot_conditional",
+      "seed": 137,
+      "calls": 2,
+      "training_attempts": 0,
+      "best_development_auroc": null,
+      "submitted": false,
+      "terminal_outcome": "stopped",
+      "terminal_reason": "conditional policy returned nonpositive net information value"
+    },
+    {
+      "strategy": "epipilot_heuristic",
+      "seed": 42,
+      "calls": 3,
+      "training_attempts": 2,
+      "best_development_auroc": 0.9882083196855552,
+      "best_candidate": {
+        "model": "logistic",
+        "C": 0.5,
+        "feature_mode": "all",
+        "class_weight": "none"
+      },
+      "best_candidate_sha256": "2cca73176fe7220102c2194f83dcfda3b1807644fa0764431a5c85ca9cc6f936",
+      "submitted": true,
+      "terminal_outcome": "submitted"
+    },
+    {
+      "strategy": "agent_only",
+      "seed": 137,
+      "calls": 3,
+      "training_attempts": 2,
+      "best_development_auroc": 0.9875532263347527,
+      "best_candidate": {
+        "model": "logistic",
+        "C": 1.0,
+        "feature_mode": "all",
+        "class_weight": "none"
+      },
+      "best_candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+      "submitted": true,
+      "terminal_outcome": "submitted"
+    },
+    {
+      "strategy": "epipilot_conditional",
+      "seed": 42,
+      "calls": 2,
+      "training_attempts": 0,
+      "best_development_auroc": null,
+      "submitted": false,
+      "terminal_outcome": "stopped",
+      "terminal_reason": "conditional policy returned nonpositive net information value"
+    }
+  ],
+  "conditional_decisions": [
+    {
+      "seed": 137,
+      "proposal": "call2_c1",
+      "probabilities": [0.18, 0.62, 0.15, 0.05],
+      "value_of_information": 0.0,
+      "normalized_cost": 0.3,
+      "risk_penalty": 0.03,
+      "net_value": -0.32999999999999996,
+      "calibration_samples": 0
+    },
+    {
+      "seed": 137,
+      "proposal": "call2_c2",
+      "probabilities": [0.24, 0.49, 0.19, 0.08],
+      "value_of_information": 5.551115123125783e-17,
+      "normalized_cost": 0.3,
+      "risk_penalty": 0.04000000000000001,
+      "net_value": -0.33999999999999997,
+      "calibration_samples": 0
+    },
+    {
+      "seed": 42,
+      "proposal": "call2_c1",
+      "probabilities": [0.16, 0.35, 0.41, 0.08],
+      "value_of_information": -5.551115123125783e-17,
+      "normalized_cost": 0.3,
+      "risk_penalty": 0.016,
+      "net_value": -0.31600000000000006,
+      "calibration_samples": 0
+    },
+    {
+      "seed": 42,
+      "proposal": "call2_c2",
+      "probabilities": [0.18, 0.34, 0.39, 0.09],
+      "value_of_information": 0.0,
+      "normalized_cost": 0.3,
+      "risk_penalty": 0.018,
+      "net_value": -0.318,
+      "calibration_samples": 0
+    }
+  ],
+  "candidate_hash_note": "Hash differences can reflect numeric serialization: Logistic C=1 and C=1.0 are numerically equivalent but normalize to distinct JSON hashes. WDBC all-feature and numeric-only modes select the same columns.",
+  "evidence_hashes": {
+    "recovery_7_manifest": "7bbe1a782e48351f8b5d47738981725e8f5fcfd76ef1c1f5e2ea10c8ff66423f",
+    "recovery_7_events": "7fe65da4518ce4c4e72c6b9ebc2100d3c15410d6a0060dcf53c459ba386e1d3e",
+    "recovery_7_summary": "ee2123c0422f1a95e4ebd546a9dd94a0db2e569be9417331d691c7b41891036e",
+    "recovery_7_lineage": "b00f2e1622c5f41db4f503aadb92007d0ffd46d497cb7d6ccb1bf165660a7aff",
+    "recovery_6_manifest": "7c35d08cf2203bf4c4d1cf36be5a6dda39a004963cbd2606e7ca973cda87c079",
+    "recovery_6_events": "506b0d5a752a85a40f4a1df834eb7081824cc44b2bd6b6c19647a05cc9213313",
+    "recovery_6_summary": "546512e6eee1ce5f704fce487fd2fcd2d6a521e04e9d2602f1d40fe40f277e53"
+  },
+  "publication_limits": {
+    "raw_model_prompts_or_outputs_included": false,
+    "raw_event_ledger_included": false,
+    "holdout_data_or_scores_included": false,
+    "local_machine_paths_included": false
+  }
+}

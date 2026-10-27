@@ -206,3 +206,6 @@ cells had no candidate and holdout evaluation remained sealed. The full
 cumulative ledger, Conditional stop audit, candidate-hash findings, and
 recommendations for a new frozen Pilot are in
 [`RESEARCHBENCH_T1_FINAL_HANDOFF.md`](RESEARCHBENCH_T1_FINAL_HANDOFF.md).
+The sanitized, portable aggregate receipt is
+[`RESEARCHBENCH_T1_PILOT_RECEIPT.json`](RESEARCHBENCH_T1_PILOT_RECEIPT.json);
+the raw linked ledgers and provider output were not published.

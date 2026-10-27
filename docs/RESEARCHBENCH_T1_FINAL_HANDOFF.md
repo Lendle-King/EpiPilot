@@ -85,4 +85,4 @@ Recovery 7 used controller revision `54b5501c33709f5a3141080ed39c50fb66162555` a
 
 The immutable Recovery 6 parent hashes still match the values embedded in Recovery 7: manifest/meta `7c35d08cf2203bf4c4d1cf36be5a6dda39a004963cbd2606e7ca973cda87c079`, ledger `506b0d5a752a85a40f4a1df834eb7081824cc44b2bd6b6c19647a05cc9213313`, summary `546512e6eee1ce5f704fce487fd2fcd2d6a521e04e9d2602f1d40fe40f277e53`, and seed-137 heuristic submission `12106bc953bf35025f5c6aaced73f8c800e2c9d3593a2512fe8172da978e38cd`.
 
-Full artifacts remain in the local task directory `T1_Pilot_Recovery_7/`; the root-level `T1_Pilot_Recovery_7_PROGRESS.json` is the linked-ledger cumulative audit. No raw model prompts or full CLI sessions are included in this report.
+The sanitized, portable aggregate receipt is [`RESEARCHBENCH_T1_PILOT_RECEIPT.json`](RESEARCHBENCH_T1_PILOT_RECEIPT.json). It preserves cell outcomes, aggregate usage when available, candidate hashes, Conditional score components, and evidence hashes without machine paths. The raw linked event ledgers remain local and are not published; no raw model prompts, provider outputs, or full CLI sessions are included.
