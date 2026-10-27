@@ -46,6 +46,13 @@ dev = [
 
 ui = ["fastapi>=0.115", "uvicorn>=0.30"]
 
+t1 = [
+  "numpy>=1.26,<3",
+  "pandas>=2,<3",
+  "scikit-learn>=1.4,<2",
+  "psutil>=5.9,<9",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/epipilot"]
 
@@ -92,6 +99,7 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
+pythonpath = ["."]
 testpaths = ["tests"]
 addopts = [
   "-ra",

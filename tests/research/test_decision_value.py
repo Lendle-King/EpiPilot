@@ -24,7 +24,7 @@ from epipilot.research.decision_value import (
     rank_decision,
     score_estimate,
 )
-from epipilot.research.models import Proposal, ProposalKind
+from epipilot.research.models import Proposal, ProposalKind, ResearchGoal, ResearchState
 from epipilot.research.store import ResearchStore
 
 
@@ -46,6 +46,15 @@ def root(tmp_path: Path) -> Path:
     subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True, capture_output=True)
     return repo
+
+
+def test_fixed_budget_reserve_is_not_available_to_research_decisions() -> None:
+    state = ResearchState(
+        goal=ResearchGoal(statement="Pilot", budget=50.0),
+        fixed_reserve=20.0,
+    )
+    assert state.remaining == 30.0
+    assert state.overrun == 0.0
 
 
 def make_estimate(proposal_id: str = "P", option: str | None = "CHILD") -> DecisionEstimate:
@@ -156,6 +165,12 @@ def test_frozen_forecast_requires_approved_proposal_and_real_evidence(root: Path
     assert score.value_of_information > 0
     assert score.enabled_before == (True, False)
     assert score.enabled_after[0] == (True, True)
+    auroc_scale_score = rank_decision(before, est, cost_penalty_scale=0.0, risk_penalty_scale=0.0)
+    assert auroc_scale_score.normalized_cost > 0
+    assert auroc_scale_score.risk_penalty == 0
+    assert auroc_scale_score.net_value == pytest.approx(auroc_scale_score.value_of_information)
+    with pytest.raises(ValueError, match="penalty scales"):
+        rank_decision(before, est, cost_penalty_scale=-1.0)
     register(store, root)
     frozen = store.load()[0].decision_forecasts["PRE-1"]
     assert frozen.estimate == est

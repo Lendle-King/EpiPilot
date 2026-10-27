@@ -6,14 +6,14 @@ import argparse
 import json
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from epipilot.core.models import utc_now
 from epipilot.research.benchmark import compare_suite
-from epipilot.research.decision_models import DecisionEstimate
+from epipilot.research.decision_models import DecisionEstimate, DecisionScore
 from epipilot.research.decision_value import rank_decision
 from epipilot.research.models import (
     Claim,
@@ -340,7 +340,12 @@ def _safe_verifier(parts: list[str]) -> list[str]:
     return argv
 
 
-def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str, object]:
+def _next_action(
+    state: ResearchState,
+    *,
+    policy: str = "heuristic",
+    decision_ranker: Callable[[ResearchState, DecisionEstimate], DecisionScore] = rank_decision,
+) -> dict[str, object]:
     """Prioritize existing work and use an explicitly selected research policy."""
     if policy not in {"heuristic", "conditional"}:
         raise ValueError("unknown research policy")
@@ -389,7 +394,7 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
         scores = []
         for estimate in state.decision_estimates.values():
             try:
-                scores.append(rank_decision(state, estimate))
+                scores.append(decision_ranker(state, estimate))
             except ValueError:
                 # Only active, budget/dependency-feasible proposals are eligible.
                 continue

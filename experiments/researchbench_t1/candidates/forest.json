@@ -1,0 +1,1 @@
+{"model":"forest","feature_mode":"all","n_estimators":64,"max_depth":7,"min_samples_leaf":2,"class_weight":"balanced"}
