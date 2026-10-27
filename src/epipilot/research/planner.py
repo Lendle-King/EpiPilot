@@ -91,9 +91,10 @@ def _runnable_after(
     """A child must be affordable and have no other unresolved dependencies."""
     if child.status != "proposed" or parent.id not in child.depends_on:
         return False
-    if parent.estimated_cost + child.estimated_cost > (
-        state.remaining if max_cost is None else min(state.remaining, max_cost)
-    ) + 1e-9:
+    if (
+        parent.estimated_cost + child.estimated_cost
+        > (state.remaining if max_cost is None else min(state.remaining, max_cost)) + 1e-9
+    ):
         return False
     return all(
         dependency == parent.id or state.proposals[dependency].status == "completed"
