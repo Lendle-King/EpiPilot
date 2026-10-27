@@ -29,7 +29,10 @@ for _path in (REPO_ROOT / "src", REPO_ROOT):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-from experiments.researchbench_t1.pilot_controller import run_pilot  # noqa: E402
+from experiments.researchbench_t1.pilot_controller import (  # noqa: E402
+    prepare_pilot_recovery,
+    run_pilot,
+)
 from experiments.researchbench_t1.resource_guard import (  # noqa: E402
     ResourceRefusal,
     guarded_run,
@@ -53,6 +56,7 @@ ALLOWED_MODES = (
     "offline_smoke",
     "pilot_one_cell",
     "pilot_prepare",
+    "pilot_recover_prepare",
     "pilot",
 )
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
@@ -185,27 +189,45 @@ def _redacted_agent_env() -> dict[str, str]:
 
 def _count_pilot_calls(root: Path) -> int:
     events = root / "pilot_work" / "events.jsonl"
-    if not events.is_file():
-        return 0
     try:
-        return sum(
-            json.loads(line).get("kind") == "agent_call_started"
-            for line in events.read_text(encoding="utf-8").splitlines()
+        current = (
+            sum(
+                json.loads(line).get("kind") == "agent_call_started"
+                for line in events.read_text(encoding="utf-8").splitlines()
+            )
+            if events.is_file()
+            else 0
         )
+        meta_path = root / "pilot_work" / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
+        previous = sum(
+            int(value)
+            for value in meta.get("recovery", {}).get("prior_call_attempts_by_cell", {}).values()
+        )
+        return previous + current
     except (OSError, ValueError):
         return 0
 
 
 def _count_pilot_processes(root: Path) -> int:
     events = root / "pilot_work" / "events.jsonl"
-    if not events.is_file():
-        return 0
     try:
-        return sum(
-            json.loads(line).get("process_started") is True
-            for line in events.read_text(encoding="utf-8").splitlines()
-            if json.loads(line).get("kind") == "agent_call_finished"
+        current = (
+            sum(
+                json.loads(line).get("process_started") is True
+                for line in events.read_text(encoding="utf-8").splitlines()
+                if json.loads(line).get("kind") == "agent_call_finished"
+            )
+            if events.is_file()
+            else 0
         )
+        meta_path = root / "pilot_work" / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
+        previous = sum(
+            int(value)
+            for value in meta.get("recovery", {}).get("prior_process_starts_by_cell", {}).values()
+        )
+        return previous + current
     except (OSError, ValueError):
         return 0
 
@@ -433,7 +455,13 @@ def validated_development_metrics(
 
 
 def run(
-    mode: str, provider: str, model: str, confirm: str, root: Path, seed: int = 42
+    mode: str,
+    provider: str,
+    model: str,
+    confirm: str,
+    root: Path,
+    seed: int = 42,
+    origin_results: Path | None = None,
 ) -> dict[str, Any]:
     if mode not in ALLOWED_MODES or provider not in ALLOWED_PROVIDERS:
         raise MacRunBlocked("unknown mode or provider")
@@ -490,6 +518,18 @@ def run(
             "holdout_materialized": False,
             "model_calls_started": 0,
         }
+    if mode == "pilot_recover_prepare":
+        inspect_host()
+        if origin_results is None:
+            raise MacRunBlocked("recovery preparation requires --origin-results")
+        try:
+            return prepare_pilot_recovery(
+                root=root,
+                origin_root=origin_results,
+                t1_call=lambda *args, timeout=90: _t1(*args, timeout=timeout),
+            )
+        except MacRunBlocked as exc:
+            raise BenchmarkError("guarded Pilot recovery preparation failed") from exc
     if mode == "pilot":
         if confirm != "RUN_FOUR_POLICY_PILOT":
             raise MacRunBlocked("four-policy Pilot requires RUN_FOUR_POLICY_PILOT")
@@ -526,14 +566,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirm", default="")
     parser.add_argument("--seed", type=int, choices=[42, 137], default=42)
     parser.add_argument("--results", type=Path, required=True)
+    parser.add_argument("--origin-results", type=Path)
     args = parser.parse_args(argv)
     root = args.results.absolute()
     if args.mode == "pilot":
         expected_entries = {"pilot_work", "pilot_vault", "prepare_summary.json"}
+        actual_entries = {path.name for path in root.iterdir()} if root.is_dir() else set()
         if (
             not root.is_dir()
             or root.is_symlink()
-            or {path.name for path in root.iterdir()} != expected_entries
+            or (
+                actual_entries != expected_entries
+                and actual_entries != expected_entries | {"summary.json"}
+            )
         ):
             print(
                 json.dumps(
@@ -564,10 +609,22 @@ def main(argv: list[str] | None = None) -> int:
     }
     try:
         with single_runner_lock():
-            outcome = run(args.mode, args.provider, args.model, args.confirm, root, args.seed)
+            outcome = run(
+                args.mode,
+                args.provider,
+                args.model,
+                args.confirm,
+                root,
+                args.seed,
+                args.origin_results,
+            )
         summary.update(outcome)
-        summary["status"] = "completed"
-        returncode = 0
+        if outcome.get("pilot_run_status") == "paused_for_infrastructure":
+            summary["status"] = "paused_for_infrastructure"
+            returncode = 2
+        else:
+            summary["status"] = "completed"
+            returncode = 0
     except (MacRunBlocked, ResourceRefusal, ValueError, KeyError, OSError) as exc:
         summary["safe_reason"] = str(exc)
         returncode = 2
@@ -579,7 +636,11 @@ def main(argv: list[str] | None = None) -> int:
         summary["model_attempt_started"] = bool(pilot_processes or one_cell_started)
         summary["model_call_attempts"] = pilot_calls
         summary["codex_process_attempts"] = pilot_processes + int(one_cell_started)
-        summary_name = "prepare_summary.json" if args.mode == "pilot_prepare" else "summary.json"
+        summary_name = (
+            "prepare_summary.json"
+            if args.mode in {"pilot_prepare", "pilot_recover_prepare"}
+            else "summary.json"
+        )
         (root / summary_name).write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )

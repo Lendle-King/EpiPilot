@@ -11,7 +11,17 @@ import pytest
 from experiments.researchbench_t1 import mac_agent_runner as mac
 from experiments.researchbench_t1 import pilot_controller
 from experiments.researchbench_t1 import t1 as t1_module
-from experiments.researchbench_t1.t1 import finalize, perform_trial, select, setup
+from experiments.researchbench_t1.t1 import (
+    finalize,
+    perform_trial,
+    read_json,
+    record_agent_call_finished,
+    record_agent_call_started,
+    record_cell_terminal,
+    select,
+    setup,
+    status,
+)
 
 
 def _candidate(c: float) -> dict[str, Any]:
@@ -247,3 +257,143 @@ def test_formal_pilot_entry_runs_all_strategies_and_freezes_before_holdout(
     assert any(value.endswith("conditional')") for value in strategy_rows)
     assert outcome["manual_interventions"] == 0
     assert outcome["unsupported_claims"] == 0
+
+
+def test_nonzero_cli_exit_is_redacted_and_pauses_after_first_cell(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    root = tmp_path / "pilot-results"
+    root.mkdir(mode=0o700)
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "c" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "c" * 40)
+    setup(work, vault, "pilot", {}, True)
+    monkeypatch.setenv("OPENAI_API_KEY", "env-secret-value-for-redaction")
+    call_count = 0
+
+    def failed_cli(
+        argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int, started_marker: Path
+    ) -> Any:
+        nonlocal call_count
+        call_count += 1
+        started_marker.write_text("started", encoding="utf-8")
+        assert argv[argv.index("--model") + 1] == "gpt-6-luna"
+        assert argv[argv.index("-c") + 1] == 'model_reasoning_effort="max"'
+        assert timeout == 150
+        assert env["OPENAI_API_KEY"] == "env-secret-value-for-redaction"
+        return SimpleNamespace(
+            returncode=73,
+            stdout='{"type":"error"}\n',
+            stderr=(
+                "Authorization: Bearer literal-secret-token; "
+                "OPENAI_API_KEY=env-secret-value-for-redaction"
+            ),
+        )
+
+    def unexpected_trial(*_args: str, **_kwargs: Any) -> dict[str, Any]:
+        raise AssertionError("a failed infrastructure call must not start training")
+
+    result = pilot_controller.run_pilot(
+        root=root,
+        codex="/mock/codex",
+        confirm="RUN_FOUR_POLICY_PILOT",
+        guarded_call=failed_cli,
+        t1_call=unexpected_trial,
+        inspect=lambda: None,
+    )
+    events = [
+        json.loads(row) for row in (work / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    finished = next(row for row in events if row["kind"] == "agent_call_finished")
+    assert call_count == 1
+    assert result["pilot_run_status"] == "paused_for_infrastructure"
+    assert result["training_trials"] == 0
+    assert result["holdout_evaluated"] is False
+    assert finished["exit_code"] == 73
+    assert finished["failure_classification"] == "cli_nonzero_exit"
+    assert finished["stdout_event_types"] == ["error"]
+    assert "literal-secret-token" not in finished["stderr_excerpt_redacted"]
+    assert "env-secret-value-for-redaction" not in finished["stderr_excerpt_redacted"]
+    assert finished["stderr_excerpt_redacted"].count("[REDACTED") >= 2
+    assert status(work)["model_call_attempts"] == 1
+    assert status(work)["terminal_cells"] == 1
+
+
+def test_cli_output_schemas_are_valid_json_schema() -> None:
+    jsonschema = pytest.importorskip("jsonschema")
+    for arm in ("agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"):
+        for purpose in ("decision", "memory_note"):
+            jsonschema.Draft202012Validator.check_schema(pilot_controller._schema(arm, purpose))
+
+
+def test_recovery_manifest_links_prior_failures_and_cumulative_call_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    origin = tmp_path / "T1_Pilot_Results"
+    origin.mkdir(mode=0o700)
+    origin_work, origin_vault = origin / "pilot_work", origin / "pilot_vault"
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "a" * 40)
+    setup(origin_work, origin_vault, "pilot", {}, True)
+    origin_meta = read_json(origin_work / "meta.json")
+    for arm, dataset, seed in origin_meta["execution_order"]:
+        call_id = f"{arm}-{dataset}-{seed}-call-1"
+        record_agent_call_started(origin_work, arm, dataset, seed, call_id, "decision")
+        record_agent_call_finished(
+            origin_work,
+            call_id,
+            "failed",
+            {
+                "usage_available": False,
+                "process_started": True,
+                "turn_count": 0,
+                "tool_event_count": 0,
+            },
+        )
+        record_cell_terminal(origin_work, arm, dataset, seed, "failed", "synthetic origin failure")
+    (origin / "summary.json").write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "model_call_attempts": 8,
+                "training_trials": 0,
+                "holdout_evaluated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    recovery = tmp_path / "T1_Pilot_Recovery"
+    recovery.mkdir(mode=0o700)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "b" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "b" * 40)
+
+    def fake_t1(*args: str, timeout: int = 60) -> dict[str, Any]:
+        assert args[0] == "init" and timeout == 90
+        values = list(args[1:])
+        return setup(
+            Path(values[values.index("--work") + 1]),
+            Path(values[values.index("--vault") + 1]),
+            "pilot",
+            {},
+            True,
+        )
+
+    prepared = pilot_controller.prepare_pilot_recovery(
+        root=recovery, origin_root=origin, t1_call=fake_t1
+    )
+    meta, recovery_work, _recovery_vault = pilot_controller._load_frozen_pilot(recovery)
+    first_arm, first_dataset, first_seed = meta["execution_order"][0]
+    call_id = f"{first_arm}-{first_dataset}-{first_seed}-call-2"
+    ordinal = record_agent_call_started(
+        recovery_work, first_arm, first_dataset, first_seed, call_id, "decision"
+    )
+    assert ordinal == 2
+    assert prepared["prior_call_attempts"] == 8
+    assert prepared["remaining_total_call_budget"] == 24
+    assert sum(meta["recovery"]["prior_call_attempts_by_cell"].values()) == 8
+    assert sum(meta["recovery"]["prior_call_attempts_by_cell"].values()) + ordinal - 1 == 9
+    assert status(recovery_work)["model_call_attempts"] == 9

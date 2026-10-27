@@ -611,11 +611,16 @@ def record_agent_call_started(
             e for e in starts if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
         ]
         cap = meta["profile"]["max_model_decision_calls_per_cell"]
-        if len(cell_starts) >= cap:
+        prior_counts = meta.get("recovery", {}).get("prior_call_attempts_by_cell", {})
+        prior_cell_calls = int(prior_counts.get(f"{arm}__{dataset}__{seed}", 0))
+        prior_total_calls = sum(int(value) for value in prior_counts.values())
+        if prior_cell_calls + len(cell_starts) >= cap:
             raise BenchmarkError("per-cell model decision-call budget exhausted")
+        if prior_total_calls + len(starts) >= meta["cell_count"] * cap:
+            raise BenchmarkError("global model decision-call safety ceiling exhausted")
         if any(e["call_id"] == call_id for e in starts):
             raise BenchmarkError("duplicate model call identifier")
-        ordinal = len(cell_starts) + 1
+        ordinal = prior_cell_calls + len(cell_starts) + 1
         event(
             work,
             {
@@ -650,6 +655,10 @@ def record_agent_call_finished(
         "usage_available",
         "retry_controls",
         "process_started",
+        "exit_code",
+        "failure_classification",
+        "stderr_excerpt_redacted",
+        "stdout_event_types",
     }
     if set(safe) - allowed:
         raise BenchmarkError("unexpected model-call telemetry field")
@@ -1047,6 +1056,11 @@ def status(work: Path) -> dict[str, Any]:
     terminals = [e for e in history if e["kind"] == "cell_terminal"]
     incidents = [e for e in history if e["kind"] == "cell_incident"]
     target = meta.get("target_auroc")
+    recovery = meta.get("recovery", {})
+    prior_call_counts = recovery.get("prior_call_attempts_by_cell", {})
+    prior_process_counts = recovery.get("prior_process_starts_by_cell", {})
+    prior_calls = sum(int(value) for value in prior_call_counts.values())
+    prior_processes = sum(int(value) for value in prior_process_counts.values())
     return {
         "stage": meta["stage"],
         "total_started": len(started),
@@ -1063,13 +1077,14 @@ def status(work: Path) -> dict[str, Any]:
         "required_submissions": len(meta["profile"]["datasets"])
         * len(meta["profile"]["arms"])
         * len(meta["profile"]["seeds"]),
-        "model_call_attempts": len(model_calls),
-        "model_calls_completed": len(call_finishes),
+        "model_call_attempts": prior_calls + len(model_calls),
+        "model_call_attempts_current_run": len(model_calls),
+        "model_calls_completed": prior_calls + len(call_finishes),
         "model_calls_open": len(model_calls) - len(completed_call_ids),
-        "codex_process_starts": len(process_rows),
+        "codex_process_starts": prior_processes + len(process_rows),
         "model_usage": {
             "available_call_count": len(usage_rows),
-            "missing_call_count": len(call_finishes) - len(usage_rows),
+            "missing_call_count": prior_calls + len(call_finishes) - len(usage_rows),
             "input_tokens": sum(e.get("input_tokens") or 0 for e in usage_rows),
             "output_tokens": sum(e.get("output_tokens") or 0 for e in usage_rows),
             "cached_input_tokens": sum(e.get("cached_input_tokens") or 0 for e in usage_rows),

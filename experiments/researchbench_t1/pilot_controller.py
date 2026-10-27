@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import shutil
 import tempfile
 import time
@@ -37,6 +38,7 @@ from experiments.researchbench_t1.t1 import (
     BenchmarkError,
     _code_revision,
     add_memory,
+    atomic_json,
     canonical,
     digest,
     event,
@@ -88,6 +90,71 @@ CandidateSchema: dict[str, Any] = {
         },
     ]
 }
+
+
+class ModelCallFailure(BenchmarkError):
+    def __init__(self, classification: str, *, infrastructure: bool):
+        super().__init__(f"model call failed: {classification}")
+        self.classification = classification
+        self.infrastructure = infrastructure
+
+
+def _redact_diagnostic(raw: str, *, call_dir: Path | None = None) -> str:
+    """Keep a short CLI diagnostic while removing credential-like strings."""
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+    if call_dir is not None:
+        text = text.replace(str(call_dir), "<call-dir>")
+    text = text.replace(str(Path.home()), "~")
+    patterns = (
+        (r"(?i)(authorization\s*:\s*(?:bearer|basic)\s+)[^\s,;]+", r"\1[REDACTED]"),
+        (r"(?i)\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}", "[REDACTED AUTH]"),
+        (
+            r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|x-api-key)(\s*[:=]\s*)[^\s,;]+",
+            r"\1\2[REDACTED]",
+        ),
+        (r"\bsk-[A-Za-z0-9_-]{12,}\b", "[REDACTED KEY]"),
+        (r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b", "[REDACTED TOKEN]"),
+        (r"\bgithub_pat_[A-Za-z0-9_]{20,}\b", "[REDACTED TOKEN]"),
+        (r"https?://[^\s/@:]+:[^\s/@]+@", "https://[REDACTED]@"),
+    )
+    for pattern, replacement in patterns:
+        text = re.sub(pattern, replacement, text)
+    secret_names = re.compile(r"(?i)(TOKEN|SECRET|API.?KEY|PASSWORD|CREDENTIAL|AUTH)")
+    for name, value in sorted(os.environ.items(), key=lambda pair: len(pair[1]), reverse=True):
+        if secret_names.search(name) and len(value) >= 6:
+            text = text.replace(value, "[REDACTED ENV SECRET]")
+    return "\n".join(text.splitlines())[:600]
+
+
+def _stdout_event_types(raw: str) -> list[str]:
+    result: list[str] = []
+    for line in raw.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        kind = row.get("type") if isinstance(row, dict) else None
+        if isinstance(kind, str) and kind not in result:
+            result.append(kind[:80])
+        if len(result) == 12:
+            break
+    return result
+
+
+def _replace_json_file(path: Path, data: dict[str, Any]) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "wb", dir=path.parent, prefix=".recovery-meta-", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(canonical(data))
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def _schema(arm: str, purpose: str) -> dict[str, Any]:
@@ -646,6 +713,7 @@ def model_call(
         "usage_available": False,
         "retry_controls": "request_max_retries=0,stream_max_retries=0",
     }
+    result: Any | None = None
     try:
         result = guarded_call(
             argv,
@@ -666,6 +734,8 @@ def model_call(
                 "tool_event_count": tool_events,
                 "usage_available": usage_available,
                 "process_started": started_marker.exists(),
+                "exit_code": int(result.returncode),
+                "stdout_event_types": _stdout_event_types(stdout),
             }
         )
         if usage_available:
@@ -678,10 +748,32 @@ def model_call(
             )
         if tool_events:
             outcome = "tool_use_rejected"
-            raise ValueError("tool event appeared despite restricted CLI configuration")
-        if result.returncode != 0 or turns != 1 or not response_path.is_file():
-            outcome = "timeout" if elapsed >= max_timeout else "failed"
-            raise ValueError("Codex did not return exactly one schema-qualified turn")
+            telemetry["failure_classification"] = "tool_event_rejected"
+            telemetry["stderr_excerpt_redacted"] = _redact_diagnostic(
+                result.stderr, call_dir=call_dir
+            )
+            raise ModelCallFailure("tool_event_rejected", infrastructure=True)
+        if result.returncode != 0:
+            outcome = "failed"
+            telemetry["failure_classification"] = "cli_nonzero_exit"
+            telemetry["stderr_excerpt_redacted"] = _redact_diagnostic(
+                result.stderr, call_dir=call_dir
+            )
+            raise ModelCallFailure("cli_nonzero_exit", infrastructure=True)
+        if turns != 1:
+            outcome = "failed"
+            telemetry["failure_classification"] = "unexpected_turn_count"
+            telemetry["stderr_excerpt_redacted"] = _redact_diagnostic(
+                result.stderr, call_dir=call_dir
+            )
+            raise ModelCallFailure("unexpected_turn_count", infrastructure=True)
+        if not response_path.is_file():
+            outcome = "failed"
+            telemetry["failure_classification"] = "missing_structured_output"
+            telemetry["stderr_excerpt_redacted"] = _redact_diagnostic(
+                result.stderr, call_dir=call_dir
+            )
+            raise ModelCallFailure("missing_structured_output", infrastructure=True)
         raw = response_path.read_text(encoding="utf-8")
         payload = parse_model_json(raw)
         outcome = "success"
@@ -702,6 +794,19 @@ def model_call(
         telemetry.setdefault("turn_count", 0)
         telemetry.setdefault("tool_event_count", 0)
         telemetry["process_started"] = started_marker.exists()
+        telemetry["exit_code"] = None
+        telemetry["failure_classification"] = (
+            "guard_timeout" if outcome == "timeout" else "resource_guard_refusal"
+        )
+        telemetry["stderr_excerpt_redacted"] = _redact_diagnostic(str(exc), call_dir=call_dir)
+        telemetry["stdout_event_types"] = []
+        record_agent_call_finished(work, call_id, outcome, telemetry)
+        raise
+    except ModelCallFailure:
+        telemetry.setdefault("failure_classification", "model_call_failed")
+        telemetry.setdefault("stderr_excerpt_redacted", "")
+        telemetry.setdefault("exit_code", None if result is None else int(result.returncode))
+        telemetry.setdefault("stdout_event_types", [])
         record_agent_call_finished(work, call_id, outcome, telemetry)
         raise
     except Exception as exc:
@@ -711,8 +816,25 @@ def model_call(
         telemetry.setdefault("turn_count", 0)
         telemetry.setdefault("tool_event_count", 0)
         telemetry["process_started"] = started_marker.exists()
+        telemetry["exit_code"] = None if result is None else int(result.returncode)
+        telemetry["failure_classification"] = (
+            "invalid_structured_output"
+            if response_path.exists()
+            else "local_cli_setup_error"
+            if result is None
+            else "cli_nonzero_exit"
+        )
+        telemetry["stderr_excerpt_redacted"] = _redact_diagnostic(
+            "" if result is None else result.stderr, call_dir=call_dir
+        )
+        telemetry["stdout_event_types"] = _stdout_event_types(
+            "" if result is None else result.stdout
+        )
         record_agent_call_finished(work, call_id, outcome, telemetry)
-        raise BenchmarkError(f"model_call_{outcome}: {type(exc).__name__}") from exc
+        classification = telemetry["failure_classification"]
+        raise ModelCallFailure(
+            classification, infrastructure=classification != "invalid_structured_output"
+        ) from exc
     finally:
         shutil.rmtree(call_dir, ignore_errors=True)
 
@@ -808,6 +930,8 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
     random.Random(EXECUTION_ORDER_SEED).shuffle(expected)
     if meta.get("execution_order") != [list(cell) for cell in expected]:
         raise BenchmarkError("Pilot execution order differs from the deterministic frozen order")
+    events = ledger(work)
+    recovery = meta.get("recovery")
     if (
         meta.get("cell_count") != 8
         or meta.get("per_cell_trial_budget_seconds") != 30
@@ -815,7 +939,7 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
         or meta.get("target_auroc") != 0.95
         or meta.get("final_holdout_is_off_limits_during_search") is not True
         or vault_meta.get("public_meta_sha256") != file_digest(work / "meta.json")
-        or bool(ledger(work))
+        or (bool(events) and not isinstance(recovery, dict))
         or list((work / "submissions").glob("*.json"))
         or (work / "final.started").exists()
     ):
@@ -829,7 +953,163 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
             path = work / "public" / dataset / f"{split}.csv"
             if file_digest(path) != dataset_meta["files"][split]["sha256"]:
                 raise BenchmarkError("prepared public split changed after manifest freeze")
+    if isinstance(recovery, dict):
+        origin = read_json(work / "recovery_origin.json")
+        events = ledger(work)
+        if (
+            origin.get("origin_manifest_sha256") != recovery.get("origin_manifest_sha256")
+            or origin.get("origin_ledger_sha256") != recovery.get("origin_ledger_sha256")
+            or file_digest(work / "recovery_origin.json") != recovery.get("recovery_origin_sha256")
+            or not events
+            or events[0].get("kind") != "recovery_origin"
+            or any(
+                row["kind"] == "agent_call_started"
+                and row["call_id"]
+                not in {done["call_id"] for done in events if done["kind"] == "agent_call_finished"}
+                for row in events
+            )
+        ):
+            raise BenchmarkError("recovery lineage does not match its immutable origin receipt")
+    elif events:
+        raise BenchmarkError("fresh Pilot workspace contains unexpected prior activity")
     return meta, work, vault
+
+
+def prepare_pilot_recovery(
+    *, root: Path, origin_root: Path, t1_call: Callable[..., dict[str, Any]]
+) -> dict[str, Any]:
+    """Create a linked recovery manifest without altering the failed origin."""
+    origin_work = origin_root / "pilot_work"
+    origin_vault = origin_root / "pilot_vault"
+    origin_meta = read_json(origin_work / "meta.json")
+    origin_summary = read_json(origin_root / "summary.json")
+    origin_events = ledger(origin_work)
+    origin_starts = [row for row in origin_events if row["kind"] == "agent_call_started"]
+    origin_finishes = {
+        row["call_id"]: row for row in origin_events if row["kind"] == "agent_call_finished"
+    }
+    origin_terminals = {
+        (row["arm"], row["dataset"], row["seed"]): row
+        for row in origin_events
+        if row["kind"] == "cell_terminal"
+    }
+    origin_trials = [row for row in origin_events if row["kind"] == "started"]
+    required_cells = {tuple(row) for row in origin_meta["execution_order"]}
+    calls_per_cell: dict[str, int] = {}
+    processes_per_cell: dict[str, int] = {}
+    for cell in required_cells:
+        arm, dataset, seed = cell
+        key = f"{arm}__{dataset}__{seed}"
+        matching = [
+            row for row in origin_starts if (row["arm"], row["dataset"], row["seed"]) == cell
+        ]
+        if len(matching) != 1 or matching[0]["call_id"] not in origin_finishes:
+            raise BenchmarkError("origin ledger is not the expected one-failure-per-cell run")
+        finished = origin_finishes[matching[0]["call_id"]]
+        if (
+            matching[0].get("model") != "gpt-6-luna"
+            or matching[0].get("model_reasoning_effort") != "max"
+            or finished.get("outcome") != "failed"
+            or finished.get("turn_count") != 0
+            or finished.get("process_started") is not True
+            or (arm, dataset, seed) not in origin_terminals
+            or origin_terminals[(arm, dataset, seed)].get("outcome") != "failed"
+        ):
+            raise BenchmarkError("origin run contains an outcome outside the frozen recovery case")
+        calls_per_cell[key] = len(matching)
+        processes_per_cell[key] = int(finished.get("process_started") is True)
+    if (
+        origin_meta.get("profile") != STAGES["pilot"]
+        or len(origin_starts) != 8
+        or len(origin_terminals) != 8
+        or origin_trials
+        or origin_summary.get("holdout_evaluated") is not False
+        or origin_summary.get("training_trials") != 0
+        or origin_summary.get("model_call_attempts") != 8
+        or any(
+            (origin_vault / dataset / "test.csv").exists()
+            for dataset in STAGES["pilot"]["datasets"]
+        )
+        or (origin_work / "final.started").exists()
+    ):
+        raise BenchmarkError("origin run is not an untouched holdout-sealed failure-only Pilot")
+    origin_manifest_sha = file_digest(origin_work / "meta.json")
+    origin_ledger_sha = file_digest(origin_work / "events.jsonl")
+    origin_summary_sha = file_digest(origin_root / "summary.json")
+
+    t1_call(
+        "init",
+        "--stage",
+        "pilot",
+        "--allow-agent-stage",
+        "--work",
+        str(root / "pilot_work"),
+        "--vault",
+        str(root / "pilot_vault"),
+        timeout=90,
+    )
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    recovery_meta = read_json(work / "meta.json")
+    recovery_vault = read_json(vault / "meta.json")
+    old_vault = read_json(origin_vault / "meta.json")
+    if (
+        recovery_meta.get("profile") != origin_meta.get("profile")
+        or recovery_meta.get("execution_order") != origin_meta.get("execution_order")
+        or recovery_meta.get("datasets") != origin_meta.get("datasets")
+        or recovery_vault.get("test_sha256") != old_vault.get("test_sha256")
+        or recovery_vault.get("test_indices") != old_vault.get("test_indices")
+    ):
+        raise BenchmarkError("recovery preparation did not reproduce the frozen split and holdout")
+    receipt: dict[str, Any] = {
+        "origin_results_directory": origin_root.name,
+        "origin_code_revision": origin_meta["code_revision"],
+        "origin_manifest_sha256": origin_manifest_sha,
+        "origin_ledger_sha256": origin_ledger_sha,
+        "origin_summary_sha256": origin_summary_sha,
+        "prior_call_attempts_by_cell": calls_per_cell,
+        "prior_process_starts_by_cell": processes_per_cell,
+        "prior_training_attempts_by_cell": dict.fromkeys(calls_per_cell, 0),
+        "prior_terminal_outcomes_by_cell": {
+            f"{arm}__{dataset}__{seed}": "failed" for arm, dataset, seed in required_cells
+        },
+        "provider_usage_and_cost": "unknown; no usage telemetry in origin run",
+        "holdout_evaluated_in_origin": False,
+    }
+    atomic_json(work / "recovery_origin.json", receipt)
+    recovery_meta["recovery"] = {
+        "origin_manifest_sha256": origin_manifest_sha,
+        "origin_ledger_sha256": origin_ledger_sha,
+        "origin_summary_sha256": origin_summary_sha,
+        "prior_call_attempts_by_cell": calls_per_cell,
+        "prior_process_starts_by_cell": processes_per_cell,
+        "recovery_origin_sha256": file_digest(work / "recovery_origin.json"),
+    }
+    _replace_json_file(work / "meta.json", recovery_meta)
+    recovery_vault["public_meta_sha256"] = file_digest(work / "meta.json")
+    _replace_json_file(vault / "meta.json", recovery_vault)
+    event(
+        work,
+        {
+            "kind": "recovery_origin",
+            "origin_manifest_sha256": origin_manifest_sha,
+            "origin_ledger_sha256": origin_ledger_sha,
+            "prior_call_attempts": sum(calls_per_cell.values()),
+            "prior_process_starts": sum(processes_per_cell.values()),
+            "prior_training_attempts": 0,
+        },
+    )
+    return {
+        "origin_manifest_sha256": origin_manifest_sha,
+        "origin_ledger_sha256": origin_ledger_sha,
+        "origin_code_revision": origin_meta["code_revision"],
+        "code_revision": recovery_meta["code_revision"],
+        "prior_call_attempts": sum(calls_per_cell.values()),
+        "cumulative_call_cap": 32,
+        "remaining_total_call_budget": 24,
+        "prior_training_attempts": 0,
+        "holdout_materialized": False,
+        "model_calls_started": 0,
+    }
 
 
 def run_pilot(
@@ -848,7 +1128,45 @@ def run_pilot(
     order = meta["execution_order"]
     cells: list[dict[str, Any]] = []
     stopped_for_resource = False
+    stopped_for_infrastructure = False
+    recovery = meta.get("recovery", {})
+    prior_call_counts = recovery.get("prior_call_attempts_by_cell", {})
+    existing_terminals = {
+        (row["arm"], row["dataset"], row["seed"]): row
+        for row in ledger(work)
+        if row["kind"] == "cell_terminal"
+    }
     for arm, dataset, seed in order:
+        terminal = existing_terminals.get((arm, dataset, seed))
+        if terminal:
+            cells.append(
+                {
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "outcome": terminal["outcome"],
+                    "reason": "previously terminal cell preserved during recovery",
+                    "training_attempts": sum(
+                        row["kind"] == "started"
+                        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                        for row in ledger(work)
+                    ),
+                    "model_calls": int(prior_call_counts.get(f"{arm}__{dataset}__{seed}", 0))
+                    + sum(
+                        row["kind"] == "agent_call_started"
+                        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                        for row in ledger(work)
+                    ),
+                    "successful_trials": sum(
+                        row["kind"] == "finished"
+                        and row.get("exit_code") == 0
+                        and row.get("dev_auroc") is not None
+                        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                        for row in ledger(work)
+                    ),
+                }
+            )
+            continue
         try:
             inspect()
         except ResourceRefusal:
@@ -856,7 +1174,12 @@ def run_pilot(
             break
         history: list[dict[str, Any]] = []
         notes: list[str] = []
-        call_number = 0
+        cell_key = f"{arm}__{dataset}__{seed}"
+        call_number = int(prior_call_counts.get(cell_key, 0)) + sum(
+            row["kind"] == "agent_call_started"
+            and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+            for row in ledger(work)
+        )
         cell_outcome = "failed"
         reason = "no successful trial"
         for trial_index in range(2):
@@ -1002,6 +1325,18 @@ def run_pilot(
                             raise ValueError("memory note was not source-verifiable")
                         add_memory(work, arm, dataset, seed, row["run_id"], note)
                         notes.append(note.strip())
+                    except ModelCallFailure as exc:
+                        record_cell_incident(
+                            work,
+                            arm,
+                            dataset,
+                            seed,
+                            "invalid",
+                            f"memory-note call failed: {exc.classification}",
+                        )
+                        reason = f"memory-note call failed: {exc.classification}; no retry"
+                        stopped_for_infrastructure = exc.infrastructure
+                        break
                     except (BenchmarkError, ValueError) as exc:
                         record_cell_incident(
                             work,
@@ -1026,6 +1361,18 @@ def run_pilot(
                         cell_outcome = "failed"
                 else:
                     cell_outcome = "failed"
+                break
+            except ModelCallFailure as exc:
+                record_cell_incident(
+                    work,
+                    arm,
+                    dataset,
+                    seed,
+                    "invalid",
+                    f"decision rejected: {exc.classification}",
+                )
+                reason = f"decision failed: {exc.classification}; no retry"
+                stopped_for_infrastructure = exc.infrastructure
                 break
             except (BenchmarkError, ValueError, KeyError, TypeError) as exc:
                 record_cell_incident(
@@ -1102,11 +1449,14 @@ def run_pilot(
         )
         if stopped_for_resource:
             break
+        if stopped_for_infrastructure:
+            break
     summary = status(work)
     final_result: dict[str, Any] | None = None
     expected_cells = len(meta["execution_order"])
     if (
         not stopped_for_resource
+        and not stopped_for_infrastructure
         and len(cells) == expected_cells
         and summary["submitted"] == expected_cells
         and summary["model_calls_open"] == 0
@@ -1152,6 +1502,7 @@ def run_pilot(
         "cells": cells,
         "cell_count_completed_or_terminal": len(cells),
         "stopped_for_resource_guard": stopped_for_resource,
+        "paused_for_infrastructure": stopped_for_infrastructure,
         "training_trials": summary["completed"],
         "model_call_attempts": summary["model_call_attempts"],
         "codex_process_starts": summary["codex_process_starts"],
@@ -1163,6 +1514,9 @@ def run_pilot(
         "manual_interventions": 0,
         "unsupported_claims": summary["unsupported_claim_events"],
         "holdout_evaluated": summary["holdout_evaluated"],
+        "pilot_run_status": (
+            "paused_for_infrastructure" if stopped_for_infrastructure else "completed"
+        ),
         "final_evaluation": final_result,
         "qualification": (
             "Pilot. Holdout opens only after every cell has a submitted candidate "
