@@ -387,6 +387,23 @@ def _safe_verifier(parts: list[str]) -> list[str]:
     return argv
 
 
+def _rank_for_state(state: ResearchState, limit: int = 5) -> list[object]:
+    config = state.exploration
+    if config is not None and config.enabled and config.stage is ExplorationStage.EXPLORATION:
+        return list(
+            rank_proposals(
+                state,
+                limit=limit,
+                kind=ProposalKind.EXPLORE,
+                max_cost=state.exploration_remaining,
+                phase_override="exploration",
+            )
+        )
+    if unseen_critical_reopenings(state):
+        return []
+    return list(rank_proposals(state, limit=limit))
+
+
 def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str, object]:
     """Prioritize existing work and use an explicitly selected research policy."""
     if policy not in {"heuristic", "conditional"}:
@@ -432,9 +449,59 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
                     "contract": item.model_dump(mode="json"),
                     "guidance": guidance,
                 }
+    config = state.exploration
+    if config is not None and config.enabled:
+        if config.stage is ExplorationStage.EXPLORATION:
+            gate = readiness(state)
+            if gate["ready"]:
+                return {
+                    "status": "exploration_ready",
+                    "readiness": gate,
+                    "guidance": "Use epi explore advance --reason TEXT to enter optimization.",
+                }
+            if gate["status"] == "budget_limited":
+                return {
+                    "status": "exploration_budget_limited",
+                    "readiness": gate,
+                    "guidance": (
+                        "Budget exhaustion is NOT scientific readiness. Stop, or explicitly "
+                        "authorize optimization via epi explore advance --override --reason TEXT."
+                    ),
+                }
+            if gate["status"] == "frontier_required":
+                return {
+                    "status": "exploration_frontier_required",
+                    "readiness": gate,
+                    "guidance": (
+                        "Use epi onboard, epi scout prepare and epi explore probes; "
+                        "record decision-relevant Unknowns before experiments."
+                    ),
+                }
+        elif (reopened := unseen_critical_reopenings(state)):
+            return {
+                "status": "exploration_reconsideration_required",
+                "new_counterevidence_ids": reopened,
+                "guidance": (
+                    "Use epi explore reopen --reason TEXT to investigate, or explicitly "
+                    "acknowledge the changed evidence with epi explore advance --override "
+                    "--reason TEXT."
+                ),
+            }
     if policy == "conditional":
         scores = []
         for estimate in state.decision_estimates.values():
+            proposal = state.proposals.get(estimate.proposal_id)
+            if (
+                config is not None
+                and config.enabled
+                and config.stage is ExplorationStage.EXPLORATION
+                and (
+                    proposal is None
+                    or proposal.kind is not ProposalKind.EXPLORE
+                    or proposal.estimated_cost > state.exploration_remaining + 1e-9
+                )
+            ):
+                continue
             try:
                 scores.append(rank_decision(state, estimate))
             except ValueError:
@@ -469,13 +536,23 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
                 "improvement or an empirically trained policy."
             ),
         }
-    ranked = rank_proposals(state, limit=1)
+    ranked = _rank_for_state(state, limit=1)
     if ranked:
         return {
             "status": "ready_for_agent",
             "selection_policy": "heuristic",
             "task": _plan(state, ranked[0].proposal.id),
             "continuation": "Preregister before execution; update memory after verification.",
+        }
+    if config is not None and config.enabled and config.stage is ExplorationStage.EXPLORATION:
+        return {
+            "status": "exploration_design_required",
+            "readiness": readiness(state),
+            "probe_templates": probe_templates(state, limit=3),
+            "guidance": (
+                "No affordable exploratory Proposal is registered. Design a discriminative "
+                "study from the open Unknowns, or explicitly override the phase gate."
+            ),
         }
     blocked = [
         item.id for item in state.contracts.values() if item.status is ContractStatus.BLOCKED
@@ -589,6 +666,63 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         }
     if command == "status":
         return _status(state)
+    if command == "explore":
+        if args.action == "status":
+            return readiness(state)
+        if args.action == "profile":
+            return problem_profile(state)
+        if args.action == "probes":
+            dimension = (
+                ExplorationDimension(args.dimension) if args.dimension is not None else None
+            )
+            return {
+                "templates": probe_templates(state, dimension=dimension, limit=args.limit),
+                "warning": "Templates require an actual Proposal and frozen experiment contract.",
+            }
+        if args.action == "enable":
+            config = ExplorationConfig(
+                budget_share=args.budget_share,
+                reason=args.reason,
+            )
+            store.add("exploration_enabled", config)
+        elif args.action == "disable":
+            store.append("exploration_disabled", {"reason": args.reason})
+        elif args.action == "advance":
+            store.append(
+                "exploration_advanced",
+                {"reason": args.reason, "override": args.override},
+            )
+        elif args.action == "reopen":
+            store.append("exploration_reopened", {"reason": args.reason})
+        elif args.action == "guide":
+            claim_ids = list(dict.fromkeys(args.claim))
+            if not claim_ids or len(claim_ids) != len(args.claim):
+                raise ValueError("guidance needs distinct claim references")
+            reviewed: set[str] = set()
+            statuses: dict[str, ClaimStatus] = {}
+            for claim_id in claim_ids:
+                claim = state.claims.get(claim_id)
+                if claim is None:
+                    raise ValueError("guidance references unknown claim")
+                statuses[claim_id] = claim.status
+                reviewed.update(claim.supporting_evidence_ids + claim.contradicting_evidence_ids)
+            insight = ProblemInsight(
+                id=research_id("INS"),
+                title=args.title,
+                dimension=ExplorationDimension(args.dimension),
+                scope=args.scope,
+                claim_statuses=statuses,
+                evidence_ids=sorted(reviewed),
+                recommendation=args.recommend,
+                avoidance=args.avoid,
+                rationale=args.reason,
+            )
+            store.add("problem_insight_recorded", insight)
+            return {
+                "insight": insight.model_dump(mode="json"),
+                "qualification": "Advisory scoped interpretation; not a scientific fact.",
+            }
+        return readiness(store.load()[0])
     if command == "benchmark":
         manifest = (root / args.manifest).resolve()
         if not manifest.is_relative_to(root):
@@ -620,7 +754,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             ][:20],
             "top_proposals": [
                 {"id": x.proposal.id, "score": x.score, "reason": x.rationale}
-                for x in rank_proposals(state, limit=5)
+                for x in _rank_for_state(state, limit=5)
             ],
         }
     if command == "unknown":
@@ -676,7 +810,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
                 "reason": item.rationale,
                 "cost": item.proposal.estimated_cost,
             }
-            for item in rank_proposals(state, limit=args.limit)
+            for item in _rank_for_state(state, limit=args.limit)
         ]
     if command == "plan":
         return _plan(state, args.id)
