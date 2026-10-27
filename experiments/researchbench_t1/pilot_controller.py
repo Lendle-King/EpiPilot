@@ -1178,6 +1178,314 @@ def prepare_pilot_recovery(
     }
 
 
+def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -> dict[str, Any]:
+    """Validate every immutable ancestor and derive cumulative state from its ledgers."""
+    if origin_root.is_symlink() or prior_root.is_symlink():
+        raise BenchmarkError("recovery lineage roots cannot be symlinks")
+    origin_root = origin_root.resolve()
+    prior_root = prior_root.resolve()
+    if origin_root.parent != prior_root.parent or origin_root == prior_root:
+        raise BenchmarkError("recovery lineage roots must be sibling result directories")
+
+    origin_work, origin_vault = origin_root / "pilot_work", origin_root / "pilot_vault"
+    origin_meta = read_json(origin_work / "meta.json")
+    origin_summary = read_json(origin_root / "summary.json")
+    origin_events = ledger(origin_work)
+    expected_cells = [tuple(row) for row in origin_meta.get("execution_order", [])]
+    if (
+        origin_meta.get("profile") != STAGES["pilot"]
+        or len(expected_cells) != 8
+        or len(set(expected_cells)) != 8
+        or len(origin_events) == 0
+        or origin_summary.get("model_call_attempts") != 8
+        or origin_summary.get("training_trials") != 0
+        or origin_summary.get("holdout_evaluated") is not False
+        or read_json(origin_vault / "meta.json").get("public_meta_sha256")
+        != file_digest(origin_work / "meta.json")
+    ):
+        raise BenchmarkError("root origin is not the frozen eight-call failure-only Pilot")
+    if any(
+        (origin_vault / name / "test.csv").exists() for name in origin_meta["profile"]["datasets"]
+    ):
+        raise BenchmarkError("root origin unexpectedly materialized holdout data")
+
+    root_hashes = {
+        "manifest": file_digest(origin_work / "meta.json"),
+        "ledger": file_digest(origin_work / "events.jsonl"),
+        "summary": file_digest(origin_root / "summary.json"),
+    }
+    expected_cell_keys = {
+        f"{cell_arm}__{cell_dataset}__{cell_seed}"
+        for cell_arm, cell_dataset, cell_seed in expected_cells
+    }
+    calls_by_cell = dict.fromkeys(expected_cell_keys, 0)
+    processes_by_cell = dict.fromkeys(expected_cell_keys, 0)
+    trials_by_cell = dict.fromkeys(expected_cell_keys, 0)
+    terminal_outcomes: dict[str, str] = {}
+    all_call_ids: list[str] = []
+    seen_call_ids: set[str] = set()
+
+    def consume_ledger(
+        rows: list[dict[str, Any]], *, expected_call_count: int | None = None
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        starts = [row for row in rows if row.get("kind") == "agent_call_started"]
+        finishes = [row for row in rows if row.get("kind") == "agent_call_finished"]
+        finish_by_id = {row.get("call_id"): row for row in finishes}
+        start_ids = [row.get("call_id") for row in starts]
+        event_positions = {id(row): index for index, row in enumerate(rows)}
+        if (
+            len(starts) != len(start_ids)
+            or None in start_ids
+            or len(set(start_ids)) != len(start_ids)
+            or len(finish_by_id) != len(finishes)
+            or set(start_ids) != set(finish_by_id)
+            or (expected_call_count is not None and len(starts) != expected_call_count)
+        ):
+            raise BenchmarkError("recovery lineage contains an unreconciled or duplicate call")
+        for row in starts:
+            arm_name, dataset_name, seed_value = row.get("arm"), row.get("dataset"), row.get("seed")
+            key = f"{arm_name}__{dataset_name}__{seed_value}"
+            if (
+                key not in calls_by_cell
+                or row.get("model") != "gpt-6-luna"
+                or row.get("model_reasoning_effort") != "max"
+                or finish_by_id[row["call_id"]].get("outcome") != "failed"
+                or finish_by_id[row["call_id"]].get("process_started") is not True
+                or finish_by_id[row["call_id"]].get("turn_count") != 0
+                or event_positions[id(finish_by_id[row["call_id"]])] <= event_positions[id(row)]
+            ):
+                raise BenchmarkError("recovery lineage contains a non-frozen model-call outcome")
+            calls_by_cell[key] += 1
+            expected_ordinal = calls_by_cell[key]
+            stable_id = f"{arm_name}-{dataset_name}-{seed_value}-call-{expected_ordinal}"
+            if row.get("call_ordinal") != expected_ordinal or row["call_id"] != stable_id:
+                raise BenchmarkError("recovery lineage reused or skipped a stable call identifier")
+            if row["call_id"] in seen_call_ids:
+                raise BenchmarkError("recovery lineage reused a model call identifier")
+            seen_call_ids.add(row["call_id"])
+            all_call_ids.append(row["call_id"])
+            processes_by_cell[key] += int(
+                finish_by_id[row["call_id"]].get("process_started") is True
+            )
+
+        started_trials = [row for row in rows if row.get("kind") == "started"]
+        ended_trials = [row for row in rows if row.get("kind") in {"finished", "aborted"}]
+        trial_ids = [row.get("id") for row in started_trials]
+        if (
+            None in trial_ids
+            or len(trial_ids) != len(set(trial_ids))
+            or {row.get("id") for row in ended_trials} != set(trial_ids)
+            or len(ended_trials) != len(trial_ids)
+        ):
+            raise BenchmarkError("recovery lineage contains an unreconciled training attempt")
+        for row in started_trials:
+            key = f"{row.get('arm')}__{row.get('dataset')}__{row.get('seed')}"
+            if key not in trials_by_cell:
+                raise BenchmarkError("recovery lineage contains a trial outside the frozen cells")
+            trials_by_cell[key] += 1
+
+        for row in rows:
+            if row.get("kind") == "cell_terminal":
+                key = f"{row.get('arm')}__{row.get('dataset')}__{row.get('seed')}"
+                if key not in calls_by_cell or row.get("outcome") not in {"failed", "completed"}:
+                    raise BenchmarkError("recovery lineage contains an invalid terminal event")
+                terminal_outcomes[key] = row["outcome"]
+        return starts, started_trials, finishes
+
+    _, origin_trials, _ = consume_ledger(origin_events, expected_call_count=8)
+    origin_terminals = [row for row in origin_events if row.get("kind") == "cell_terminal"]
+    if len(origin_trials) != 0 or len(origin_terminals) != 8 or len(terminal_outcomes) != 8:
+        raise BenchmarkError("root origin does not contain eight failed terminal cells")
+    for key in expected_cell_keys:
+        if calls_by_cell[key] != 1 or terminal_outcomes.get(key) != "failed":
+            raise BenchmarkError("root origin does not contain one failed call per cell")
+
+    chain_reversed: list[Path] = []
+    current = prior_root
+    visited: set[Path] = set()
+    while current != origin_root:
+        if current in visited or current.parent != origin_root.parent:
+            raise BenchmarkError("recovery lineage contains a cycle or escaped sibling directory")
+        visited.add(current)
+        receipt = read_json(current / "pilot_work" / "recovery_origin.json")
+        parent_name = receipt.get("prior_results_directory")
+        if parent_name is None:
+            parent = origin_root
+        elif (
+            not isinstance(parent_name, str)
+            or parent_name in {"", ".", ".."}
+            or Path(parent_name).name != parent_name
+        ):
+            raise BenchmarkError("recovery lineage contains an unsafe parent directory name")
+        else:
+            parent_candidate = current.parent / parent_name
+            if parent_candidate.is_symlink():
+                raise BenchmarkError("recovery lineage parent cannot be a symlink")
+            parent = parent_candidate
+        parent = parent.resolve()
+        if parent.parent != origin_root.parent or parent == current:
+            raise BenchmarkError("recovery lineage parent is not a safe sibling result directory")
+        chain_reversed.append(current)
+        current = parent
+
+    if not chain_reversed:
+        raise BenchmarkError("prior results do not contain a recovery generation")
+    chain = list(reversed(chain_reversed))
+    previous_vault_meta = read_json(origin_vault / "meta.json")
+    for current in chain:
+        work, vault = current / "pilot_work", current / "pilot_vault"
+        meta = read_json(work / "meta.json")
+        receipt_path = work / "recovery_origin.json"
+        receipt = read_json(receipt_path)
+        summary = read_json(current / "summary.json")
+        rows = ledger(work)
+        vault_meta = read_json(vault / "meta.json")
+        recovery = meta.get("recovery", {})
+        if (
+            meta.get("stage") != "pilot"
+            or meta.get("profile") != origin_meta.get("profile")
+            or meta.get("execution_order") != origin_meta.get("execution_order")
+            or meta.get("datasets") != origin_meta.get("datasets")
+            or vault_meta.get("public_meta_sha256") != file_digest(work / "meta.json")
+            or vault_meta.get("test_sha256") != previous_vault_meta.get("test_sha256")
+            or vault_meta.get("test_indices") != previous_vault_meta.get("test_indices")
+            or recovery.get("recovery_origin_sha256") != file_digest(receipt_path)
+            or not rows
+            or rows[0].get("kind") != "recovery_origin"
+            or sum(row.get("kind") == "recovery_origin" for row in rows) != 1
+            or summary.get("holdout_evaluated") is not False
+            or receipt.get("holdout_evaluated_in_ancestors", False) is not False
+            or receipt.get("origin_results_directory") != origin_root.name
+            or receipt.get("origin_manifest_sha256") != root_hashes["manifest"]
+            or receipt.get("origin_ledger_sha256") != root_hashes["ledger"]
+            or receipt.get("origin_summary_sha256") != root_hashes["summary"]
+            or recovery.get("origin_manifest_sha256") != root_hashes["manifest"]
+            or recovery.get("origin_ledger_sha256") != root_hashes["ledger"]
+            or recovery.get("origin_summary_sha256", root_hashes["summary"])
+            != root_hashes["summary"]
+        ):
+            raise BenchmarkError("recovery generation is not intact or linked to the root origin")
+        if any((vault / name / "test.csv").exists() for name in meta["profile"]["datasets"]):
+            raise BenchmarkError("recovery lineage unexpectedly materialized holdout data")
+        previous_vault_meta = vault_meta
+
+        parent_name = receipt.get("prior_results_directory")
+        if parent_name is None:
+            parent = origin_root
+        elif (
+            not isinstance(parent_name, str)
+            or parent_name in {"", ".", ".."}
+            or Path(parent_name).name != parent_name
+        ):
+            raise BenchmarkError("recovery lineage contains an unsafe parent directory name")
+        else:
+            parent = current.parent / parent_name
+        parent = parent.resolve()
+        if parent.parent != origin_root.parent or parent == current:
+            raise BenchmarkError("recovery lineage parent is not a safe sibling result directory")
+        parent_work = parent / "pilot_work"
+        parent_hashes = {
+            "manifest": file_digest(parent_work / "meta.json"),
+            "ledger": file_digest(parent_work / "events.jsonl"),
+            "summary": file_digest(parent / "summary.json"),
+        }
+        if parent == origin_root:
+            if any(
+                receipt.get(f"prior_{label}_sha256") not in (None, value)
+                for label, value in parent_hashes.items()
+            ):
+                raise BenchmarkError("legacy recovery parent hashes do not match the origin")
+        elif any(
+            receipt.get(f"prior_{label}_sha256") != value for label, value in parent_hashes.items()
+        ):
+            raise BenchmarkError("recovery generation does not hash-link its immediate parent")
+
+        prior_calls_before = dict(calls_by_cell)
+        prior_processes_before = dict(processes_by_cell)
+        prior_trials_before = dict(trials_by_cell)
+        prior_terminals_before = dict(terminal_outcomes)
+        prior_ids_before = sorted(all_call_ids)
+        for label, expected_value in (
+            ("prior_call_attempts_by_cell", prior_calls_before),
+            ("prior_process_starts_by_cell", prior_processes_before),
+            ("prior_training_attempts_by_cell", prior_trials_before),
+            ("prior_terminal_outcomes_by_cell", prior_terminals_before),
+        ):
+            if receipt.get(label) != expected_value:
+                raise BenchmarkError(f"recovery receipt {label} disagrees with ancestor ledgers")
+            if label in recovery and recovery.get(label) != expected_value:
+                raise BenchmarkError(f"recovery manifest {label} disagrees with ancestor ledgers")
+        if "prior_call_ids" in receipt and receipt.get("prior_call_ids") != prior_ids_before:
+            raise BenchmarkError("recovery receipt prior call IDs disagree with ancestor ledgers")
+        if "prior_call_ids" in recovery and recovery.get("prior_call_ids") != prior_ids_before:
+            raise BenchmarkError("recovery manifest prior call IDs disagree with ancestor ledgers")
+        if (
+            rows[0].get("prior_call_attempts") != sum(prior_calls_before.values())
+            or rows[0].get("prior_process_starts") != sum(prior_processes_before.values())
+            or rows[0].get("prior_training_attempts") != sum(prior_trials_before.values())
+            or rows[0].get("origin_manifest_sha256") != root_hashes["manifest"]
+            or rows[0].get("origin_ledger_sha256") != root_hashes["ledger"]
+            or rows[0].get("prior_manifest_sha256") not in (None, parent_hashes["manifest"])
+            or rows[0].get("prior_ledger_sha256") not in (None, parent_hashes["ledger"])
+        ):
+            raise BenchmarkError("recovery-origin event disagrees with validated lineage")
+
+        local_starts, local_trials, _ = consume_ledger(rows)
+        local_terminals = [row for row in rows if row.get("kind") == "cell_terminal"]
+        if (
+            len(local_starts) != 1
+            or len(local_trials) != 0
+            or (
+                local_terminals
+                and (
+                    len(local_terminals) != 1
+                    or local_terminals[0].get("outcome") != "failed"
+                    or (
+                        local_terminals[0].get("arm"),
+                        local_terminals[0].get("dataset"),
+                        local_terminals[0].get("seed"),
+                    )
+                    != (
+                        local_starts[0].get("arm"),
+                        local_starts[0].get("dataset"),
+                        local_starts[0].get("seed"),
+                    )
+                )
+            )
+            or summary.get("model_call_attempts") != sum(calls_by_cell.values())
+            or summary.get("training_trials") != sum(trials_by_cell.values())
+        ):
+            raise BenchmarkError("recovery generation is not a single failed-call checkpoint")
+        target = receipt.get("single_step_target")
+        if target is not None and target != ["memory_only", "wdbc", 42]:
+            raise BenchmarkError("recovery generation changed the frozen single-step target")
+        if (
+            local_starts[0].get("arm") != "memory_only"
+            or local_starts[0].get("dataset") != "wdbc"
+            or local_starts[0].get("seed") != 42
+        ):
+            raise BenchmarkError("recovery generation contains a call for another cell")
+    target_key = "memory_only__wdbc__42"
+    return {
+        "origin_hashes": root_hashes,
+        "chain": chain,
+        "prior_meta": read_json(prior_root / "pilot_work" / "meta.json"),
+        "prior_summary": read_json(prior_root / "summary.json"),
+        "prior_hashes": {
+            "manifest": file_digest(prior_root / "pilot_work" / "meta.json"),
+            "ledger": file_digest(prior_root / "pilot_work" / "events.jsonl"),
+            "summary": file_digest(prior_root / "summary.json"),
+        },
+        "calls_by_cell": calls_by_cell,
+        "processes_by_cell": processes_by_cell,
+        "trials_by_cell": trials_by_cell,
+        "terminal_outcomes": terminal_outcomes,
+        "call_ids": sorted(all_call_ids),
+        "total_calls": sum(calls_by_cell.values()),
+        "target_key": target_key,
+    }
+
+
 def prepare_pilot_single_step_recovery(
     *,
     root: Path,
@@ -1194,166 +1502,31 @@ def prepare_pilot_single_step_recovery(
     if root.exists() and any(root.iterdir()):
         raise BenchmarkError("single-step recovery destination must be empty")
 
-    origin_work, origin_vault = origin_root / "pilot_work", origin_root / "pilot_vault"
-    prior_work, prior_vault = prior_root / "pilot_work", prior_root / "pilot_vault"
-    origin_meta = read_json(origin_work / "meta.json")
-    prior_meta = read_json(prior_work / "meta.json")
-    origin_events, prior_events = ledger(origin_work), ledger(prior_work)
-    origin_summary = read_json(origin_root / "summary.json")
-    prior_summary = read_json(prior_root / "summary.json")
-    origin_receipt = read_json(prior_work / "recovery_origin.json")
-
-    origin_starts = [row for row in origin_events if row["kind"] == "agent_call_started"]
-    origin_finishes = {
-        row["call_id"]: row for row in origin_events if row["kind"] == "agent_call_finished"
-    }
-    origin_terminals = [row for row in origin_events if row["kind"] == "cell_terminal"]
-    origin_trials = [row for row in origin_events if row["kind"] == "started"]
-    expected_cells = [tuple(row) for row in origin_meta["execution_order"]]
+    lineage = _read_single_step_recovery_lineage(origin_root=origin_root, prior_root=prior_root)
+    prior_meta = lineage["prior_meta"]
+    prior_vault = prior_root / "pilot_vault"
+    root_manifest_sha = lineage["origin_hashes"]["manifest"]
+    root_ledger_sha = lineage["origin_hashes"]["ledger"]
+    root_summary_sha = lineage["origin_hashes"]["summary"]
+    prior_manifest_sha = lineage["prior_hashes"]["manifest"]
+    prior_ledger_sha = lineage["prior_hashes"]["ledger"]
+    prior_summary_sha = lineage["prior_hashes"]["summary"]
+    prior_calls_by_cell = lineage["calls_by_cell"]
+    prior_processes_by_cell = lineage["processes_by_cell"]
+    prior_trials_by_cell = lineage["trials_by_cell"]
+    prior_terminal_outcomes = lineage["terminal_outcomes"]
+    prior_call_ids = lineage["call_ids"]
+    total_prior_calls = lineage["total_calls"]
+    target_key = lineage["target_key"]
     if (
-        origin_meta.get("profile") != STAGES["pilot"]
-        or len(expected_cells) != 8
-        or len(origin_starts) != 8
-        or len(origin_terminals) != 8
-        or origin_trials
-        or origin_summary.get("model_call_attempts") != 8
-        or origin_summary.get("training_trials") != 0
-        or origin_summary.get("holdout_evaluated") is not False
-    ):
-        raise BenchmarkError("root origin is not the frozen eight-call failure-only Pilot")
-    if any(
-        (origin_vault / name / "test.csv").exists() for name in origin_meta["profile"]["datasets"]
-    ):
-        raise BenchmarkError("root origin unexpectedly materialized holdout data")
-
-    root_manifest_sha = file_digest(origin_work / "meta.json")
-    root_ledger_sha = file_digest(origin_work / "events.jsonl")
-    root_summary_sha = file_digest(origin_root / "summary.json")
-    if (
-        origin_receipt.get("origin_manifest_sha256") != root_manifest_sha
-        or origin_receipt.get("origin_ledger_sha256") != root_ledger_sha
-        or origin_receipt.get("origin_summary_sha256") != root_summary_sha
-        or prior_meta.get("recovery", {}).get("origin_manifest_sha256") != root_manifest_sha
-        or prior_meta.get("recovery", {}).get("origin_ledger_sha256") != root_ledger_sha
-    ):
-        raise BenchmarkError("prior recovery is not linked to the supplied root origin")
-
-    origin_calls_by_cell: dict[str, int] = {}
-    origin_processes_by_cell: dict[str, int] = {}
-    origin_trials_by_cell: dict[str, int] = {}
-    origin_terminals_by_cell: dict[str, str] = {}
-    for cell in expected_cells:
-        cell_arm, cell_dataset, cell_seed = cell
-        key = f"{cell_arm}__{cell_dataset}__{cell_seed}"
-        starts = [row for row in origin_starts if (row["arm"], row["dataset"], row["seed"]) == cell]
-        terminal = [
-            row for row in origin_terminals if (row["arm"], row["dataset"], row["seed"]) == cell
-        ]
-        if (
-            len(starts) != 1
-            or starts[0]["call_id"] not in origin_finishes
-            or starts[0].get("model") != "gpt-6-luna"
-            or starts[0].get("model_reasoning_effort") != "max"
-            or origin_finishes[starts[0]["call_id"]].get("outcome") != "failed"
-            or origin_finishes[starts[0]["call_id"]].get("turn_count") != 0
-            or origin_finishes[starts[0]["call_id"]].get("process_started") is not True
-            or len(terminal) != 1
-            or terminal[0].get("outcome") != "failed"
-        ):
-            raise BenchmarkError("root origin contains an unexpected cell outcome")
-        origin_calls_by_cell[key] = 1
-        origin_processes_by_cell[key] = int(
-            origin_finishes[starts[0]["call_id"]].get("process_started") is True
-        )
-        origin_trials_by_cell[key] = 0
-        origin_terminals_by_cell[key] = "failed"
-
-    current_prior_starts = [row for row in prior_events if row["kind"] == "agent_call_started"]
-    current_prior_finishes = {
-        row["call_id"]: row for row in prior_events if row["kind"] == "agent_call_finished"
-    }
-    current_prior_trials = [row for row in prior_events if row["kind"] == "started"]
-    current_prior_terminals = [row for row in prior_events if row["kind"] == "cell_terminal"]
-    target_key = f"{arm}__{dataset}__{seed}"
-    if (
-        len(current_prior_starts) != 1
-        or current_prior_starts[0].get("call_id") not in current_prior_finishes
-        or current_prior_starts[0].get("arm") != arm
-        or current_prior_starts[0].get("dataset") != dataset
-        or current_prior_starts[0].get("seed") != seed
-        or current_prior_finishes[current_prior_starts[0]["call_id"]].get("outcome") != "failed"
-        or current_prior_trials
-        or prior_summary.get("training_trials") != 0
-        or prior_summary.get("pilot_run_status") != "paused_for_infrastructure"
-    ):
-        raise BenchmarkError("prior recovery is not the expected single failed-call checkpoint")
-    declared_calls = prior_meta.get("recovery", {}).get("prior_call_attempts_by_cell", {})
-    declared_processes = prior_meta.get("recovery", {}).get("prior_process_starts_by_cell", {})
-    declared_trials = prior_meta.get("recovery", {}).get(
-        "prior_training_attempts_by_cell", origin_trials_by_cell
-    )
-    prior_calls_by_cell = dict(origin_calls_by_cell)
-    prior_processes_by_cell = dict(origin_processes_by_cell)
-    prior_trials_by_cell = dict(origin_trials_by_cell)
-    prior_terminal_outcomes = dict(origin_terminals_by_cell)
-    for row in current_prior_starts:
-        key = f"{row['arm']}__{row['dataset']}__{row['seed']}"
-        prior_calls_by_cell[key] = prior_calls_by_cell.get(key, 0) + 1
-        finish = current_prior_finishes.get(row["call_id"])
-        if finish is None:
-            raise BenchmarkError("prior recovery contains an unreconciled model call")
-        prior_processes_by_cell[key] = prior_processes_by_cell.get(key, 0) + int(
-            finish.get("process_started") is True
-        )
-    if any(
-        row["kind"] == "agent_call_started" and row["call_id"] not in current_prior_finishes
-        for row in prior_events
-    ):
-        raise BenchmarkError("prior recovery contains an unreconciled model call")
-    for row in current_prior_trials:
-        key = f"{row['arm']}__{row['dataset']}__{row['seed']}"
-        prior_trials_by_cell[key] = prior_trials_by_cell.get(key, 0) + 1
-    for row in current_prior_terminals:
-        key = f"{row['arm']}__{row['dataset']}__{row['seed']}"
-        prior_terminal_outcomes[key] = row["outcome"]
-    if (
-        declared_calls != origin_calls_by_cell
-        or declared_processes != origin_processes_by_cell
-        or declared_trials != origin_trials_by_cell
-        or prior_meta.get("recovery", {}).get("recovery_origin_sha256")
-        != file_digest(prior_work / "recovery_origin.json")
-        or read_json(prior_vault / "meta.json").get("public_meta_sha256")
-        != file_digest(prior_work / "meta.json")
-        or prior_summary.get("model_call_attempts") != sum(prior_calls_by_cell.values())
-        or prior_summary.get("holdout_evaluated") is not False
-    ):
-        raise BenchmarkError("prior recovery counters do not match their append-only ledger")
-    if any(
-        (prior_vault / name / "test.csv").exists() for name in prior_meta["profile"]["datasets"]
-    ):
-        raise BenchmarkError("prior recovery unexpectedly materialized holdout data")
-
-    prior_call_ids = sorted(
-        [row["call_id"] for row in origin_starts] + [row["call_id"] for row in current_prior_starts]
-    )
-    if len(prior_call_ids) != len(set(prior_call_ids)):
-        raise BenchmarkError("prior runs reused a model call identifier")
-    total_prior_calls = sum(prior_calls_by_cell.values())
-    if (
-        total_prior_calls != 9
-        or prior_calls_by_cell.get(target_key) != 2
-        or prior_trials_by_cell.get(target_key, 0) != 0
+        prior_trials_by_cell.get(target_key, 0) >= 2
         or prior_terminal_outcomes.get(target_key) != "failed"
         or total_prior_calls >= 32
-        or prior_calls_by_cell[target_key] >= 4
+        or prior_calls_by_cell.get(target_key, 0) >= 4
+        or any(value > 4 for value in prior_calls_by_cell.values())
+        or any(value > 2 for value in prior_trials_by_cell.values())
     ):
         raise BenchmarkError("single-step target does not match the frozen remaining budget")
-    if any(value > 4 for value in prior_calls_by_cell.values()):
-        raise BenchmarkError("prior runs exceeded the frozen per-cell call cap")
-
-    prior_manifest_sha = file_digest(prior_work / "meta.json")
-    prior_ledger_sha = file_digest(prior_work / "events.jsonl")
-    prior_summary_sha = file_digest(prior_root / "summary.json")
     t1_call(
         "init",
         "--stage",
@@ -1393,6 +1566,7 @@ def prepare_pilot_single_step_recovery(
         "prior_call_ids": prior_call_ids,
         "prior_terminal_outcomes_by_cell": prior_terminal_outcomes,
         "single_step_target": [arm, dataset, seed],
+        "recovery_ancestor_directories": [path.name for path in lineage["chain"]],
         "single_step_calls_per_invocation": 1,
         "provider_usage_and_cost": "unknown; prior run had no usage telemetry",
         "holdout_evaluated_in_ancestors": False,
@@ -1405,6 +1579,7 @@ def prepare_pilot_single_step_recovery(
         "prior_manifest_sha256": prior_manifest_sha,
         "prior_ledger_sha256": prior_ledger_sha,
         "prior_summary_sha256": prior_summary_sha,
+        "recovery_ancestor_directories": [path.name for path in lineage["chain"]],
         "prior_call_attempts_by_cell": prior_calls_by_cell,
         "prior_process_starts_by_cell": prior_processes_by_cell,
         "prior_training_attempts_by_cell": prior_trials_by_cell,
