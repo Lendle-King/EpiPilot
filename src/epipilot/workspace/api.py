@@ -16,6 +16,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
+from epipilot.research.exploration import readiness
+from epipilot.research.models import ExplorationConfig
+from epipilot.research.probe_templates import probe_templates
+from epipilot.research.problem_profile import problem_profile
+from epipilot.research.store import ResearchStore
 from epipilot.workspace.onboarding import WorkspaceStore
 from epipilot.workspace.remote_model import ThirdPartyChatModel, model_configuration
 from epipilot.workspace.research_agent import ResearchOnboardingAgent, experience_digest
@@ -37,6 +42,13 @@ class ReviewInput(BaseModel):
 
 class IntentInput(BaseModel):
     message: str = Field(min_length=1, max_length=3000)
+
+
+class ExplorationModeInput(BaseModel):
+    action: Literal["enable", "advance", "reopen", "disable"]
+    reason: str = Field(min_length=8, max_length=800)
+    budget_share: float = Field(default=0.2, gt=0, le=1, allow_inf_nan=False)
+    override: bool = False
 
 
 def _store() -> WorkspaceStore:
@@ -99,6 +111,51 @@ def review_candidate(project_id: str, candidate_id: str, body: ReviewInput) -> d
     try:
         return _store().review(project_id, candidate_id, body.decision)
     except (KeyError, ValueError) as error:
+        _raise(error)
+    return {}
+
+
+@app.get("/api/projects/{project_id}/exploration")
+def get_exploration(project_id: str) -> dict[str, object]:
+    """Read canonical v2 scientific state; never upgrade Workspace staging notes."""
+    try:
+        repository = _store().repository_root(project_id)
+        scientific, _ = ResearchStore(repository / ".research").load()
+        return {
+            "attached": True,
+            "initialized": scientific.goal is not None,
+            "readiness": readiness(scientific),
+            "profile": problem_profile(scientific),
+            "probes": probe_templates(scientific, limit=5),
+        }
+    except (KeyError, ValueError, OSError, RuntimeError) as error:
+        _raise(error)
+    return {}
+
+
+@app.post("/api/projects/{project_id}/exploration")
+def change_exploration(project_id: str, body: ExplorationModeInput) -> dict[str, object]:
+    """Explicit local user action; same event-replay invariants as the CLI."""
+    try:
+        repository = _store().repository_root(project_id)
+        scientific_store = ResearchStore(repository / ".research")
+        if body.action == "enable":
+            scientific_store.add(
+                "exploration_enabled",
+                ExplorationConfig(budget_share=body.budget_share, reason=body.reason),
+            )
+        else:
+            event_names = {
+                "advance": "exploration_advanced",
+                "reopen": "exploration_reopened",
+                "disable": "exploration_disabled",
+            }
+            scientific_store.append(
+                event_names[body.action],
+                {"reason": body.reason, "override": body.override},
+            )
+        return get_exploration(project_id)
+    except (KeyError, ValueError, OSError, RuntimeError) as error:
         _raise(error)
     return {}
 

@@ -207,12 +207,12 @@ epi explore advance --reason "Important unknowns resolved by reviewed evidence"
 ~~~
 
 During exploration, only exploratory proposals may be registered and started;
-the cap covers both diagnostic experiments and Scout. The \`epi explore profile\`
+the cap covers both diagnostic experiments and Scout. The `epi explore profile`
 projection links scoped experimental Claims to advisory algorithm
 recommendations. Unverified historical reports cannot become validated
 knowledge. If the cap is exhausted, the CLI reports insufficient evidence
 rather than treating budget exhaustion as readiness. Advancing early requires
-a recorded \`--override\`. New important counterevidence can reopen discovery.
+a recorded `--override`. New important counterevidence can reopen discovery.
 
 See [Problem Exploration Mode](docs/PROBLEM_EXPLORATION.md) for lifecycle,
 probe types, scientific limits and commands.

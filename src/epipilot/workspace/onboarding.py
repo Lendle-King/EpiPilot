@@ -153,6 +153,19 @@ class WorkspaceStore:
             raise ValueError("Choose the Git repository root")
         return root, git(root, "rev-parse", "HEAD"), git(root, "branch", "--show-current")
 
+    def repository_root(self, project_id: str) -> Path:
+        """Resolve an adopted repository again under the current allowed-root policy."""
+        with self._db() as conn:
+            record = conn.execute(
+                "SELECT repository_path FROM projects WHERE id=?", (project_id,)
+            ).fetchone()
+        if record is None:
+            raise KeyError("Unknown project")
+        if record["repository_path"] is None:
+            raise ValueError("Problem exploration requires an adopted Git repository")
+        root, _, _ = self._resolve_repo(str(record["repository_path"]))
+        return root
+
     @staticmethod
     def _event(
         conn: sqlite3.Connection, project_id: str, kind: str, payload: dict[str, Any]

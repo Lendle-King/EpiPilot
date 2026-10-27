@@ -8,7 +8,7 @@ agent, another experiment runner, or another canonical claim database.
 
 ## Enable and operate
 
-In the *target* research repository (after an explicitly approved \`epi init\`):
+In the *target* research repository (after an explicitly approved `epi init`):
 
 ~~~bash
 epi explore enable --budget-share 0.20
@@ -31,7 +31,7 @@ use the existing frozen experiment contract, resource approvals, substantive
 verifier and independent measurement checks. An accepted Scout citation is not
 scientific evidence.
 
-An exploration stage selects only \`--kind explore\` Proposals. This
+An exploration stage selects only `--kind explore` Proposals. This
 restriction is checked at planning **and** pre-registration **and** start. It
 does not silently abort or interrupt an existing experiment. Stage switches
 are rejected until pending Scout operations and registered/running/awaiting-
@@ -44,7 +44,7 @@ epi explore status
 epi explore advance --reason "Critical unknowns resolved with reviewed evidence"
 ~~~
 
-\`advance\` is allowed without override only if:
+`advance` is allowed without override only if:
 
 - There is at least one **independently measured, conclusive exploratory**
   experiment whose evidence was explicitly reviewed in a scoped Claim.
@@ -55,8 +55,8 @@ This threshold is a conservative *operational gate*, not a statistical claim
 of complete understanding. Unknowns must be intentionally marked as resolved
 through EpiPilot's existing reviewed evidence protocol.
 
-If exploratory budget is exhausted, \`epi iterate\` returns
-\`exploration_budget_limited\`, **not** \`exploration_ready\`. With explicit
+If exploratory budget is exhausted, `epi iterate` returns
+`exploration_budget_limited`, **not** `exploration_ready`. With explicit
 authorization, a human operator may elect to optimize with known uncertainty:
 
 ~~~bash
@@ -64,23 +64,23 @@ epi explore advance --override \
   --reason "Authorized optimization despite the recorded unresolved questions"
 ~~~
 
-\`advance --override\` also allows an informed phase transition where the
+`advance --override` also allows an informed phase transition where the
 readiness heuristic is inappropriate. Overrides are recorded in the append-only
 event log; they do not fabricate evidence or close Unknowns.
 
 ## Budget and resume
 
-The exploration cap is \`research_goal.budget × budget_share\`, accounting for
-actual Scout costs and \`explore\` experiment costs and their reservations or
+The exploration cap is `research_goal.budget × budget_share`, accounting for
+actual Scout costs and `explore` experiment costs and their reservations or
 aborted run costs, including exploratory work that predates mode enablement.
 The cap shares the *existing* project budget and cannot mint new resources.
 A run that exceeds its reservation still records actual cost and may overrun
 the exploration cap; subsequent reservations are blocked.
 
-\`epi iterate\` prioritizes an in-flight run, verifier or Scout operation before
+`epi iterate` prioritizes an in-flight run, verifier or Scout operation before
 any proposed action. If the same scientific question remains open but there
 is no affordable exploratory Proposal, it returns
-\`exploration_design_required\` with suggested templates.
+`exploration_design_required` with suggested templates.
 
 The user may return to original behavior through:
 
@@ -110,15 +110,15 @@ epi explore guide \
 epi explore profile
 ~~~
 
-\`guide\` cannot be registered from an unverified or inconclusive Claim.
-Guidance becomes \`stale\` automatically when new counterevidence changes
+`guide` cannot be registered from an unverified or inconclusive Claim.
+Guidance becomes `stale` automatically when new counterevidence changes
 the linked Claim status, while retaining all original traceability.
 The agent/human must interpret the result; the CLI does not silently promote
 advice into a universal scientific fact.
 
 In optimization, a new critical Unknown reopening from contradictory qualified
-evidence causes \`epi iterate\` to return
-\`exploration_reconsideration_required\`. To investigate:
+evidence causes `epi iterate` to return
+`exploration_reconsideration_required`. To investigate:
 
 ~~~bash
 epi explore reopen \
@@ -126,22 +126,22 @@ epi explore reopen \
 ~~~
 
 Alternatively the operator can explicitly acknowledge the new evidence and
-continue through \`epi explore advance --override --reason ...\`. This acknowledgment
+continue through `epi explore advance --override --reason ...`. This acknowledgment
 does not delete the contradictory evidence. The mode therefore supports
 **diagnose → optimize → reconsider → diagnose**, with observable decisions.
 
 ## Design and integrity boundaries
 
-- **Authoritative**: \`.research/events.jsonl\`, the versioned v2 event
+- **Authoritative**: `.research/events.jsonl`, the versioned v2 event
   replay, validated experiments and scoped Claims.
-- **Read models**: readiness, \`explore profile\` and the probe catalog. None
+- **Read models**: readiness, `explore profile` and the probe catalog. None
   writes claims or performs experiments on read.
 - **Executor**: the existing Codex/Kimi coding agent with its normal permissions
   and existing Git/pre-registration budget controls.
 - **Advisory**: readiness, decision forecasts and algorithm guidance are not
   causal/statistical proofs.
 - **Legacy compatibility**: missing exploration state means disabled; existing
-  v1/v2 events and default \`epi iterate\` behavior retain their semantics.
+  v1/v2 events and default `epi iterate` behavior retain their semantics.
 
 Do not use the small template catalog to justify an automatically selected
 scientific result. In particular, experiment completion/frozen metric thresholds

@@ -147,3 +147,76 @@ def test_http_onboarding_and_review(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         ).status_code
         == 200
     )
+
+
+def test_exploration_workspace_api_reuses_canonical_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from epipilot.research.models import ResearchGoal
+    from epipilot.research.store import ResearchStore
+    from epipilot.workspace.api import app
+
+    root = _fixture_repo(tmp_path / "research")
+    monkeypatch.setenv("EPIPILOT_WORKSPACE_DB", str(tmp_path / "workspace.sqlite"))
+    monkeypatch.setenv("EPIPILOT_ALLOWED_ROOTS", str(tmp_path))
+    client = TestClient(app)
+    created = client.post(
+        "/api/projects",
+        json={
+            "mode": "adopt",
+            "name": "Probe",
+            "goal": "Study failures",
+            "repository_path": str(root),
+        },
+    )
+    assert created.status_code == 201
+    url = "/api/projects/" + created.json()["id"] + "/exploration"
+    uninitialized = client.get(url)
+    assert uninitialized.status_code == 200
+    assert not uninitialized.json()["initialized"]
+    assert client.post(
+        url, json={"action": "enable", "reason": "Assess the problem first"}
+    ).status_code == 400
+
+    scientific = ResearchStore(root / ".research")
+    scientific.add("goal_set", ResearchGoal(statement="Controlled experiments", budget=10))
+    mode = client.post(
+        url,
+        json={"action": "enable", "reason": "Analyze the problem first", "budget_share": 0.2},
+    )
+    assert mode.status_code == 200
+    assert mode.json()["readiness"]["stage"] == "exploration"
+    assert mode.json()["readiness"]["exploration_budget_limit"] == 2
+    assert scientific.load()[0].exploration is not None
+    assert not scientific.load()[0].claims
+
+    assert client.post(
+        url, json={"action": "advance", "reason": "No diagnostics yet"}
+    ).status_code == 400
+    advanced = client.post(
+        url,
+        json={
+            "action": "advance",
+            "reason": "Explicitly accept optimization with uncertainty",
+            "override": True,
+        },
+    )
+    assert advanced.status_code == 200
+    assert advanced.json()["readiness"]["stage"] == "optimization"
+    assert client.post(
+        url, json={"action": "reopen", "reason": "Reconsider before optimizing"}
+    ).status_code == 200
+    assert client.post(
+        url, json={"action": "disable", "reason": "Stop exploratory gating"}
+    ).status_code == 200
+    assert not client.get(url).json()["readiness"]["enabled"]
+
+    created_no_repo = client.post(
+        "/api/projects",
+        json={"mode": "create", "name": "Empty", "goal": "Blank project"},
+    ).json()
+    assert client.get("/api/projects/" + created_no_repo["id"] + "/exploration").status_code == 400
