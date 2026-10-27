@@ -291,6 +291,23 @@ aggregate; the portable receipt preserves that same audited source. The raw
 runner summary and event ledgers remain local and are not included in the
 publication.
 
+The finalization audit records 114 holdout rows for this two-class WDBC task;
+the frozen manifest does not retain the per-class row counts. The protocol
+metadata file's observed filesystem modification time was
+`2026-10-27T14:15:17.802163Z`, and the runner began at
+`2026-10-27T14:16:00.344387Z`. The event ledger records 10 model calls started
+and finished and all eight cells terminal; its filesystem modification time
+(`14:20:12.772539Z`) precedes the final-evaluation start record
+(`14:20:13.528738Z`). That record states
+`all_submissions_frozen_all_agent_calls_reconciled_final_evaluation_started`
+and contains eight submission hashes with one unique value. The holdout
+manifest was materialized at `14:20:13.530982Z`; the finalizer completed at
+`14:20:21.394089Z` with ten evaluation records. The manifest has no embedded
+freeze timestamp, so these are observed filesystem times. The ordering and
+finalizer status document that this run did not score holdout before
+submissions and model calls closed. Per-class counts are unavailable without
+reopening the private split, which was not done during this closeout.
+
 The portable, sanitized v2 receipt is
 [`RESEARCHBENCH_T1_PILOT_V2_RECEIPT.json`](RESEARCHBENCH_T1_PILOT_V2_RECEIPT.json).
 It contains per-cell configurations, development outcomes, candidate hashes,

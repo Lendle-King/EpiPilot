@@ -27,7 +27,10 @@
       "numpy": "1.26.4",
       "pandas": "3.0.2",
       "sklearn": "1.8.0"
-    }
+    },
+    "holdout_class_count": 2,
+    "holdout_per_class_counts_recorded": false,
+    "holdout_per_class_counts_note": "Per-class holdout counts are not present in the frozen manifest; the private split was not reopened during closeout."
   },
   "randomization": {
     "execution_order_seed": 20271028,
@@ -671,7 +674,19 @@
     },
     "all_policy_submissions_same_candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
     "adaptive_candidates_scored_on_holdout": false,
-    "holdout_feedback_returned_to_agents": false
+    "holdout_feedback_returned_to_agents": false,
+    "ordering_evidence": {
+      "event_counts_before_release": {
+        "model_call_started": 10,
+        "model_call_finished": 10,
+        "cell_terminal": 8
+      },
+      "final_started_status": "all_submissions_frozen_all_agent_calls_reconciled_final_evaluation_started",
+      "frozen_submission_count": 8,
+      "unique_frozen_submission_candidate_hashes": 1,
+      "final_evaluation_count": 10,
+      "interpretation": "The runner reconciled all calls and froze all submissions before materializing the holdout; the finalizer then scored ten records."
+    }
   },
   "historical_run_separation": {
     "previous_protocol_v1_attempts": 25,
@@ -708,5 +723,14 @@
     "raw_event_ledger_included": false,
     "holdout_data_or_hash_included": false,
     "local_machine_paths_included": false
+  },
+  "run_timing_audit": {
+    "time_source": "Filesystem modification times; the protocol manifest does not embed a freeze timestamp.",
+    "protocol_metadata_mtime_utc": "2026-10-27T14:15:17.802163+00:00",
+    "runner_started_at_utc": "2026-10-27T14:16:00.344387+00:00",
+    "event_ledger_mtime_utc": "2026-10-27T14:20:12.772539+00:00",
+    "final_started_mtime_utc": "2026-10-27T14:20:13.528738+00:00",
+    "holdout_manifest_mtime_utc": "2026-10-27T14:20:13.530982+00:00",
+    "final_completed_mtime_utc": "2026-10-27T14:20:21.394089+00:00"
   }
 }
