@@ -661,6 +661,7 @@ def record_agent_call_finished(
         "failure_classification",
         "stderr_excerpt_redacted",
         "stdout_event_types",
+        "stdout_error_events",
     }
     if set(safe) - allowed:
         raise BenchmarkError("unexpected model-call telemetry field")

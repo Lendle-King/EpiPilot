@@ -283,12 +283,38 @@ def test_nonzero_cli_exit_is_redacted_and_pauses_after_first_cell(
         assert argv[argv.index("-c") + 1] == 'model_reasoning_effort="max"'
         assert timeout == 150
         assert env["OPENAI_API_KEY"] == "env-secret-value-for-redaction"
+        output_rows = [
+            {"type": "info", "message": "Initialize " + ("startup-noise " * 100)},
+            {
+                "type": "error",
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "bad_schema",
+                    "param": "text.format.schema",
+                    "message": (
+                        "schema rejected; Authorization: Bearer literal-secret-token; "
+                        "OPENAI_API_KEY=env-secret-value-for-redaction"
+                    ),
+                },
+            },
+            {
+                "type": "turn.failed",
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "bad_schema",
+                    "message": "turn failed",
+                },
+            },
+        ]
         return SimpleNamespace(
             returncode=73,
-            stdout='{"type":"error"}\n',
+            stdout="\n".join(json.dumps(row) for row in output_rows),
             stderr=(
-                "Authorization: Bearer literal-secret-token; "
-                "OPENAI_API_KEY=env-secret-value-for-redaction"
+                "INITIAL_STDERR_PREFIX_ONLY"
+                + ("x" * 2400)
+                + "\nFINAL_DIAGNOSTIC: schema validation stopped; "
+                + "Authorization: Bearer literal-secret-token; "
+                + "OPENAI_API_KEY=env-secret-value-for-redaction"
             ),
         )
 
@@ -313,9 +339,28 @@ def test_nonzero_cli_exit_is_redacted_and_pauses_after_first_cell(
     assert result["holdout_evaluated"] is False
     assert finished["exit_code"] == 73
     assert finished["failure_classification"] == "cli_nonzero_exit"
-    assert finished["stdout_event_types"] == ["error"]
+    assert finished["stdout_event_types"] == ["info", "error", "turn.failed"]
+    assert finished["stdout_error_events"] == [
+        {
+            "event_type": "error",
+            "error_type": "invalid_request_error",
+            "code": "bad_schema",
+            "param": "text.format.schema",
+            "message": (
+                "schema rejected; Authorization: Bearer [REDACTED]; OPENAI_API_KEY=[REDACTED]"
+            ),
+        },
+        {
+            "event_type": "turn.failed",
+            "error_type": "invalid_request_error",
+            "code": "bad_schema",
+            "message": "turn failed",
+        },
+    ]
     assert "literal-secret-token" not in finished["stderr_excerpt_redacted"]
     assert "env-secret-value-for-redaction" not in finished["stderr_excerpt_redacted"]
+    assert "FINAL_DIAGNOSTIC: schema validation stopped" in finished["stderr_excerpt_redacted"]
+    assert "INITIAL_STDERR_PREFIX_ONLY" not in finished["stderr_excerpt_redacted"]
     assert finished["stderr_excerpt_redacted"].count("[REDACTED") >= 2
     assert status(work)["model_call_attempts"] == 1
     assert status(work)["terminal_cells"] == 1

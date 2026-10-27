@@ -111,7 +111,9 @@ stream retries set to zero. Every call must name `gpt-6-luna` and set
 `model_reasoning_effort="max"`. The exact argv, call purpose, outcome, turn
 count, tool events, and token usage when available are kept in the append-only
 cell ledger. Missing usage stays explicitly missing. Provider-side API calls
-and billing remain unknown.
+and billing remain unknown. On CLI failures, the ledger also keeps bounded,
+redacted `error` / `turn.failed` fields and the tail of stderr; raw stdout and
+stderr are not retained.
 
 Each cell has the same candidate space, at most **two** real training trials,
 15 seconds per trial, 30 worker seconds total, and a ceiling of **four model

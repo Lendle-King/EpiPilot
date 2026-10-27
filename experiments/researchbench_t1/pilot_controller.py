@@ -99,7 +99,7 @@ class ModelCallFailure(BenchmarkError):
         self.infrastructure = infrastructure
 
 
-def _redact_diagnostic(raw: str, *, call_dir: Path | None = None) -> str:
+def _redact_diagnostic(raw: str, *, call_dir: Path | None = None, max_chars: int = 1200) -> str:
     """Keep a short CLI diagnostic while removing credential-like strings."""
     text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
     if call_dir is not None:
@@ -123,7 +123,8 @@ def _redact_diagnostic(raw: str, *, call_dir: Path | None = None) -> str:
     for name, value in sorted(os.environ.items(), key=lambda pair: len(pair[1]), reverse=True):
         if secret_names.search(name) and len(value) >= 6:
             text = text.replace(value, "[REDACTED ENV SECRET]")
-    return "\n".join(text.splitlines())[:600]
+    normalized = "\n".join(text.splitlines())
+    return normalized[-max_chars:]
 
 
 def _stdout_event_types(raw: str) -> list[str]:
@@ -137,6 +138,42 @@ def _stdout_event_types(raw: str) -> list[str]:
         if isinstance(kind, str) and kind not in result:
             result.append(kind[:80])
         if len(result) == 12:
+            break
+    return result
+
+
+def _structured_cli_errors(raw: str, *, call_dir: Path | None = None) -> list[dict[str, str]]:
+    """Extract only bounded, redacted error fields from CLI JSONL events."""
+    result: list[dict[str, str]] = []
+    for line in raw.splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, dict) or record.get("type") not in {"error", "turn.failed"}:
+            continue
+        nested = record.get("error")
+        error = nested if isinstance(nested, dict) else {}
+        row: dict[str, str] = {"event_type": str(record["type"])[:80]}
+        if isinstance(nested, str):
+            message_value: Any = nested
+        else:
+            message_value = error.get("message", record.get("message"))
+        error_type = error.get("type", record.get("error_type"))
+        code = error.get("code", record.get("code"))
+        param = error.get("param", record.get("param"))
+        for key, value in (
+            ("error_type", error_type),
+            ("code", code),
+            ("param", param),
+            ("message", message_value),
+        ):
+            if isinstance(value, str) and value:
+                row[key] = _redact_diagnostic(value, call_dir=call_dir, max_chars=1200)
+            elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                row[key] = str(value)
+        result.append(row)
+        if len(result) == 3:
             break
     return result
 
@@ -727,6 +764,7 @@ def model_call(
         turns, tool_events, input_tokens, output_tokens, cached_tokens, usage_available = (
             _usage_from_jsonl(stdout)
         )
+        error_events = _structured_cli_errors(stdout, call_dir=call_dir)
         telemetry.update(
             {
                 "elapsed_seconds": round(elapsed, 4),
@@ -736,6 +774,7 @@ def model_call(
                 "process_started": started_marker.exists(),
                 "exit_code": int(result.returncode),
                 "stdout_event_types": _stdout_event_types(stdout),
+                "stdout_error_events": error_events,
             }
         )
         if usage_available:
@@ -800,6 +839,7 @@ def model_call(
         )
         telemetry["stderr_excerpt_redacted"] = _redact_diagnostic(str(exc), call_dir=call_dir)
         telemetry["stdout_event_types"] = []
+        telemetry["stdout_error_events"] = []
         record_agent_call_finished(work, call_id, outcome, telemetry)
         raise
     except ModelCallFailure:
@@ -807,6 +847,7 @@ def model_call(
         telemetry.setdefault("stderr_excerpt_redacted", "")
         telemetry.setdefault("exit_code", None if result is None else int(result.returncode))
         telemetry.setdefault("stdout_event_types", [])
+        telemetry.setdefault("stdout_error_events", [])
         record_agent_call_finished(work, call_id, outcome, telemetry)
         raise
     except Exception as exc:
@@ -829,6 +870,9 @@ def model_call(
         )
         telemetry["stdout_event_types"] = _stdout_event_types(
             "" if result is None else result.stdout
+        )
+        telemetry["stdout_error_events"] = _structured_cli_errors(
+            "" if result is None else result.stdout, call_dir=call_dir
         )
         record_agent_call_finished(work, call_id, outcome, telemetry)
         classification = telemetry["failure_classification"]
@@ -1982,6 +2026,7 @@ def run_pilot_single_step(
                     "failure_classification",
                     "stderr_excerpt_redacted",
                     "stdout_event_types",
+                    "stdout_error_events",
                     "usage_available",
                     "input_tokens",
                     "output_tokens",

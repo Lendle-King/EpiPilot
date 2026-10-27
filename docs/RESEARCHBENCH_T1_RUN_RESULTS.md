@@ -136,8 +136,42 @@ does not indicate a successful experimental Pilot.
 The manifest, event ledger, and sanitized runner summary remain local in the
 ignored results directory `T1_Pilot_Results/` in the Codex task workspace.
 `pilot_work/events.jsonl` is the source of truth for the eight attempts;
-`summary.json` records zero trials and no holdout evaluation. No further
-model call was made after this failure-only run. Full T1 remains paused.
+`summary.json` records zero trials and no holdout evaluation. A later
+single-call recovery attempt is recorded below. Full T1 remains paused.
+
+## Single-call recovery and failure logging — 2026-10-27
+
+The bounded single-step runner and recovery manifest were committed at
+`95f9670be040ebf4e0c7852e9ae4564c04ce43ee`. Recovery_2 links the original
+manifest and ledger plus Recovery_1's manifest, ledger, and summary hashes.
+Its frozen code revision was `95f9670be040ebf4e0c7852e9ae4564c04ce43ee`.
+It carried forward all nine attempts; the target cell already used two.
+
+The normal `require_escalated` execution request launched exactly one
+`gpt-6-luna` / `max` process for `memory_only / WDBC / seed 42`, call 3 of 4.
+The CLI exited 1 after 3.927 seconds with `thread.started`, `turn.started`,
+`error`, and `turn.failed` events, but no completed turn, candidate, or usage.
+The attempt was charged to the cumulative budget: 10/32 total, target cell
+3/4, 22 calls globally remaining and one call remaining for that cell. No
+training trial ran and the holdout stayed sealed. Provider request count and
+cost are unknown.
+
+The actual stdout error message and stderr tail are **not recoverable** from
+this run. The append-only event stores event type names and a 600-character
+redacted stderr prefix; it has no stdout event payload. The runner removed its
+temporary call directory, and the command tool returned only the sanitized
+runner summary. The saved stderr prefix ends during app-server initialization,
+before any error text. No private sessions, credentials, or raw logs were
+searched. This evidence does not identify a schema, disabled-tool, provider,
+or authentication error.
+
+The logger is now changed to retain bounded, secret-redacted `error` and
+`turn.failed` fields (`type`, `message`, `code`, and `param`) plus the tail of
+stderr; raw stdout and stderr remain unpersisted. Synthetic regression tests
+place an error after startup noise and verify both event fields and stderr-tail
+retention while redacting secrets. Those fixtures validate the logger only;
+they do not explain the real failed call. T1 logging and resource-guard tests
+pass (27 tests); the working tree was committed locally without a push.
 
 ## Research conclusions allowed now
 

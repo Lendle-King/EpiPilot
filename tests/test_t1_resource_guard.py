@@ -74,6 +74,26 @@ def test_real_child_runs_without_a_process_rss_cap(
     assert result.minimum_mac_available_gib == 12.0
 
 
+def test_guarded_run_preserves_the_stderr_tail_after_startup_noise(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class FakePsutil:
+        @staticmethod
+        def virtual_memory() -> SimpleNamespace:
+            return SimpleNamespace(total=gib(16), available=gib(12))
+
+    monkeypatch.setattr(guard, "_psutil", lambda: FakePsutil)
+    code = (
+        "import sys; "
+        "sys.stderr.write('STARTUP_PREFIX_ONLY' + ('x' * 10000)); "
+        "sys.stderr.write('\\nFINAL_DIAGNOSTIC: bad_schema')"
+    )
+    result = guard.guarded_run([sys.executable, "-c", code], cwd=tmp_path, timeout=4)
+    assert result.returncode == 0
+    assert "FINAL_DIAGNOSTIC: bad_schema" in result.stderr
+    assert "STARTUP_PREFIX_ONLY" not in result.stderr
+
+
 def test_host_crossing_95_percent_kills_the_process_group(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

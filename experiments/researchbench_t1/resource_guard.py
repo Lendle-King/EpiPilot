@@ -18,6 +18,7 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 
 class ResourceRefusal(RuntimeError):
@@ -56,6 +57,16 @@ class GuardedResult:
     elapsed_seconds: float
     peak_mac_used_percent: float
     minimum_mac_available_gib: float
+
+
+def _read_tail(stream: BinaryIO, limit: int) -> bytes:
+    """Read the final bounded bytes, where command diagnostics usually appear."""
+    if limit < 0:
+        raise ValueError("tail byte limit must be nonnegative")
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    stream.seek(max(0, size - limit), os.SEEK_SET)
+    return stream.read(limit)
 
 
 def _psutil() -> object:
@@ -167,9 +178,8 @@ def guarded_run(
             _terminate_group(process)
             raise
         stdout.seek(0)
-        stderr.seek(0)
         out_bytes = stdout.read(200_001)
-        err_bytes = stderr.read(8_192)
+        err_bytes = _read_tail(stderr, 8_192)
         if len(out_bytes) > 200_000:
             raise ResourceRefusal("research subprocess generated excessive standard output")
         return GuardedResult(
