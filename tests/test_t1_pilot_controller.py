@@ -397,3 +397,199 @@ def test_recovery_manifest_links_prior_failures_and_cumulative_call_budget(
     assert sum(meta["recovery"]["prior_call_attempts_by_cell"].values()) == 8
     assert sum(meta["recovery"]["prior_call_attempts_by_cell"].values()) + ordinal - 1 == 9
     assert status(recovery_work)["model_call_attempts"] == 9
+
+
+def test_single_step_recovery_preserves_lineage_and_caps_call_and_training_work(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    origin = tmp_path / "T1_Pilot_Results"
+    origin.mkdir(mode=0o700)
+    origin_work, origin_vault = origin / "pilot_work", origin / "pilot_vault"
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "a" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "a" * 40)
+    setup(origin_work, origin_vault, "pilot", {}, True)
+    origin_meta = read_json(origin_work / "meta.json")
+    for arm, dataset, seed in origin_meta["execution_order"]:
+        call_id = f"{arm}-{dataset}-{seed}-call-1"
+        record_agent_call_started(origin_work, arm, dataset, seed, call_id, "decision")
+        record_agent_call_finished(
+            origin_work,
+            call_id,
+            "failed",
+            {"usage_available": False, "process_started": True, "turn_count": 0},
+        )
+        record_cell_terminal(origin_work, arm, dataset, seed, "failed", "origin failure")
+    (origin / "summary.json").write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "model_call_attempts": 8,
+                "training_trials": 0,
+                "holdout_evaluated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    prior = tmp_path / "T1_Pilot_Recovery_1"
+    prior.mkdir(mode=0o700)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "b" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "b" * 40)
+
+    def setup_t1(*args: str, timeout: int = 60) -> dict[str, Any]:
+        assert args[0] == "init" and timeout == 90
+        values = list(args[1:])
+        return setup(
+            Path(values[values.index("--work") + 1]),
+            Path(values[values.index("--vault") + 1]),
+            "pilot",
+            {},
+            True,
+        )
+
+    pilot_controller.prepare_pilot_recovery(root=prior, origin_root=origin, t1_call=setup_t1)
+    prior_work = prior / "pilot_work"
+    target = ("memory_only", "wdbc", 42)
+    second_id = "memory_only-wdbc-42-call-2"
+    record_agent_call_started(prior_work, *target, second_id, "decision")
+    record_agent_call_finished(
+        prior_work,
+        second_id,
+        "failed",
+        {"usage_available": False, "process_started": True, "turn_count": 0},
+    )
+    record_cell_terminal(prior_work, *target, "failed", "recovery failure")
+    (prior / "summary.json").write_text(
+        json.dumps(
+            {
+                "status": "paused_for_infrastructure",
+                "pilot_run_status": "paused_for_infrastructure",
+                "model_call_attempts": 9,
+                "training_trials": 0,
+                "holdout_evaluated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    recovery = tmp_path / "T1_Pilot_Recovery_2"
+    recovery.mkdir(mode=0o700)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "c" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "c" * 40)
+    prepared = pilot_controller.prepare_pilot_single_step_recovery(
+        root=recovery,
+        origin_root=origin,
+        prior_root=prior,
+        t1_call=setup_t1,
+        arm=target[0],
+        dataset=target[1],
+        seed=target[2],
+    )
+    meta, work, vault = pilot_controller._load_frozen_pilot(recovery)
+    assert prepared["prior_call_attempts"] == 9
+    assert prepared["remaining_total_call_budget"] == 23
+    assert prepared["target_prior_call_attempts"] == 2
+    assert prepared["target_remaining_call_budget"] == 2
+    assert meta["code_revision"] == "c" * 40
+    assert sum(meta["recovery"]["prior_call_attempts_by_cell"].values()) == 9
+    assert len(meta["recovery"]["prior_call_ids"]) == 9
+    assert not (vault / "wdbc" / "test.csv").exists()
+
+    with pytest.raises(t1_module.BenchmarkError, match="duplicate model call identifier"):
+        record_agent_call_started(work, *target, meta["recovery"]["prior_call_ids"][0], "decision")
+
+    model_calls: list[str] = []
+
+    def fake_model(
+        argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int, started_marker: Path
+    ) -> Any:
+        model_calls.append(argv[argv.index("--model") + 1])
+        started_marker.write_text("started", encoding="utf-8")
+        assert argv[argv.index("--model") + 1] == "gpt-6-luna"
+        assert argv[argv.index("-c") + 1] == 'model_reasoning_effort="max"'
+        assert argv[argv.index("--sandbox") + 1] == "read-only"
+        assert "--ephemeral" in argv and "--json" in argv
+        response_path = Path(argv[argv.index("--output-last-message") + 1])
+        response_path.write_text(json.dumps({"candidate": _candidate(1.25)}), encoding="utf-8")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 120,
+                        "output_tokens": 18,
+                        "input_tokens_details": {"cached_tokens": 12},
+                    },
+                }
+            ),
+            stderr="",
+        )
+
+    def step_t1(*args: str, timeout: int = 60) -> dict[str, Any]:
+        assert args[0] == "trial" and timeout == 80
+        values = list(args[1:])
+        return perform_trial(
+            Path(values[values.index("--work") + 1]),
+            values[values.index("--arm") + 1],
+            values[values.index("--dataset") + 1],
+            int(values[values.index("--seed") + 1]),
+            Path(values[values.index("--candidate") + 1]),
+        )
+
+    def fake_dev_worker(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        output_path = Path(argv[argv.index("--output") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"auroc":0.83}', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(t1_module.subprocess, "run", fake_dev_worker)
+    result = pilot_controller.run_pilot_single_step(
+        root=recovery,
+        codex="/mock/codex",
+        confirm="RUN_ONE_PILOT_STEP",
+        guarded_call=fake_model,
+        t1_call=step_t1,
+        inspect=lambda: None,
+        arm=target[0],
+        dataset=target[1],
+        seed=target[2],
+    )
+    assert model_calls == ["gpt-6-luna"]
+    assert result["model_calls_this_invocation"] == 1
+    assert result["training_trials_this_invocation"] == 1
+    assert result["candidate"] == _candidate(1.25)
+    assert result["dev_auroc"] == 0.83
+    assert result["training_seconds"] <= 15
+    assert result["usage"]["usage_available"] is True
+    assert result["usage"]["input_tokens"] == 120
+    assert result["pilot_run_status"] == "checkpointed"
+    assert read_json(work / "checkpoints" / "memory_only__wdbc__42-call-3.json")["status"] == (
+        "trial_validated"
+    )
+    assert status(work)["model_call_attempts"] == 10
+    assert status(work)["completed"] == 1
+    assert status(work)["holdout_evaluated"] is False
+    assert not (work / "final.started").exists()
+
+    with pytest.raises(t1_module.BenchmarkError, match="bounded pilot_step mode"):
+        pilot_controller.run_pilot(
+            root=recovery,
+            codex="/mock/codex",
+            confirm="RUN_FOUR_POLICY_PILOT",
+            guarded_call=fake_model,
+            t1_call=step_t1,
+            inspect=lambda: None,
+        )
+    assert model_calls == ["gpt-6-luna"]
+
+    next_call_id = "memory_only-wdbc-42-call-4"
+    assert record_agent_call_started(work, *target, next_call_id, "memory_note") == 4
+    record_agent_call_finished(work, next_call_id, "failed", {"usage_available": False})
+    with pytest.raises(
+        t1_module.BenchmarkError, match="per-cell model decision-call budget exhausted"
+    ):
+        record_agent_call_started(work, *target, "memory_only-wdbc-42-call-5", "decision")
+    assert status(work)["model_call_attempts"] == 11

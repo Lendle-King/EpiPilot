@@ -31,7 +31,9 @@ for _path in (REPO_ROOT / "src", REPO_ROOT):
 
 from experiments.researchbench_t1.pilot_controller import (  # noqa: E402
     prepare_pilot_recovery,
+    prepare_pilot_single_step_recovery,
     run_pilot,
+    run_pilot_single_step,
 )
 from experiments.researchbench_t1.resource_guard import (  # noqa: E402
     ResourceRefusal,
@@ -57,6 +59,8 @@ ALLOWED_MODES = (
     "pilot_one_cell",
     "pilot_prepare",
     "pilot_recover_prepare",
+    "pilot_step_prepare",
+    "pilot_step",
     "pilot",
 )
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
@@ -462,6 +466,10 @@ def run(
     root: Path,
     seed: int = 42,
     origin_results: Path | None = None,
+    prior_results: Path | None = None,
+    cell_arm: str | None = None,
+    cell_dataset: str | None = None,
+    cell_seed: int | None = None,
 ) -> dict[str, Any]:
     if mode not in ALLOWED_MODES or provider not in ALLOWED_PROVIDERS:
         raise MacRunBlocked("unknown mode or provider")
@@ -530,6 +538,51 @@ def run(
             )
         except MacRunBlocked as exc:
             raise BenchmarkError("guarded Pilot recovery preparation failed") from exc
+    if mode == "pilot_step_prepare":
+        inspect_host()
+        if origin_results is None or prior_results is None:
+            raise MacRunBlocked(
+                "single-step recovery preparation requires --origin-results and --prior-results"
+            )
+        if cell_arm is None or cell_dataset is None or cell_seed is None:
+            raise MacRunBlocked("single-step recovery preparation requires a frozen --cell target")
+        try:
+            return prepare_pilot_single_step_recovery(
+                root=root,
+                origin_root=origin_results,
+                prior_root=prior_results,
+                t1_call=lambda *args, timeout=90: _t1(*args, timeout=timeout),
+                arm=cell_arm,
+                dataset=cell_dataset,
+                seed=cell_seed,
+            )
+        except MacRunBlocked as exc:
+            raise BenchmarkError("guarded single-step Pilot recovery preparation failed") from exc
+    if mode == "pilot_step":
+        if confirm != "RUN_ONE_PILOT_STEP":
+            raise MacRunBlocked("single-call Pilot recovery requires RUN_ONE_PILOT_STEP")
+        if cell_arm is None or cell_dataset is None or cell_seed is None:
+            raise MacRunBlocked("single-call Pilot recovery requires a frozen --cell target")
+        inspect_host()
+        codex = _codex()
+
+        def single_step_t1_call(*args: str, timeout: int = 60) -> dict[str, Any]:
+            try:
+                return _t1(*args, timeout=timeout)
+            except MacRunBlocked as exc:
+                raise BenchmarkError("guarded local T1 command failed") from exc
+
+        return run_pilot_single_step(
+            root=root,
+            codex=codex,
+            confirm=confirm,
+            guarded_call=guarded_run,
+            t1_call=single_step_t1_call,
+            inspect=inspect_host,
+            arm=cell_arm,
+            dataset=cell_dataset,
+            seed=cell_seed,
+        )
     if mode == "pilot":
         if confirm != "RUN_FOUR_POLICY_PILOT":
             raise MacRunBlocked("four-policy Pilot requires RUN_FOUR_POLICY_PILOT")
@@ -567,9 +620,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, choices=[42, 137], default=42)
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--origin-results", type=Path)
+    parser.add_argument("--prior-results", type=Path)
+    parser.add_argument("--cell-arm", choices=["memory_only"])
+    parser.add_argument("--cell-dataset", choices=["wdbc"])
+    parser.add_argument("--cell-seed", type=int, choices=[42])
     args = parser.parse_args(argv)
     root = args.results.absolute()
-    if args.mode == "pilot":
+    if args.mode in {"pilot", "pilot_step"}:
         expected_entries = {"pilot_work", "pilot_vault", "prepare_summary.json"}
         actual_entries = {path.name for path in root.iterdir()} if root.is_dir() else set()
         if (
@@ -617,10 +674,19 @@ def main(argv: list[str] | None = None) -> int:
                 root,
                 args.seed,
                 args.origin_results,
+                args.prior_results,
+                args.cell_arm,
+                args.cell_dataset,
+                args.cell_seed,
             )
         summary.update(outcome)
-        if outcome.get("pilot_run_status") == "paused_for_infrastructure":
-            summary["status"] = "paused_for_infrastructure"
+        if outcome.get("pilot_run_status") in {
+            "paused_for_infrastructure",
+            "paused_for_resource_guard",
+            "failed",
+            "training_failed",
+        }:
+            summary["status"] = outcome["pilot_run_status"]
             returncode = 2
         else:
             summary["status"] = "completed"
@@ -638,7 +704,7 @@ def main(argv: list[str] | None = None) -> int:
         summary["codex_process_attempts"] = pilot_processes + int(one_cell_started)
         summary_name = (
             "prepare_summary.json"
-            if args.mode in {"pilot_prepare", "pilot_recover_prepare"}
+            if args.mode in {"pilot_prepare", "pilot_recover_prepare", "pilot_step_prepare"}
             else "summary.json"
         )
         (root / summary_name).write_text(

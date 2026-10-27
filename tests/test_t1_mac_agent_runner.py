@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from experiments.researchbench_t1 import mac_agent_runner as mac
@@ -208,6 +209,46 @@ def test_denied_mode_records_sanitized_receipt_without_paid_agent(
     assert data["codex_process_attempts"] == 0
     assert data["provider_request_count"] == "not_observable"
     assert "RUN_ONE_CELL" in data["safe_reason"]
+
+
+def test_pilot_step_mode_requires_explicit_single_cell_confirmation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(mac.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(mac, "_python_ready", lambda: True)
+    monkeypatch.setattr(mac, "_codex", lambda: "/mock/codex")
+    monkeypatch.setattr(mac, "inspect_host", lambda: None)
+    observed: dict[str, Any] = {}
+
+    def one_step(**kwargs: Any) -> dict[str, Any]:
+        observed.update(kwargs)
+        return {"pilot_run_status": "checkpointed", "model_calls_this_invocation": 1}
+
+    monkeypatch.setattr(mac, "run_pilot_single_step", one_step)
+    target = {"cell_arm": "memory_only", "cell_dataset": "wdbc", "cell_seed": 42}
+    with pytest.raises(mac.MacRunBlocked, match="RUN_ONE_PILOT_STEP"):
+        mac.run(
+            "pilot_step",
+            "ccswitch_codex",
+            "gpt-6-luna",
+            "RUN_FOUR_POLICY_PILOT",
+            tmp_path,
+            **target,
+        )
+    assert observed == {}
+
+    result = mac.run(
+        "pilot_step",
+        "ccswitch_codex",
+        "gpt-6-luna",
+        "RUN_ONE_PILOT_STEP",
+        tmp_path,
+        **target,
+    )
+    assert result["model_calls_this_invocation"] == 1
+    assert observed["arm"] == "memory_only"
+    assert observed["dataset"] == "wdbc"
+    assert observed["seed"] == 42
 
 
 def test_environment_scrubs_github_and_ssh_tokens(monkeypatch: pytest.MonkeyPatch) -> None:

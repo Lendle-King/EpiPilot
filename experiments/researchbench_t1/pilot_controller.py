@@ -970,6 +970,28 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
             )
         ):
             raise BenchmarkError("recovery lineage does not match its immutable origin receipt")
+        if recovery.get("single_step_target"):
+            target = recovery["single_step_target"]
+            prior_ids = recovery.get("prior_call_ids")
+            prior_counts = recovery.get("prior_call_attempts_by_cell", {})
+            target_key = (
+                f"{target.get('arm')}__{target.get('dataset')}__{target.get('seed')}"
+                if isinstance(target, dict)
+                else ""
+            )
+            if (
+                origin.get("prior_call_ids") != prior_ids
+                or not isinstance(prior_ids, list)
+                or any(not isinstance(call_id, str) for call_id in prior_ids)
+                or len(prior_ids) != len(set(prior_ids))
+                or len(prior_ids) != sum(int(value) for value in prior_counts.values())
+                or recovery.get("single_step_calls_per_invocation") != 1
+                or target != {"arm": "memory_only", "dataset": "wdbc", "seed": 42}
+                or target_key not in prior_counts
+            ):
+                raise BenchmarkError(
+                    "single-step recovery target or cumulative counters are invalid"
+                )
     elif events:
         raise BenchmarkError("fresh Pilot workspace contains unexpected prior activity")
     return meta, work, vault
@@ -1112,6 +1134,274 @@ def prepare_pilot_recovery(
     }
 
 
+def prepare_pilot_single_step_recovery(
+    *,
+    root: Path,
+    origin_root: Path,
+    prior_root: Path,
+    t1_call: Callable[..., dict[str, Any]],
+    arm: str,
+    dataset: str,
+    seed: int,
+) -> dict[str, Any]:
+    """Prepare a new linked workspace for exactly one explicitly resumed cell."""
+    if (arm, dataset, seed) != ("memory_only", "wdbc", 42):
+        raise BenchmarkError("single-step recovery is frozen to memory_only / WDBC / seed 42")
+    if root.exists() and any(root.iterdir()):
+        raise BenchmarkError("single-step recovery destination must be empty")
+
+    origin_work, origin_vault = origin_root / "pilot_work", origin_root / "pilot_vault"
+    prior_work, prior_vault = prior_root / "pilot_work", prior_root / "pilot_vault"
+    origin_meta = read_json(origin_work / "meta.json")
+    prior_meta = read_json(prior_work / "meta.json")
+    origin_events, prior_events = ledger(origin_work), ledger(prior_work)
+    origin_summary = read_json(origin_root / "summary.json")
+    prior_summary = read_json(prior_root / "summary.json")
+    origin_receipt = read_json(prior_work / "recovery_origin.json")
+
+    origin_starts = [row for row in origin_events if row["kind"] == "agent_call_started"]
+    origin_finishes = {
+        row["call_id"]: row for row in origin_events if row["kind"] == "agent_call_finished"
+    }
+    origin_terminals = [row for row in origin_events if row["kind"] == "cell_terminal"]
+    origin_trials = [row for row in origin_events if row["kind"] == "started"]
+    expected_cells = [tuple(row) for row in origin_meta["execution_order"]]
+    if (
+        origin_meta.get("profile") != STAGES["pilot"]
+        or len(expected_cells) != 8
+        or len(origin_starts) != 8
+        or len(origin_terminals) != 8
+        or origin_trials
+        or origin_summary.get("model_call_attempts") != 8
+        or origin_summary.get("training_trials") != 0
+        or origin_summary.get("holdout_evaluated") is not False
+    ):
+        raise BenchmarkError("root origin is not the frozen eight-call failure-only Pilot")
+    if any(
+        (origin_vault / name / "test.csv").exists() for name in origin_meta["profile"]["datasets"]
+    ):
+        raise BenchmarkError("root origin unexpectedly materialized holdout data")
+
+    root_manifest_sha = file_digest(origin_work / "meta.json")
+    root_ledger_sha = file_digest(origin_work / "events.jsonl")
+    root_summary_sha = file_digest(origin_root / "summary.json")
+    if (
+        origin_receipt.get("origin_manifest_sha256") != root_manifest_sha
+        or origin_receipt.get("origin_ledger_sha256") != root_ledger_sha
+        or origin_receipt.get("origin_summary_sha256") != root_summary_sha
+        or prior_meta.get("recovery", {}).get("origin_manifest_sha256") != root_manifest_sha
+        or prior_meta.get("recovery", {}).get("origin_ledger_sha256") != root_ledger_sha
+    ):
+        raise BenchmarkError("prior recovery is not linked to the supplied root origin")
+
+    origin_calls_by_cell: dict[str, int] = {}
+    origin_processes_by_cell: dict[str, int] = {}
+    origin_trials_by_cell: dict[str, int] = {}
+    origin_terminals_by_cell: dict[str, str] = {}
+    for cell in expected_cells:
+        cell_arm, cell_dataset, cell_seed = cell
+        key = f"{cell_arm}__{cell_dataset}__{cell_seed}"
+        starts = [row for row in origin_starts if (row["arm"], row["dataset"], row["seed"]) == cell]
+        terminal = [
+            row for row in origin_terminals if (row["arm"], row["dataset"], row["seed"]) == cell
+        ]
+        if (
+            len(starts) != 1
+            or starts[0]["call_id"] not in origin_finishes
+            or starts[0].get("model") != "gpt-6-luna"
+            or starts[0].get("model_reasoning_effort") != "max"
+            or origin_finishes[starts[0]["call_id"]].get("outcome") != "failed"
+            or origin_finishes[starts[0]["call_id"]].get("turn_count") != 0
+            or origin_finishes[starts[0]["call_id"]].get("process_started") is not True
+            or len(terminal) != 1
+            or terminal[0].get("outcome") != "failed"
+        ):
+            raise BenchmarkError("root origin contains an unexpected cell outcome")
+        origin_calls_by_cell[key] = 1
+        origin_processes_by_cell[key] = int(
+            origin_finishes[starts[0]["call_id"]].get("process_started") is True
+        )
+        origin_trials_by_cell[key] = 0
+        origin_terminals_by_cell[key] = "failed"
+
+    current_prior_starts = [row for row in prior_events if row["kind"] == "agent_call_started"]
+    current_prior_finishes = {
+        row["call_id"]: row for row in prior_events if row["kind"] == "agent_call_finished"
+    }
+    current_prior_trials = [row for row in prior_events if row["kind"] == "started"]
+    current_prior_terminals = [row for row in prior_events if row["kind"] == "cell_terminal"]
+    target_key = f"{arm}__{dataset}__{seed}"
+    if (
+        len(current_prior_starts) != 1
+        or current_prior_starts[0].get("call_id") not in current_prior_finishes
+        or current_prior_starts[0].get("arm") != arm
+        or current_prior_starts[0].get("dataset") != dataset
+        or current_prior_starts[0].get("seed") != seed
+        or current_prior_finishes[current_prior_starts[0]["call_id"]].get("outcome") != "failed"
+        or current_prior_trials
+        or prior_summary.get("training_trials") != 0
+        or prior_summary.get("pilot_run_status") != "paused_for_infrastructure"
+    ):
+        raise BenchmarkError("prior recovery is not the expected single failed-call checkpoint")
+    declared_calls = prior_meta.get("recovery", {}).get("prior_call_attempts_by_cell", {})
+    declared_processes = prior_meta.get("recovery", {}).get("prior_process_starts_by_cell", {})
+    declared_trials = prior_meta.get("recovery", {}).get(
+        "prior_training_attempts_by_cell", origin_trials_by_cell
+    )
+    prior_calls_by_cell = dict(origin_calls_by_cell)
+    prior_processes_by_cell = dict(origin_processes_by_cell)
+    prior_trials_by_cell = dict(origin_trials_by_cell)
+    prior_terminal_outcomes = dict(origin_terminals_by_cell)
+    for row in current_prior_starts:
+        key = f"{row['arm']}__{row['dataset']}__{row['seed']}"
+        prior_calls_by_cell[key] = prior_calls_by_cell.get(key, 0) + 1
+        finish = current_prior_finishes.get(row["call_id"])
+        if finish is None:
+            raise BenchmarkError("prior recovery contains an unreconciled model call")
+        prior_processes_by_cell[key] = prior_processes_by_cell.get(key, 0) + int(
+            finish.get("process_started") is True
+        )
+    if any(
+        row["kind"] == "agent_call_started" and row["call_id"] not in current_prior_finishes
+        for row in prior_events
+    ):
+        raise BenchmarkError("prior recovery contains an unreconciled model call")
+    for row in current_prior_trials:
+        key = f"{row['arm']}__{row['dataset']}__{row['seed']}"
+        prior_trials_by_cell[key] = prior_trials_by_cell.get(key, 0) + 1
+    for row in current_prior_terminals:
+        key = f"{row['arm']}__{row['dataset']}__{row['seed']}"
+        prior_terminal_outcomes[key] = row["outcome"]
+    if (
+        declared_calls != origin_calls_by_cell
+        or declared_processes != origin_processes_by_cell
+        or declared_trials != origin_trials_by_cell
+        or prior_meta.get("recovery", {}).get("recovery_origin_sha256")
+        != file_digest(prior_work / "recovery_origin.json")
+        or read_json(prior_vault / "meta.json").get("public_meta_sha256")
+        != file_digest(prior_work / "meta.json")
+        or prior_summary.get("model_call_attempts") != sum(prior_calls_by_cell.values())
+        or prior_summary.get("holdout_evaluated") is not False
+    ):
+        raise BenchmarkError("prior recovery counters do not match their append-only ledger")
+    if any(
+        (prior_vault / name / "test.csv").exists() for name in prior_meta["profile"]["datasets"]
+    ):
+        raise BenchmarkError("prior recovery unexpectedly materialized holdout data")
+
+    prior_call_ids = sorted(
+        [row["call_id"] for row in origin_starts] + [row["call_id"] for row in current_prior_starts]
+    )
+    if len(prior_call_ids) != len(set(prior_call_ids)):
+        raise BenchmarkError("prior runs reused a model call identifier")
+    total_prior_calls = sum(prior_calls_by_cell.values())
+    if (
+        total_prior_calls != 9
+        or prior_calls_by_cell.get(target_key) != 2
+        or prior_trials_by_cell.get(target_key, 0) != 0
+        or prior_terminal_outcomes.get(target_key) != "failed"
+        or total_prior_calls >= 32
+        or prior_calls_by_cell[target_key] >= 4
+    ):
+        raise BenchmarkError("single-step target does not match the frozen remaining budget")
+    if any(value > 4 for value in prior_calls_by_cell.values()):
+        raise BenchmarkError("prior runs exceeded the frozen per-cell call cap")
+
+    prior_manifest_sha = file_digest(prior_work / "meta.json")
+    prior_ledger_sha = file_digest(prior_work / "events.jsonl")
+    prior_summary_sha = file_digest(prior_root / "summary.json")
+    t1_call(
+        "init",
+        "--stage",
+        "pilot",
+        "--allow-agent-stage",
+        "--work",
+        str(root / "pilot_work"),
+        "--vault",
+        str(root / "pilot_vault"),
+        timeout=90,
+    )
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    recovery_meta = read_json(work / "meta.json")
+    recovery_vault = read_json(vault / "meta.json")
+    old_vault = read_json(prior_vault / "meta.json")
+    if (
+        recovery_meta.get("profile") != prior_meta.get("profile")
+        or recovery_meta.get("execution_order") != prior_meta.get("execution_order")
+        or recovery_meta.get("datasets") != prior_meta.get("datasets")
+        or recovery_vault.get("test_sha256") != old_vault.get("test_sha256")
+        or recovery_vault.get("test_indices") != old_vault.get("test_indices")
+    ):
+        raise BenchmarkError("single-step preparation changed the frozen split or holdout")
+
+    receipt: dict[str, Any] = {
+        "origin_results_directory": origin_root.name,
+        "origin_manifest_sha256": root_manifest_sha,
+        "origin_ledger_sha256": root_ledger_sha,
+        "origin_summary_sha256": root_summary_sha,
+        "prior_results_directory": prior_root.name,
+        "prior_manifest_sha256": prior_manifest_sha,
+        "prior_ledger_sha256": prior_ledger_sha,
+        "prior_summary_sha256": prior_summary_sha,
+        "prior_call_attempts_by_cell": prior_calls_by_cell,
+        "prior_process_starts_by_cell": prior_processes_by_cell,
+        "prior_training_attempts_by_cell": prior_trials_by_cell,
+        "prior_call_ids": prior_call_ids,
+        "prior_terminal_outcomes_by_cell": prior_terminal_outcomes,
+        "single_step_target": [arm, dataset, seed],
+        "single_step_calls_per_invocation": 1,
+        "provider_usage_and_cost": "unknown; prior run had no usage telemetry",
+        "holdout_evaluated_in_ancestors": False,
+    }
+    atomic_json(work / "recovery_origin.json", receipt)
+    recovery_meta["recovery"] = {
+        "origin_manifest_sha256": root_manifest_sha,
+        "origin_ledger_sha256": root_ledger_sha,
+        "origin_summary_sha256": root_summary_sha,
+        "prior_manifest_sha256": prior_manifest_sha,
+        "prior_ledger_sha256": prior_ledger_sha,
+        "prior_summary_sha256": prior_summary_sha,
+        "prior_call_attempts_by_cell": prior_calls_by_cell,
+        "prior_process_starts_by_cell": prior_processes_by_cell,
+        "prior_training_attempts_by_cell": prior_trials_by_cell,
+        "prior_call_ids": prior_call_ids,
+        "prior_terminal_outcomes_by_cell": prior_terminal_outcomes,
+        "single_step_target": {"arm": arm, "dataset": dataset, "seed": seed},
+        "single_step_calls_per_invocation": 1,
+        "recovery_origin_sha256": file_digest(work / "recovery_origin.json"),
+    }
+    _replace_json_file(work / "meta.json", recovery_meta)
+    recovery_vault["public_meta_sha256"] = file_digest(work / "meta.json")
+    _replace_json_file(vault / "meta.json", recovery_vault)
+    event(
+        work,
+        {
+            "kind": "recovery_origin",
+            "origin_manifest_sha256": root_manifest_sha,
+            "origin_ledger_sha256": root_ledger_sha,
+            "prior_manifest_sha256": prior_manifest_sha,
+            "prior_ledger_sha256": prior_ledger_sha,
+            "prior_call_attempts": total_prior_calls,
+            "prior_process_starts": sum(prior_processes_by_cell.values()),
+            "prior_training_attempts": sum(prior_trials_by_cell.values()),
+        },
+    )
+    return {
+        "origin_manifest_sha256": root_manifest_sha,
+        "prior_manifest_sha256": prior_manifest_sha,
+        "prior_ledger_sha256": prior_ledger_sha,
+        "code_revision": recovery_meta["code_revision"],
+        "prior_call_attempts": total_prior_calls,
+        "target_prior_call_attempts": prior_calls_by_cell[target_key],
+        "cumulative_call_cap": 32,
+        "remaining_total_call_budget": 32 - total_prior_calls,
+        "target_remaining_call_budget": 4 - prior_calls_by_cell[target_key],
+        "single_step_calls_per_invocation": 1,
+        "holdout_materialized": False,
+        "model_calls_started": 0,
+    }
+
+
 def run_pilot(
     *,
     root: Path,
@@ -1125,6 +1415,8 @@ def run_pilot(
     if confirm != "RUN_FOUR_POLICY_PILOT":
         raise BenchmarkError("four-policy Pilot requires RUN_FOUR_POLICY_PILOT")
     meta, work, vault = _load_frozen_pilot(root)
+    if meta.get("recovery", {}).get("single_step_target"):
+        raise BenchmarkError("single-step recovery must use the bounded pilot_step mode")
     order = meta["execution_order"]
     cells: list[dict[str, Any]] = []
     stopped_for_resource = False
@@ -1136,6 +1428,7 @@ def run_pilot(
         for row in ledger(work)
         if row["kind"] == "cell_terminal"
     }
+
     for arm, dataset, seed in order:
         terminal = existing_terminals.get((arm, dataset, seed))
         if terminal:
@@ -1522,4 +1815,385 @@ def run_pilot(
             "Pilot. Holdout opens only after every cell has a submitted candidate "
             "and all model calls are closed."
         ),
+    }
+
+
+def _single_step_history(
+    work: Path, arm: str, dataset: str, seed: int
+) -> tuple[list[dict[str, Any]], list[str]]:
+    events = ledger(work)
+    starts = {
+        row["id"]: row
+        for row in events
+        if row["kind"] == "started"
+        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+    }
+    finished = {
+        row["id"]: row
+        for row in events
+        if row["kind"] == "finished"
+        and row.get("exit_code") == 0
+        and row.get("dev_auroc") is not None
+        and row.get("id") in starts
+    }
+    history: list[dict[str, Any]] = []
+    for run_id, result in finished.items():
+        candidate_path = work / "runs" / run_id / "candidate.json"
+        candidate = read_json(candidate_path)
+        row: dict[str, Any] = {
+            "run_id": run_id,
+            "seed": seed,
+            "candidate": candidate,
+            "candidate_sha256": file_digest(candidate_path),
+            "dev_auroc": result["dev_auroc"],
+            "seconds": result["seconds"],
+            "metric_sha256": result["metric_sha256"],
+        }
+        history.append(row)
+    notes = [
+        row["note"]
+        for row in events
+        if row["kind"] == "memory_note"
+        and row.get("arm") == arm
+        and row.get("dataset") == dataset
+        and row.get("seed") == seed
+    ]
+    return history, notes
+
+
+def run_pilot_single_step(
+    *,
+    root: Path,
+    codex: str,
+    confirm: str,
+    guarded_call: Callable[..., Any],
+    t1_call: Callable[..., dict[str, Any]],
+    inspect: Callable[[], Any],
+    arm: str,
+    dataset: str,
+    seed: int,
+) -> dict[str, Any]:
+    """Run at most one model call and at most one trial for the frozen recovery cell."""
+    if confirm != "RUN_ONE_PILOT_STEP":
+        raise BenchmarkError("single-cell Pilot recovery requires RUN_ONE_PILOT_STEP")
+    meta, work, vault = _load_frozen_pilot(root)
+    recovery = meta.get("recovery", {})
+    target = recovery.get("single_step_target")
+    if target != {"arm": arm, "dataset": dataset, "seed": seed}:
+        raise BenchmarkError("requested cell differs from the frozen single-step target")
+    if (arm, dataset, seed) != ("memory_only", "wdbc", 42):
+        raise BenchmarkError("single-step recovery is frozen to memory_only / WDBC / seed 42")
+    if (work / "final.started").exists() or any(
+        (vault / name / "test.csv").exists() for name in meta["profile"]["datasets"]
+    ):
+        raise BenchmarkError("single-step recovery cannot proceed after holdout release")
+    existing_calls = [row for row in ledger(work) if row["kind"] == "agent_call_started"]
+    if any(row["kind"] == "cell_terminal" for row in ledger(work)):
+        raise BenchmarkError("single-step recovery cell is already terminal")
+    open_calls = {row["call_id"] for row in existing_calls} - {
+        row["call_id"] for row in ledger(work) if row["kind"] == "agent_call_finished"
+    }
+    if open_calls:
+        raise BenchmarkError("previous single-step model call is unreconciled; do not repeat")
+
+    history, notes = _single_step_history(work, arm, dataset, seed)
+    trial_starts = [
+        row
+        for row in ledger(work)
+        if row["kind"] == "started"
+        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+    ]
+    prior_key = f"{arm}__{dataset}__{seed}"
+    prior_calls = int(recovery.get("prior_call_attempts_by_cell", {}).get(prior_key, 0))
+    prior_trials = int(recovery.get("prior_training_attempts_by_cell", {}).get(prior_key, 0))
+    call_number = (
+        prior_calls
+        + sum(
+            row["kind"] == "agent_call_started"
+            and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+            for row in ledger(work)
+        )
+        + 1
+    )
+    purpose = "decision"
+    if arm == "memory_only" and history:
+        known_notes = {
+            row.get("id")
+            for row in ledger(work)
+            if row["kind"] == "memory_note"
+            and (row.get("arm"), row.get("dataset"), row.get("seed")) == (arm, dataset, seed)
+        }
+        if history[-1]["run_id"] not in known_notes:
+            purpose = "memory_note"
+    if (
+        purpose == "decision"
+        and prior_trials + len(trial_starts) >= meta["profile"]["per_cell_trials"]
+    ):
+        raise BenchmarkError("per-cell training budget exhausted; no further decision call")
+    call_id = f"{arm}-{dataset}-{seed}-call-{call_number}"
+    try:
+        inspect()
+        payload, usage = model_call(
+            work=work,
+            codex=codex,
+            arm=arm,
+            dataset=dataset,
+            seed=seed,
+            call_id=call_id,
+            call_no=call_number,
+            purpose=purpose,
+            history=history,
+            notes=notes,
+            guarded_call=guarded_call,
+            max_timeout=150,
+        )
+    except ModelCallFailure as exc:
+        record_cell_incident(
+            work,
+            arm,
+            dataset,
+            seed,
+            "invalid",
+            f"single-step {purpose} failed: {exc.classification}",
+        )
+        finish = next(
+            (
+                row
+                for row in reversed(ledger(work))
+                if row["kind"] == "agent_call_finished" and row.get("call_id") == call_id
+            ),
+            {},
+        )
+        return {
+            "cell": [arm, dataset, seed],
+            "call_id": call_id,
+            "purpose": purpose,
+            "model_calls_this_invocation": 1,
+            "call_outcome": "failed",
+            "failure_classification": exc.classification,
+            "pilot_run_status": "paused_for_infrastructure" if exc.infrastructure else "failed",
+            "training_trials_this_invocation": 0,
+            "holdout_evaluated": False,
+            "call_diagnostic": {
+                key: finish.get(key)
+                for key in (
+                    "elapsed_seconds",
+                    "exit_code",
+                    "failure_classification",
+                    "stderr_excerpt_redacted",
+                    "stdout_event_types",
+                    "usage_available",
+                    "input_tokens",
+                    "output_tokens",
+                    "cached_input_tokens",
+                )
+                if key in finish
+            },
+        }
+    except ResourceRefusal as exc:
+        call_was_reserved = any(
+            row["kind"] == "agent_call_started" and row.get("call_id") == call_id
+            for row in ledger(work)
+        )
+        return {
+            "cell": [arm, dataset, seed],
+            "call_id": call_id if call_was_reserved else None,
+            "purpose": purpose,
+            "model_calls_this_invocation": int(call_was_reserved),
+            "call_outcome": "not_started",
+            "failure_classification": "resource_guard_refusal",
+            "safe_reason": str(exc),
+            "pilot_run_status": "paused_for_resource_guard",
+            "training_trials_this_invocation": 0,
+            "holdout_evaluated": False,
+            "usage_available": False,
+        }
+
+    if purpose == "memory_note":
+        latest = history[-1]
+        expected_note = (
+            f"On frozen split, run {latest['run_id']}, candidate sha256 "
+            f"{latest['candidate_sha256']}, development AUROC {latest['dev_auroc']:.6f}; "
+            "scope=current cell only."
+        )
+        note = payload.get("note")
+        if set(payload) != {"note"} or note != expected_note:
+            record_cell_incident(
+                work,
+                arm,
+                dataset,
+                seed,
+                "unsupported_claim",
+                "memory note did not exactly match its verified source measurement",
+            )
+            return {
+                "cell": [arm, dataset, seed],
+                "call_id": call_id,
+                "purpose": purpose,
+                "model_calls_this_invocation": 1,
+                "call_outcome": "invalid_output",
+                "pilot_run_status": "failed",
+                "training_trials_this_invocation": 0,
+                "holdout_evaluated": False,
+                "usage": usage,
+            }
+        add_memory(work, arm, dataset, seed, latest["run_id"], note)
+        checkpoint = {
+            "cell": [arm, dataset, seed],
+            "call_id": call_id,
+            "purpose": purpose,
+            "status": "memory_note_saved",
+            "run_id": latest["run_id"],
+            "candidate_sha256": latest["candidate_sha256"],
+            "dev_auroc": latest["dev_auroc"],
+        }
+        atomic_json(work / "checkpoints" / f"{prior_key}-call-{call_number}.json", checkpoint)
+        event(work, {"kind": "cell_checkpoint", **checkpoint})
+        return {
+            **checkpoint,
+            "model_calls_this_invocation": 1,
+            "training_trials_this_invocation": 0,
+            "holdout_evaluated": False,
+            "usage": usage,
+            "pilot_run_status": "checkpointed",
+        }
+
+    if set(payload) != {"candidate"}:
+        raise BenchmarkError("memory_only decision must contain exactly one candidate")
+    candidate = normalize_candidate(payload["candidate"])
+    candidate_hash = digest(canonical(candidate))
+    if any(row["candidate_sha256"] == candidate_hash for row in history):
+        record_cell_incident(
+            work,
+            arm,
+            dataset,
+            seed,
+            "repeat",
+            "single-step proposal repeats a candidate already attempted in this cell",
+        )
+        return {
+            "cell": [arm, dataset, seed],
+            "call_id": call_id,
+            "purpose": purpose,
+            "model_calls_this_invocation": 1,
+            "call_outcome": "repeated_candidate",
+            "pilot_run_status": "failed",
+            "training_trials_this_invocation": 0,
+            "holdout_evaluated": False,
+            "usage": usage,
+        }
+    decision = {
+        "selection_policy": "ordinary-model-candidate",
+        "candidate_sha256": candidate_hash,
+        "single_step_checkpoint": True,
+    }
+    _record_strategy_decision(work, arm, dataset, seed, call_number, decision)
+    checkpoint_dir = work / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    candidate_checkpoint = checkpoint_dir / f"{prior_key}-call-{call_number}.candidate.json"
+    atomic_json(candidate_checkpoint, candidate)
+    candidate_path = root / f"candidate-{arm}-{dataset}-{seed}-{call_number}.json"
+    atomic_json(candidate_path, candidate)
+    trials_before = len(trial_starts)
+    try:
+        inspect()
+        trial = t1_call(
+            "trial",
+            "--work",
+            str(work),
+            "--arm",
+            arm,
+            "--dataset",
+            dataset,
+            "--seed",
+            str(seed),
+            "--candidate",
+            str(candidate_path),
+            timeout=80,
+        )
+    except (BenchmarkError, ResourceRefusal) as exc:
+        checkpoint = {
+            "cell": [arm, dataset, seed],
+            "call_id": call_id,
+            "purpose": purpose,
+            "status": "training_interrupted",
+            "candidate_sha256": candidate_hash,
+            "candidate_path": str(candidate_checkpoint),
+            "failure_classification": type(exc).__name__,
+        }
+        atomic_json(checkpoint_dir / f"{prior_key}-call-{call_number}.json", checkpoint)
+        event(work, {"kind": "cell_checkpoint", **checkpoint})
+        return {
+            **checkpoint,
+            "model_calls_this_invocation": 1,
+            "training_trials_this_invocation": max(
+                0,
+                sum(
+                    row["kind"] == "started"
+                    and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                    for row in ledger(work)
+                )
+                - trials_before,
+            ),
+            "holdout_evaluated": False,
+            "usage": usage,
+            "pilot_run_status": "training_failed",
+        }
+    finally:
+        candidate_path.unlink(missing_ok=True)
+    if trial.get("exit_code") != 0:
+        record_cell_incident(
+            work,
+            arm,
+            dataset,
+            seed,
+            "invalid",
+            f"single-step T1 trial failed with exit code {trial.get('exit_code')}",
+        )
+        checkpoint = {
+            "cell": [arm, dataset, seed],
+            "call_id": call_id,
+            "purpose": purpose,
+            "status": "training_failed",
+            "candidate_sha256": candidate_hash,
+            "candidate_path": str(candidate_checkpoint),
+            "trial_id": trial.get("id"),
+            "training_exit_code": trial.get("exit_code"),
+        }
+        atomic_json(checkpoint_dir / f"{prior_key}-call-{call_number}.json", checkpoint)
+        event(work, {"kind": "cell_checkpoint", **checkpoint})
+        return {
+            **checkpoint,
+            "model_calls_this_invocation": 1,
+            "training_trials_this_invocation": 1,
+            "holdout_evaluated": False,
+            "usage": usage,
+            "pilot_run_status": "training_failed",
+        }
+    checkpoint = {
+        "cell": [arm, dataset, seed],
+        "call_id": call_id,
+        "purpose": purpose,
+        "status": "trial_validated",
+        "candidate": candidate,
+        "candidate_sha256": candidate_hash,
+        "candidate_path": str(candidate_checkpoint),
+        "trial_id": trial["id"],
+        "dev_auroc": trial["dev_auroc"],
+        "training_seconds": trial["seconds"],
+        "metric_sha256": trial["metric_sha256"],
+        "next_step": "memory_note",
+    }
+    atomic_json(checkpoint_dir / f"{prior_key}-call-{call_number}.json", checkpoint)
+    event(
+        work,
+        {"kind": "cell_checkpoint", **{k: v for k, v in checkpoint.items() if k != "candidate"}},
+    )
+    return {
+        **checkpoint,
+        "model_calls_this_invocation": 1,
+        "training_trials_this_invocation": 1,
+        "holdout_evaluated": False,
+        "usage": usage,
+        "pilot_run_status": "checkpointed",
     }

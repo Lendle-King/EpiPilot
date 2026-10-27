@@ -175,6 +175,40 @@ the holdout sealed. Failed requests and training attempts remain in the
 ledger and are never silently replaced. The final evaluation is single-use;
 no automatic rerun is allowed.
 
+### Bounded single-cell recovery
+
+If the full Pilot stops on a local infrastructure failure, a recovery may be
+prepared against both the immutable original results and the latest recovery
+ledger. The `pilot_step_prepare` / `pilot_step` path is limited to
+`memory_only / WDBC / seed 42` for the first repaired-call checkpoint. Each
+`pilot_step` process permits at most one model decision call and at most one
+15-second development trial. It records the attempted call before launch,
+preserves cumulative call IDs and per-cell counts, and checkpoints a validated
+candidate without opening holdout or continuing to other cells. A later step
+must be started explicitly; standard `pilot` mode refuses a single-step
+recovery manifest.
+
+For local execution, launch the runner through the host's normal approved
+elevated execution path so the CLI can access its existing `~/.codex` runtime
+state. The runner does not change `HOME`, credentials, provider, or global
+security settings. The inner Codex process remains read-only with shell, web,
+and MCP tools disabled. For example:
+
+```bash
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_step_prepare --provider ccswitch_codex --model gpt-6-luna \
+  --origin-results /path/to/T1_Pilot_Results \
+  --prior-results /path/to/T1_Pilot_Recovery_1 \
+  --results /path/to/T1_Pilot_Recovery_2 \
+  --cell-arm memory_only --cell-dataset wdbc --cell-seed 42
+
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_step --provider ccswitch_codex --model gpt-6-luna \
+  --confirm RUN_ONE_PILOT_STEP \
+  --results /path/to/T1_Pilot_Recovery_2 \
+  --cell-arm memory_only --cell-dataset wdbc --cell-seed 42
+```
+
 ### Full T1: original three real UCI data sets
 
 No automatic downloads are performed. Supply the unmodified locally

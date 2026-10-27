@@ -611,14 +611,16 @@ def record_agent_call_started(
             e for e in starts if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
         ]
         cap = meta["profile"]["max_model_decision_calls_per_cell"]
-        prior_counts = meta.get("recovery", {}).get("prior_call_attempts_by_cell", {})
+        recovery = meta.get("recovery", {})
+        prior_counts = recovery.get("prior_call_attempts_by_cell", {})
         prior_cell_calls = int(prior_counts.get(f"{arm}__{dataset}__{seed}", 0))
         prior_total_calls = sum(int(value) for value in prior_counts.values())
+        prior_call_ids = set(recovery.get("prior_call_ids", []))
         if prior_cell_calls + len(cell_starts) >= cap:
             raise BenchmarkError("per-cell model decision-call budget exhausted")
         if prior_total_calls + len(starts) >= meta["cell_count"] * cap:
             raise BenchmarkError("global model decision-call safety ceiling exhausted")
-        if any(e["call_id"] == call_id for e in starts):
+        if call_id in prior_call_ids or any(e["call_id"] == call_id for e in starts):
             raise BenchmarkError("duplicate model call identifier")
         ordinal = prior_cell_calls + len(cell_starts) + 1
         event(
