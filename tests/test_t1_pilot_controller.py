@@ -76,6 +76,65 @@ def _conditional_response() -> dict[str, Any]:
     return {"decisions": decisions}
 
 
+def _conditional_v2_response(
+    *, baseline: float = 0.8, candidate_auroc: float = 0.9
+) -> dict[str, Any]:
+    return {
+        "decisions": [
+            {
+                "hypothesis": f"Estimate four outcomes for candidate {index}",
+                "candidate": _candidate(c),
+                "probabilities": [0.7, 0.1, 0.1, 0.1],
+                "candidate_auroc_by_outcome": [
+                    candidate_auroc,
+                    baseline,
+                    baseline,
+                    candidate_auroc,
+                ],
+            }
+            for index, c in enumerate((0.5, 2.0), 1)
+        ]
+    }
+
+
+def test_conditional_v2_uses_auroc_evsi_and_baseline_fallback() -> None:
+    baseline = _candidate(1.0)
+    history = [
+        {
+            "run_id": "trial-0001",
+            "candidate": baseline,
+            "candidate_sha256": pilot_controller.digest(pilot_controller.canonical(baseline)),
+            "dev_auroc": 0.8,
+            "seconds": 0.2,
+            "metric_sha256": "a" * 64,
+            "role": "common_baseline",
+        }
+    ]
+    candidate, decision = pilot_controller.choose_conditional_v2(
+        _conditional_v2_response(), history, 1
+    )
+    assert candidate == _candidate(0.5)
+    assert decision["utility_unit"].startswith("absolute development AUROC")
+    assert decision["calibration_samples"] == 0
+    assert decision["model_forecast_tables"][0]["effective_candidate_auroc_by_outcome"] == [
+        0.9,
+        0.8,
+        0.8,
+        0.8,
+    ]
+    assert decision["decision_scores"][0]["value_of_information"] == pytest.approx(0.07)
+    assert decision["decision_scores"][0]["normalized_cost"] == pytest.approx(0.3)
+    assert decision["decision_scores"][0]["risk_penalty"] == 0
+    assert decision["decision_scores"][0]["net_value"] == pytest.approx(0.07)
+
+    fallback, stopped = pilot_controller.choose_conditional_v2(
+        _conditional_v2_response(baseline=0.8, candidate_auroc=0.7), history, 1
+    )
+    assert fallback == baseline
+    assert stopped["fallback"] == "common_baseline"
+    assert stopped["stopped_for_nonpositive_value"] is True
+
+
 def test_formal_pilot_entry_runs_all_strategies_and_freezes_before_holdout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -258,6 +317,275 @@ def test_formal_pilot_entry_runs_all_strategies_and_freezes_before_holdout(
     assert any(value.endswith("conditional')") for value in strategy_rows)
     assert outcome["manual_interventions"] == 0
     assert outcome["unsupported_claims"] == 0
+
+
+def test_protocol_v2_trains_common_baseline_and_evaluates_only_after_all_freeze(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    root = tmp_path / "pilot-v2-results"
+    root.mkdir(mode=0o700)
+    monkeypatch.setattr(mac.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(mac, "_python_ready", lambda: True)
+    monkeypatch.setattr(mac, "_codex", lambda: "/Applications/ChatGPT.app/.../codex")
+    monkeypatch.setattr(mac, "inspect_host", lambda: None)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "b" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "b" * 40)
+
+    call_purposes: defaultdict[tuple[str, int], list[str]] = defaultdict(list)
+    model_active = 0
+    development_workers = 0
+    holdout_workers = 0
+    holdout_visible = False
+
+    def fake_guarded_call(
+        argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int, started_marker: Path
+    ) -> Any:
+        nonlocal model_active
+        model_active += 1
+        started_marker.write_text("started", encoding="utf-8")
+        assert argv[argv.index("--model") + 1] == "gpt-6-luna"
+        assert 'model_reasoning_effort="max"' in [
+            argv[index + 1] for index, value in enumerate(argv[:-1]) if value == "-c"
+        ]
+        config_values = [argv[index + 1] for index, value in enumerate(argv[:-1]) if value == "-c"]
+        assert "features.shell_tool=false" in config_values
+        assert 'web_search="disabled"' in config_values
+        assert "mcp_servers={}" in config_values
+        assert "model_providers.cc-switch-official.request_max_retries=0" in config_values
+        assert "model_providers.cc-switch-official.stream_max_retries=0" in config_values
+        assert argv[argv.index("--sandbox") + 1] == "read-only"
+        assert "--ephemeral" in argv and "--json" in argv
+        assert timeout == 150
+        assert "GITHUB_TOKEN" not in env and "SSH_AUTH_SOCK" not in env
+        prompt = argv[-1]
+        assert "pilot_vault" not in prompt and "private_test" not in prompt
+        assert "Cell information (no train/dev rows or labels):\n" in prompt
+        context = json.loads(
+            prompt.split("Cell information (no train/dev rows or labels):\n", 1)[1]
+        )
+        arm, seed = context["strategy"], context["seed"]
+        schema_path = Path(argv[argv.index("--output-schema") + 1])
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        if "note" in schema.get("properties", {}):
+            verified = context["verified_trial"]
+            response = {
+                "note": (
+                    f"On frozen split, run {verified['run_id']}, candidate sha256 "
+                    f"{verified['candidate_sha256']}, development AUROC "
+                    f"{verified['dev_auroc']:.6f}; scope=current cell only."
+                )
+            }
+            call_purposes[(arm, seed)].append("memory_note")
+        elif "candidate" in schema.get("properties", {}):
+            response = {"candidate": _candidate(0.5 if arm == "agent_only" else 1.5)}
+            call_purposes[(arm, seed)].append("decision")
+        elif "proposals" in schema.get("properties", {}):
+            response = _heuristic_response(1)
+            call_purposes[(arm, seed)].append("decision")
+        elif "decisions" in schema.get("properties", {}):
+            response = _conditional_v2_response(candidate_auroc=0.99)
+            call_purposes[(arm, seed)].append("decision")
+        else:
+            raise AssertionError("unknown protocol-v2 strict schema")
+        Path(argv[argv.index("--output-last-message") + 1]).write_text(
+            json.dumps(response), encoding="utf-8"
+        )
+        stdout = json.dumps(
+            {
+                "type": "turn.completed",
+                "usage": {
+                    "input_tokens": 111,
+                    "output_tokens": 23,
+                    "input_tokens_details": {"cached_tokens": 7},
+                },
+            }
+        )
+        model_active -= 1
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(mac, "guarded_run", fake_guarded_call)
+
+    def fake_worker(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal development_workers, holdout_workers, holdout_visible
+        eval_path = Path(argv[argv.index("--eval") + 1])
+        work = root / "pilot_work"
+        if eval_path.name == "test.csv":
+            holdout_workers += 1
+            assert model_active == 0
+            events = ledger(work)
+            assert len([row for row in events if row["kind"] == "cell_terminal"]) == 8
+            assert len(list((work / "submissions").glob("*.json"))) == 8
+            assert (work / "final.started").is_file()
+            holdout_visible = any(
+                eval_path.name in str(item)
+                for row in events
+                if row["kind"] == "strategy_decision"
+                for item in row["decision"].values()
+            )
+        else:
+            development_workers += 1
+        output_path = Path(argv[argv.index("--output") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"auroc":0.91}', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(t1_module.subprocess, "run", fake_worker)
+
+    def fake_t1(*args: str, timeout: int = 60) -> dict[str, Any]:
+        command, values = args[0], list(args[1:])
+        if command == "init":
+            assert timeout == 90
+            return setup(
+                Path(values[values.index("--work") + 1]),
+                Path(values[values.index("--vault") + 1]),
+                "pilot_v2",
+                {},
+                True,
+            )
+        if command == "trial":
+            return perform_trial(
+                Path(values[values.index("--work") + 1]),
+                values[values.index("--arm") + 1],
+                values[values.index("--dataset") + 1],
+                int(values[values.index("--seed") + 1]),
+                Path(values[values.index("--candidate") + 1]),
+            )
+        if command == "finalize":
+            assert timeout == 200
+            return finalize(
+                Path(values[values.index("--work") + 1]),
+                Path(values[values.index("--vault") + 1]),
+                Path(values[values.index("--audit") + 1]),
+            )
+        raise AssertionError(command)
+
+    monkeypatch.setattr(mac, "_t1", fake_t1)
+    prepared = mac.run("pilot_v2_prepare", "ccswitch_codex", "gpt-6-luna", "", root)
+    assert prepared["protocol_version"] == 2
+    assert prepared["holdout_materialized"] is False
+    assert prepared["model_calls_started"] == 0
+    assert prepared["execution_order_seed"] == 20271028
+    outcome = mac.run(
+        "pilot_v2",
+        "ccswitch_codex",
+        "gpt-6-luna",
+        "RUN_T1_PILOT_V2",
+        root,
+    )
+    assert outcome["pilot_run_status"] == "completed"
+    assert outcome["cell_count_completed_or_terminal"] == 8
+    assert outcome["training_trials"] == development_workers
+    assert 8 <= outcome["training_trials"] <= 16
+    assert holdout_workers == 10
+    assert outcome["model_call_attempts"] <= 32
+    assert outcome["model_call_usage"]["available_call_count"] == outcome["model_call_attempts"]
+    assert outcome["model_call_usage"]["input_tokens"] == 111 * outcome["model_call_attempts"]
+    assert outcome["holdout_evaluated"] is True
+    assert len(outcome["final_evaluation"]["holdout_auroc"]) == 8
+    assert outcome["final_evaluation"]["common_baseline_holdout_auroc"] == {
+        "42": 0.91,
+        "137": 0.91,
+    }
+    assert not holdout_visible
+    assert all(
+        cell["model_call_usage"]["available_call_count"] == cell["model_calls"]
+        and cell["model_call_usage"]["missing_call_count"] == 0
+        for cell in outcome["cells"]
+    )
+    events = ledger(root / "pilot_work")
+    baseline_events = [row for row in events if row["kind"] == "common_baseline_validated"]
+    assert len(baseline_events) == 8
+    assert all(
+        row["candidate_sha256"] == prepared["baseline_candidate_sha256"] for row in baseline_events
+    )
+    trial_counts: defaultdict[tuple[str, str, int], int] = defaultdict(int)
+    call_counts: defaultdict[tuple[str, str, int], int] = defaultdict(int)
+    for row in events:
+        cell = (row.get("arm"), row.get("dataset"), row.get("seed"))
+        if row["kind"] == "started":
+            trial_counts[cell] += 1
+            assert row["time_limit"] == 15
+        elif row["kind"] == "agent_call_started":
+            call_counts[cell] += 1
+            assert row["model"] == "gpt-6-luna"
+            assert row["model_reasoning_effort"] == "max"
+    assert len(trial_counts) == 8 and all(1 <= count <= 2 for count in trial_counts.values())
+    assert all(count <= 4 for count in call_counts.values())
+    for cell, count in call_counts.items():
+        expected = ["memory_note", "decision"] if cell[0] == "memory_only" else ["decision"]
+        recorded_purposes = call_purposes[(cell[0], cell[2])]
+        assert recorded_purposes == expected, (cell, count, recorded_purposes)
+        assert count == len(expected), (cell, count, expected)
+
+
+def test_protocol_v2_infrastructure_failure_submits_baseline_and_stops_next_cell(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    root = tmp_path / "pilot-v2-failure"
+    root.mkdir(mode=0o700)
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "c" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "c" * 40)
+    setup(work, vault, "pilot_v2", {}, True)
+    worker_calls = 0
+    model_calls = 0
+
+    def fake_worker(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal worker_calls
+        worker_calls += 1
+        output_path = Path(argv[argv.index("--output") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"auroc":0.92}', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(t1_module.subprocess, "run", fake_worker)
+
+    def failed_cli(
+        argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int, started_marker: Path
+    ) -> Any:
+        nonlocal model_calls
+        model_calls += 1
+        started_marker.write_text("started", encoding="utf-8")
+        error = {
+            "type": "error",
+            "error": {"type": "provider_error", "code": "unavailable", "message": "offline"},
+        }
+        return SimpleNamespace(returncode=1, stdout=json.dumps(error), stderr="offline")
+
+    def t1_call(*args: str, timeout: int = 60) -> dict[str, Any]:
+        command, values = args[0], list(args[1:])
+        if command == "trial":
+            return perform_trial(
+                Path(values[values.index("--work") + 1]),
+                values[values.index("--arm") + 1],
+                values[values.index("--dataset") + 1],
+                int(values[values.index("--seed") + 1]),
+                Path(values[values.index("--candidate") + 1]),
+            )
+        raise AssertionError(f"unexpected T1 command: {command}")
+
+    outcome = pilot_controller.run_pilot_v2(
+        root=root,
+        codex="codex",
+        confirm="RUN_T1_PILOT_V2",
+        guarded_call=failed_cli,
+        t1_call=t1_call,
+        inspect=lambda: None,
+    )
+    events = ledger(work)
+    terminals = [row for row in events if row["kind"] == "cell_terminal"]
+    assert outcome["pilot_run_status"] == "paused_for_infrastructure"
+    assert len(terminals) == 1 and terminals[0]["outcome"] == "submitted"
+    assert len([row for row in events if row["kind"] == "started"]) == 1
+    assert len([row for row in events if row["kind"] == "agent_call_started"]) == 1
+    assert model_calls == 1 and worker_calls == 1
+    assert status(work)["submitted"] == 1
+    assert status(work)["holdout_evaluated"] is False
+    assert not (vault / "wdbc" / "test.csv").exists()
 
 
 def test_nonzero_cli_exit_is_redacted_and_pauses_after_first_cell(
@@ -591,11 +919,12 @@ def test_cli_output_schemas_are_strict_and_preserve_candidate_semantics() -> Non
         for branch in node.get("anyOf", []):
             assert_strict_subset(branch)
 
-    for arm in ("agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"):
-        for purpose in ("decision", "memory_note"):
-            schema = pilot_controller._schema(arm, purpose)
-            jsonschema.Draft202012Validator.check_schema(schema)
-            assert_strict_subset(schema)
+    for protocol_version in (1, 2):
+        for arm in ("agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"):
+            for purpose in ("decision", "memory_note"):
+                schema = pilot_controller._schema(arm, purpose, protocol_version=protocol_version)
+                jsonschema.Draft202012Validator.check_schema(schema)
+                assert_strict_subset(schema)
 
     assert set(pilot_controller.CandidateSchema) == {"anyOf"}
     assert [
@@ -625,6 +954,16 @@ def test_cli_output_schemas_are_strict_and_preserve_candidate_semantics() -> Non
     assert not candidate_validator.is_valid(invalid_candidate)
     with pytest.raises(t1_module.BenchmarkError, match="inconsistent parameter schema"):
         t1_module.normalize_candidate(invalid_candidate)
+
+    v2_validator = jsonschema.Draft202012Validator(pilot_controller.CandidateSchemaV2)
+    assert v2_validator.is_valid(_candidate(1.0))
+    assert not v2_validator.is_valid({**_candidate(1.0), "feature_mode": "numeric_only"})
+    assert t1_module.normalize_candidate(_candidate(1)) == _candidate(1.0)
+    assert pilot_controller.digest(
+        t1_module.canonical(t1_module.normalize_candidate(_candidate(1)))
+    ) == pilot_controller.digest(
+        t1_module.canonical(t1_module.normalize_candidate(_candidate(1.0)))
+    )
 
 
 def test_recovery_manifest_links_prior_failures_and_cumulative_call_budget(

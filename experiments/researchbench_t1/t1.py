@@ -45,6 +45,30 @@ STAGES: dict[str, dict[str, Any]] = {
         "model_reasoning_effort": "max",
         "final_eval_seconds": 20,
     },
+    "pilot_v2": {
+        "protocol_version": 2,
+        "datasets": ["wdbc"],
+        "arms": ["agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"],
+        "seeds": [42, 137],
+        "per_cell_trials": 2,
+        "adaptive_trials_per_cell": 1,
+        "trial_seconds": 15,
+        "total_seconds": 240,
+        "max_model_decision_calls_per_cell": 4,
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "max",
+        "execution_order_seed": 20271028,
+        "baseline_candidate": {
+            "model": "logistic",
+            "feature_mode": "all",
+            "C": 1.0,
+            "class_weight": "none",
+        },
+        "conditional_utility_unit": "development_auroc",
+        "conditional_cost_mode": "hard_per_cell_trial_and_call_budget",
+        "conditional_risk_mode": "infrastructure_failure_branch_falls_back_to_incumbent",
+        "final_eval_seconds": 20,
+    },
     "full": {
         "datasets": ["adult", "bank", "magic"],
         "arms": ["agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"],
@@ -345,7 +369,7 @@ def setup(
             )
     profile = STAGES[stage]
     code_revision = _code_revision()
-    if stage == "pilot" and code_revision is None:
+    if stage in {"pilot", "pilot_v2"} and code_revision is None:
         raise BenchmarkError("Pilot requires a committed Git revision before any model call")
     cell_count, per_cell_seconds, required_seconds = _budget_allocation(profile)
     if profile["total_seconds"] < required_seconds:
@@ -370,7 +394,7 @@ def setup(
     private_holdout_hashes: dict[str, str] = {}
     # Do not reuse the already-inspected smoke holdout in real policy comparisons.
     # Fix the split per stage BEFORE any research agent sees validation feedback.
-    split_seed = SPLIT_SEED + {"smoke": 0, "pilot": 1000, "full": 2000}[stage]
+    split_seed = SPLIT_SEED + {"smoke": 0, "pilot": 1000, "pilot_v2": 1000, "full": 2000}[stage]
     for dataset in spec["datasets"]:
         dataset_meta[dataset], private_indices[dataset], private_holdout_hashes[dataset] = (
             _write_dataset(work, dataset, sources.get(dataset), split_seed)
@@ -383,7 +407,8 @@ def setup(
         for seed in spec["seeds"]
         for arm in spec["arms"]
     ]
-    random.Random(EXECUTION_ORDER_SEED).shuffle(cells)
+    order_seed = int(profile.get("execution_order_seed", EXECUTION_ORDER_SEED))
+    random.Random(order_seed).shuffle(cells)
     meta = {
         "schema": SCHEMA,
         "stage": stage,
@@ -393,9 +418,9 @@ def setup(
         "per_cell_trial_budget_seconds": per_cell_seconds,
         "required_development_seconds_for_all_cells": required_seconds,
         "datasets": dataset_meta,
-        "execution_order_seed": EXECUTION_ORDER_SEED,
+        "execution_order_seed": order_seed,
         "execution_order": [list(cell) for cell in cells],
-        "target_auroc": 0.95 if stage == "pilot" else None,
+        "target_auroc": 0.95 if stage in {"pilot", "pilot_v2"} else None,
         "total_external_api_calls": 0,
         "final_holdout_is_off_limits_during_search": True,
     }
@@ -441,17 +466,19 @@ def normalize_candidate(raw: dict[str, Any]) -> dict[str, Any]:
         "balanced",
     ):
         raise BenchmarkError("invalid feature_mode or class_weight")
+    normalized = dict(raw)
     if name == "logistic":
         c = raw["C"]
         if isinstance(c, bool) or not isinstance(c, (int, float)) or not 0.01 <= c <= 10:
             raise BenchmarkError("logistic C outside approved range")
+        normalized["C"] = float(c)
     else:
         n, depth, leaf = raw["n_estimators"], raw["max_depth"], raw["min_samples_leaf"]
         if any(type(x) is not int for x in (n, depth, leaf)) or not (
             20 <= n <= 120 and 2 <= depth <= 16 and 1 <= leaf <= 10
         ):
             raise BenchmarkError("forest parameters outside approved range")
-    return dict(sorted(raw.items()))
+    return dict(sorted(normalized.items()))
 
 
 def _fit(train: Path, evaluation: Path, raw: dict[str, Any], seed: int, fit_all: bool) -> float:
@@ -594,7 +621,7 @@ def record_agent_call_started(
     meta = _load_meta(work)
     _unit(meta, arm, dataset, seed)
     if (
-        meta["stage"] != "pilot"
+        meta["stage"] not in {"pilot", "pilot_v2"}
         or not call_id
         or not purpose
         or model != meta["profile"]["model"]
@@ -758,12 +785,8 @@ def perform_trial(
         ]
         recovery = meta.get("recovery", {})
         cell_key = f"{arm}__{dataset}__{seed}"
-        imported_matches = [
-            e for e in matches if e.get("recovery_imported_from") is not None
-        ]
-        inherited_trials = int(
-            recovery.get("prior_training_attempts_by_cell", {}).get(cell_key, 0)
-        )
+        imported_matches = [e for e in matches if e.get("recovery_imported_from") is not None]
+        inherited_trials = int(recovery.get("prior_training_attempts_by_cell", {}).get(cell_key, 0))
         inherited_unimported_attempts = max(0, inherited_trials - len(imported_matches))
         if len(matches) + inherited_unimported_attempts >= profile["per_cell_trials"]:
             raise BenchmarkError("per-cell experiment count budget exhausted")
@@ -771,9 +794,7 @@ def perform_trial(
             raise BenchmarkError("identical candidate already attempted for this research cell")
         # Enforce the same independent training allowance for every cell first.
         per_cell_seconds = profile["per_cell_trials"] * profile["trial_seconds"]
-        ended_by_id = {
-            e["id"]: e for e in history if e["kind"] in {"finished", "aborted"}
-        }
+        ended_by_id = {e["id"]: e for e in history if e["kind"] in {"finished", "aborted"}}
         imported_seconds = sum(
             float(ended_by_id[row["id"]].get("seconds", 0.0))
             for row in imported_matches
@@ -1204,7 +1225,7 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             )
         submissions = {}
         hist = ledger(work)
-        if meta["stage"] == "pilot":
+        if meta["stage"] in {"pilot", "pilot_v2"}:
             terminals = [e for e in hist if e["kind"] == "cell_terminal"]
             terminal_by_cell = {
                 (e["arm"], e["dataset"], e["seed"]): e["outcome"] for e in terminals
@@ -1248,6 +1269,68 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             if file_digest(candidate) != selection["candidate_sha256"]:
                 raise BenchmarkError("submitted candidate changed after development")
             submissions[key] = (selection, candidate)
+        baseline_by_seed: dict[int, tuple[dict[str, Any], Path]] = {}
+        if meta["stage"] == "pilot_v2":
+            expected_baseline = normalize_candidate(profile["baseline_candidate"])
+            expected_baseline_sha = digest(canonical(expected_baseline))
+            baseline_events = [e for e in hist if e["kind"] == "common_baseline_validated"]
+            if len(baseline_events) != len(wanted):
+                raise BenchmarkError("protocol v2 requires one measured baseline per cell")
+            baseline_by_cell = {(e["arm"], e["dataset"], e["seed"]): e for e in baseline_events}
+            if set(baseline_by_cell) != set(wanted):
+                raise BenchmarkError("protocol-v2 baseline receipts do not cover every cell")
+            for arm, dataset, seed in wanted:
+                key = f"{arm}__{dataset}__{seed}"
+                receipt = baseline_by_cell[(arm, dataset, seed)]
+                run_id = receipt["run_id"]
+                start = started.get(run_id)
+                finish = finished.get(run_id)
+                cell_starts = [
+                    e
+                    for e in hist
+                    if e["kind"] == "started"
+                    and (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+                ]
+                cell_calls = [
+                    e
+                    for e in agent_calls
+                    if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+                ]
+                baseline_candidate = work / "runs" / run_id / "candidate.json"
+                baseline_metric = work / "runs" / run_id / "metric.json"
+                if (
+                    start is None
+                    or finish is None
+                    or finish.get("exit_code") != 0
+                    or not cell_starts
+                    or cell_starts[0]["id"] != run_id
+                    or len(cell_starts) > profile["per_cell_trials"]
+                    or len(cell_calls) > profile["max_model_decision_calls_per_cell"]
+                    or receipt.get("candidate_sha256") != expected_baseline_sha
+                    or receipt.get("baseline_spec") != expected_baseline
+                    or start.get("candidate_sha256") != expected_baseline_sha
+                    or receipt.get("dev_auroc") != finish.get("dev_auroc")
+                    or receipt.get("seconds") != finish.get("seconds")
+                    or receipt.get("metric_sha256") != finish.get("metric_sha256")
+                    or baseline_candidate.is_symlink()
+                    or baseline_metric.is_symlink()
+                    or not baseline_candidate.is_file()
+                    or not baseline_metric.is_file()
+                    or file_digest(baseline_candidate) != expected_baseline_sha
+                    or file_digest(baseline_metric) != finish.get("metric_sha256")
+                    or read_json(baseline_metric).get("auroc") != finish.get("dev_auroc")
+                ):
+                    raise BenchmarkError(f"protocol-v2 common baseline receipt is invalid: {key}")
+                existing = baseline_by_seed.get(seed)
+                if existing is None:
+                    baseline_by_seed[seed] = (receipt, baseline_candidate)
+                elif (
+                    existing[0]["candidate_sha256"] != receipt["candidate_sha256"]
+                    or existing[0]["dev_auroc"] != receipt["dev_auroc"]
+                ):
+                    raise BenchmarkError(
+                        "shared-seed baseline differs across policies; do not evaluate holdout"
+                    )
         pending_holdouts: dict[str, Any] = {}
         for dataset in profile["datasets"]:
             private_test = vault / dataset / "test.csv"
@@ -1285,6 +1368,11 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             work / "final.started",
             {
                 "submission_hashes": {k: file_digest(v[1]) for k, v in submissions.items()},
+                "common_baseline_hashes_by_seed": (
+                    {str(seed): file_digest(row[1]) for seed, row in baseline_by_seed.items()}
+                    if meta["stage"] == "pilot_v2"
+                    else {}
+                ),
                 "status": (
                     "all_submissions_frozen_all_agent_calls_reconciled_final_evaluation_started"
                 ),
@@ -1379,13 +1467,101 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             }
             evaluated[key] = outcome
             atomic_json(work / "final" / f"{key}.json", outcome)
+        baseline_holdout: dict[str, float] = {}
+        if meta["stage"] == "pilot_v2":
+            for seed, (_receipt, candidate) in sorted(baseline_by_seed.items()):
+                dataset = "wdbc"
+                public = work / "public" / dataset
+                temp_train = work / ".eval_tmp.csv"
+                key = f"common_baseline__{dataset}__{seed}"
+                output = work / "final" / f"{key}.worker.json"
+                try:
+                    _, pd, _, _ = _dependencies()
+                    train = pd.concat(
+                        [pd.read_csv(public / "train.csv"), pd.read_csv(public / "dev.csv")],
+                        ignore_index=True,
+                    )
+                    train.to_csv(temp_train, index=False)
+                    cmd = [
+                        sys.executable,
+                        str(Path(__file__).resolve()),
+                        "_worker",
+                        "--train",
+                        str(temp_train),
+                        "--eval",
+                        str(vault / dataset / "test.csv"),
+                        "--candidate",
+                        str(candidate),
+                        "--seed",
+                        str(seed),
+                        "--output",
+                        str(output),
+                    ]
+                    environment = dict(os.environ)
+                    environment.update(
+                        {
+                            "OPENBLAS_NUM_THREADS": "1",
+                            "OMP_NUM_THREADS": "1",
+                            "MKL_NUM_THREADS": "1",
+                            "NUMEXPR_NUM_THREADS": "1",
+                        }
+                    )
+                    evaluation = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        cwd=work,
+                        env=environment,
+                        timeout=profile["final_eval_seconds"],
+                    )
+                    if evaluation.returncode != 0:
+                        raise BenchmarkError(
+                            "sealed common-baseline evaluator failed; no automatic retry"
+                        )
+                    score = read_json(output)["auroc"]
+                    if type(score) is not float or not 0 <= score <= 1:
+                        raise BenchmarkError("invalid common-baseline holdout AUROC")
+                except subprocess.TimeoutExpired as exc:
+                    raise BenchmarkError(
+                        "sealed common-baseline evaluator exceeded its hard time cap"
+                    ) from exc
+                finally:
+                    temp_train.unlink(missing_ok=True)
+                baseline_holdout[str(seed)] = score
+                atomic_json(
+                    work / "final" / f"{key}.json",
+                    {
+                        "case_id": f"{dataset}:{seed}",
+                        "seed": seed,
+                        "dataset": f"researchbench-t1-{meta['stage']}",
+                        "policy": "common_fixed_baseline",
+                        "evaluator": "t1-offline-reference-v1",
+                        "metric": "holdout_auroc",
+                        "value": score,
+                        "candidate_sha256": file_digest(candidate),
+                    },
+                )
         result = {
             "stage": meta["stage"],
             "holdout_auroc": {k: v["value"] for k, v in evaluated.items()},
             "qualification": "Offline reference evaluator; not verified Coding Agent performance",
         }
+        if meta["stage"] == "pilot_v2":
+            result["common_baseline_holdout_auroc"] = baseline_holdout
+            result["common_baseline_candidate_sha256"] = digest(
+                canonical(normalize_candidate(profile["baseline_candidate"]))
+            )
+            result["qualification"] = (
+                "One protocol-v2 WDBC comparison. Eight cell submissions plus two shared-seed "
+                "common-baseline evaluations were scored after all research calls terminated. "
+                "This is not a long-horizon research advantage claim."
+            )
         if meta["stage"] != "smoke":
             runs = []
+            call_finishes = {
+                row["call_id"]: row for row in hist if row["kind"] == "agent_call_finished"
+            }
             for arm, dataset, seed in wanted:
                 key = f"{arm}__{dataset}__{seed}"
                 eval_file = work / "final" / f"{key}.json"
@@ -1396,6 +1572,18 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 ]
                 finish_map = {e["id"]: e for e in hist if e["kind"] in ("finished", "aborted")}
                 cost = sum(finish_map[e["id"]]["seconds"] for e in attempts)
+                call_attempts = [
+                    e
+                    for e in hist
+                    if e["kind"] == "agent_call_started"
+                    and (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+                ]
+                call_usage = [
+                    call_finishes[e["call_id"]]
+                    for e in call_attempts
+                    if e["call_id"] in call_finishes
+                    and call_finishes[e["call_id"]].get("usage_available") is True
+                ]
                 runs.append(
                     {
                         "policy": arm,
@@ -1404,6 +1592,17 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                         "artifact_ref": f"final/{key}.json",
                         "artifact_sha256": file_digest(eval_file),
                         "actual_cost": cost,
+                        "training_attempts": len(attempts),
+                        "model_call_attempts": len(call_attempts),
+                        "model_call_usage": {
+                            "available_call_count": len(call_usage),
+                            "missing_call_count": len(call_attempts) - len(call_usage),
+                            "input_tokens": sum(row.get("input_tokens", 0) for row in call_usage),
+                            "output_tokens": sum(row.get("output_tokens", 0) for row in call_usage),
+                            "cached_input_tokens": sum(
+                                row.get("cached_input_tokens", 0) for row in call_usage
+                            ),
+                        },
                         **audit_data[key],
                     }
                 )
@@ -1411,6 +1610,12 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 "schema_version": 1,
                 "name": f"ResearchBench-T1-{meta['stage']}",
                 "dataset": f"researchbench-t1-{meta['stage']}",
+                "protocol_version": profile.get("protocol_version", 1),
+                "code_revision": meta["code_revision"],
+                "execution_order_seed": meta["execution_order_seed"],
+                "execution_order": meta["execution_order"],
+                "datasets": meta["datasets"],
+                "frozen_profile": profile,
                 "evaluator": "t1-offline-reference-v1",
                 "metric": "holdout_auroc",
                 "direction": "maximize",
@@ -1423,7 +1628,9 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 * len(profile["datasets"])
                 * len(profile["arms"])
                 * len(profile["seeds"]),
-                "baseline": "agent_only",
+                "baseline": (
+                    "common_fixed_logistic_c1" if meta["stage"] == "pilot_v2" else "agent_only"
+                ),
                 "policies": profile["arms"],
                 "cases": [
                     {"case_id": f"{d}:{s}", "seed": s}
@@ -1432,11 +1639,24 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 ],
                 "runs": runs,
             }
+            if meta["stage"] == "pilot_v2":
+                suite["common_baseline_holdout_auroc"] = baseline_holdout
+                suite["common_baseline_candidate_sha256"] = result[
+                    "common_baseline_candidate_sha256"
+                ]
+                suite["qualification"] = (
+                    "Baseline training is included in each cell's two-trial allowance; one "
+                    "adaptive slot is available per cell. Holdout opened after all eight "
+                    "submissions froze. Seeds are paired estimator seeds on one split."
+                )
             atomic_json(work / "manifest.json", suite)
             result["comparison_manifest"] = str(work / "manifest.json")
         atomic_json(
             work / "final.completed",
-            {"evaluation_count": len(wanted), "qualification": result["qualification"]},
+            {
+                "evaluation_count": len(wanted) + len(baseline_holdout),
+                "qualification": result["qualification"],
+            },
         )
         return result
 

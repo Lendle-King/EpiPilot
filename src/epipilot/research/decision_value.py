@@ -125,8 +125,17 @@ def rank_decision(
     *,
     minimum_samples: int = 20,
     prior_strength: float = 20.0,
+    cost_penalty_scale: float = 1.0,
+    risk_penalty_scale: float = 1.0,
 ) -> DecisionScore:
     """Score only a directly budget-feasible Proposal with a frozen decision table."""
+    if (
+        cost_penalty_scale < 0
+        or risk_penalty_scale < 0
+        or not isfinite(cost_penalty_scale)
+        or not isfinite(risk_penalty_scale)
+    ):
+        raise ValueError("decision penalty scales must be finite and nonnegative")
     proposal = state.proposals.get(estimate.proposal_id)
     if proposal is None or proposal.status != "proposed":
         raise ValueError("decision estimate refers to an unavailable proposal")
@@ -150,13 +159,13 @@ def rank_decision(
     )
     value = score_estimate(estimate, prob, before, after)
     cost = proposal.estimated_cost / state.goal.budget
-    risk = 0.2 * proposal.risk
+    risk = 0.2 * proposal.risk * risk_penalty_scale
     return DecisionScore(
         proposal_id=proposal.id,
         value_of_information=value,
         normalized_cost=cost,
         risk_penalty=risk,
-        net_value=value - cost - risk,
+        net_value=value - (cost * cost_penalty_scale) - risk,
         probabilities=prob,
         calibration_samples=len(samples),
         enabled_before=before,

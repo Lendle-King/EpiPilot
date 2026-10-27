@@ -34,6 +34,7 @@ from experiments.researchbench_t1.pilot_controller import (  # noqa: E402
     prepare_pilot_single_step_recovery,
     run_pilot,
     run_pilot_single_step,
+    run_pilot_v2,
 )
 from experiments.researchbench_t1.resource_guard import (  # noqa: E402
     ResourceRefusal,
@@ -64,6 +65,8 @@ ALLOWED_MODES = (
     "pilot_resume_prepare",
     "pilot_resume",
     "pilot",
+    "pilot_v2_prepare",
+    "pilot_v2",
 )
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
 
@@ -528,6 +531,42 @@ def run(
             "holdout_materialized": False,
             "model_calls_started": 0,
         }
+    if mode == "pilot_v2_prepare":
+        inspect_host()
+        try:
+            prepared = _t1(
+                "init",
+                "--stage",
+                "pilot_v2",
+                "--allow-agent-stage",
+                "--work",
+                str(root / "pilot_work"),
+                "--vault",
+                str(root / "pilot_vault"),
+                timeout=90,
+            )
+        except MacRunBlocked as exc:
+            raise BenchmarkError("guarded Pilot v2 preparation failed") from exc
+        frozen = json.loads((root / "pilot_work" / "meta.json").read_text(encoding="utf-8"))
+        return {
+            **prepared,
+            "protocol_version": 2,
+            "code_revision": frozen["code_revision"],
+            "execution_order_seed": frozen["execution_order_seed"],
+            "execution_order": frozen["execution_order"],
+            "per_cell_trial_budget_seconds": frozen["per_cell_trial_budget_seconds"],
+            "required_development_seconds_for_all_cells": frozen[
+                "required_development_seconds_for_all_cells"
+            ],
+            "baseline_candidate": frozen["profile"]["baseline_candidate"],
+            "baseline_candidate_sha256": hashlib.sha256(
+                canonical(frozen["profile"]["baseline_candidate"])
+            ).hexdigest(),
+            "adaptive_trials_per_cell": frozen["profile"]["adaptive_trials_per_cell"],
+            "model_call_cap_per_cell": frozen["profile"]["max_model_decision_calls_per_cell"],
+            "holdout_materialized": False,
+            "model_calls_started": 0,
+        }
     if mode == "pilot_recover_prepare":
         inspect_host()
         if origin_results is None:
@@ -626,6 +665,26 @@ def run(
             t1_call=pilot_t1_call,
             inspect=inspect_host,
         )
+    if mode == "pilot_v2":
+        if confirm != "RUN_T1_PILOT_V2":
+            raise MacRunBlocked("protocol-v2 Pilot requires RUN_T1_PILOT_V2")
+        inspect_host()
+        codex = _codex()
+
+        def pilot_v2_t1_call(*args: str, timeout: int = 60) -> dict[str, Any]:
+            try:
+                return _t1(*args, timeout=timeout)
+            except MacRunBlocked as exc:
+                raise BenchmarkError("guarded local T1 v2 command failed") from exc
+
+        return run_pilot_v2(
+            root=root,
+            codex=codex,
+            confirm=confirm,
+            guarded_call=guarded_run,
+            t1_call=pilot_v2_t1_call,
+            inspect=inspect_host,
+        )
     if confirm != "RUN_ONE_CELL":
         raise MacRunBlocked("one-cell agent invocation requires explicit RUN_ONE_CELL")
     # Refuse before paid inference if physical RAM use already exceeds 95%.
@@ -652,7 +711,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cell-seed", type=int, choices=[42, 137])
     args = parser.parse_args(argv)
     root = args.results.absolute()
-    if args.mode in {"pilot", "pilot_step", "pilot_resume"}:
+    if args.mode in {"pilot", "pilot_step", "pilot_resume", "pilot_v2"}:
         expected_entries = {"pilot_work", "pilot_vault", "prepare_summary.json"}
         actual_entries = {path.name for path in root.iterdir()} if root.is_dir() else set()
         if (
@@ -739,6 +798,7 @@ def main(argv: list[str] | None = None) -> int:
                 "pilot_recover_prepare",
                 "pilot_step_prepare",
                 "pilot_resume_prepare",
+                "pilot_v2_prepare",
             }
             else "summary.json"
         )

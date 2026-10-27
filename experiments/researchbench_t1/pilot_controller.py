@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 import re
 import shutil
+import subprocess
 import tempfile
 import time
 from collections.abc import Callable
@@ -73,6 +75,42 @@ CandidateSchema: dict[str, Any] = {
             "properties": {
                 "model": {"type": "string", "enum": ["forest"]},
                 "feature_mode": {"type": "string", "enum": ["all", "numeric_only"]},
+                "n_estimators": {"type": "integer", "minimum": 20, "maximum": 120},
+                "max_depth": {"type": "integer", "minimum": 2, "maximum": 16},
+                "min_samples_leaf": {"type": "integer", "minimum": 1, "maximum": 10},
+                "class_weight": {"type": "string", "enum": ["none", "balanced"]},
+            },
+            "required": [
+                "model",
+                "feature_mode",
+                "n_estimators",
+                "max_depth",
+                "min_samples_leaf",
+                "class_weight",
+            ],
+            "additionalProperties": False,
+        },
+    ]
+}
+
+CandidateSchemaV2: dict[str, Any] = {
+    "anyOf": [
+        {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["logistic"]},
+                "feature_mode": {"type": "string", "enum": ["all"]},
+                "C": {"type": "number", "minimum": 0.01, "maximum": 10},
+                "class_weight": {"type": "string", "enum": ["none", "balanced"]},
+            },
+            "required": ["model", "feature_mode", "C", "class_weight"],
+            "additionalProperties": False,
+        },
+        {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["forest"]},
+                "feature_mode": {"type": "string", "enum": ["all"]},
                 "n_estimators": {"type": "integer", "minimum": 20, "maximum": 120},
                 "max_depth": {"type": "integer", "minimum": 2, "maximum": 16},
                 "min_samples_leaf": {"type": "integer", "minimum": 1, "maximum": 10},
@@ -194,7 +232,10 @@ def _replace_json_file(path: Path, data: dict[str, Any]) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def _schema(arm: str, purpose: str) -> dict[str, Any]:
+def _schema(arm: str, purpose: str, *, protocol_version: int = 1) -> dict[str, Any]:
+    if protocol_version not in {1, 2}:
+        raise ValueError("unsupported Pilot protocol version")
+    candidate_schema = CandidateSchemaV2 if protocol_version == 2 else CandidateSchema
     if purpose == "memory_note":
         return {
             "type": "object",
@@ -205,7 +246,7 @@ def _schema(arm: str, purpose: str) -> dict[str, Any]:
     if arm in {"agent_only", "memory_only"}:
         return {
             "type": "object",
-            "properties": {"candidate": CandidateSchema},
+            "properties": {"candidate": candidate_schema},
             "required": ["candidate"],
             "additionalProperties": False,
         }
@@ -214,7 +255,7 @@ def _schema(arm: str, purpose: str) -> dict[str, Any]:
             "type": "object",
             "properties": {
                 "hypothesis": {"type": "string", "minLength": 8, "maxLength": 240},
-                "candidate": CandidateSchema,
+                "candidate": candidate_schema,
                 "kind": {"type": "string", "enum": ["explore", "optimize", "verify"]},
                 "information_gain": {"type": "number", "minimum": 0, "maximum": 1},
                 "expected_improvement": {"type": "number", "minimum": 0, "maximum": 1},
@@ -222,7 +263,7 @@ def _schema(arm: str, purpose: str) -> dict[str, Any]:
                 "novelty": {"type": "number", "minimum": 0, "maximum": 1},
                 "risk": {"type": "number", "minimum": 0, "maximum": 1},
                 "followup_hypothesis": {"type": "string", "minLength": 8, "maxLength": 240},
-                "followup_candidate": CandidateSchema,
+                "followup_candidate": candidate_schema,
                 "followup_kind": {
                     "type": "string",
                     "enum": ["explore", "optimize", "verify"],
@@ -262,6 +303,46 @@ def _schema(arm: str, purpose: str) -> dict[str, Any]:
             "additionalProperties": False,
         }
     if arm == "epipilot_conditional":
+        if protocol_version == 2:
+            decision = {
+                "type": "object",
+                "properties": {
+                    "hypothesis": {"type": "string", "minLength": 8, "maxLength": 240},
+                    "candidate": candidate_schema,
+                    "probabilities": {
+                        "type": "array",
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "items": {"type": "number", "minimum": 0, "maximum": 1},
+                    },
+                    "candidate_auroc_by_outcome": {
+                        "type": "array",
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "items": {"type": "number", "minimum": 0, "maximum": 1},
+                    },
+                },
+                "required": [
+                    "hypothesis",
+                    "candidate",
+                    "probabilities",
+                    "candidate_auroc_by_outcome",
+                ],
+                "additionalProperties": False,
+            }
+            return {
+                "type": "object",
+                "properties": {
+                    "decisions": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": decision,
+                    }
+                },
+                "required": ["decisions"],
+                "additionalProperties": False,
+            }
         decision = {
             "type": "object",
             "properties": {
@@ -562,8 +643,204 @@ def choose_conditional(
     }
 
 
+def _rank_conditional_auroc(state: ResearchState, estimate: DecisionEstimate):
+    """Keep cost hard-bounded and report conditional value in AUROC units."""
+    return rank_decision(
+        state,
+        estimate,
+        cost_penalty_scale=0.0,
+        risk_penalty_scale=0.0,
+    )
+
+
+def choose_conditional_v2(
+    payload: dict[str, Any], prior_trials: list[dict[str, Any]], call_no: int
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if set(payload) != {"decisions"} or len(payload["decisions"]) != 2:
+        raise ValueError("conditional v2 needs exactly two candidate estimates")
+    baselines = [row for row in prior_trials if row.get("role") == "common_baseline"]
+    if len(baselines) != 1:
+        raise ValueError("conditional v2 requires exactly one measured common baseline")
+    baseline_auroc = baselines[0].get("dev_auroc")
+    if (
+        isinstance(baseline_auroc, bool)
+        or not isinstance(baseline_auroc, (int, float))
+        or not 0 <= baseline_auroc <= 1
+    ):
+        raise ValueError("conditional v2 baseline AUROC is invalid")
+    baseline_auroc = float(baseline_auroc)
+    proposals: list[Proposal] = []
+    candidate_by_id: dict[str, dict[str, Any]] = {}
+    model_tables: list[dict[str, Any]] = []
+    state = _build_research_state([], prior_trials)
+    decisions = payload["decisions"]
+    for index, raw in enumerate(decisions, 1):
+        if set(raw) != {
+            "hypothesis",
+            "candidate",
+            "probabilities",
+            "candidate_auroc_by_outcome",
+        }:
+            raise ValueError("conditional v2 forecast has unexpected fields")
+        candidate = normalize_candidate(raw["candidate"])
+        if candidate["feature_mode"] != "all":
+            raise ValueError("WDBC protocol v2 fixes feature_mode to all")
+        probabilities_raw = raw["probabilities"]
+        values_raw = raw["candidate_auroc_by_outcome"]
+        if len(probabilities_raw) != 4 or len(values_raw) != 4:
+            raise ValueError("conditional v2 forecast needs four canonical outcomes")
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or not 0 <= float(value) <= 1
+            for value in (*probabilities_raw, *values_raw)
+        ):
+            raise ValueError("conditional v2 probability and AUROC values must be finite in [0,1]")
+        probabilities = tuple(float(value) for value in probabilities_raw)
+        candidate_aurocs = tuple(float(value) for value in values_raw)
+        if abs(sum(probabilities) - 1.0) > 1e-8:
+            raise ValueError("conditional v2 probabilities must sum to one")
+
+        proposal_id = f"call{call_no}_c{index}"
+        promote_id = f"{proposal_id}_promote"
+        probe = Proposal(
+            id=proposal_id,
+            title=f"T1 conditional v2 probe {proposal_id}",
+            kind=ProposalKind.OPTIMIZE,
+            rationale=raw["hypothesis"],
+            acceptance="One adaptive fit is permitted after the common baseline.",
+            unknown_ids=["u-validation-response"],
+            information_gain=0.0,
+            expected_improvement=0.0,
+            estimated_cost=float(STAGES["pilot_v2"]["trial_seconds"]),
+            risk=probabilities[3],
+        )
+        promote = Proposal(
+            id=promote_id,
+            title=f"T1 conditional v2 promotion {proposal_id}",
+            kind=ProposalKind.OPTIMIZE,
+            rationale=(
+                "Promote the evaluated candidate only if its measured dev AUROC warrants it: "
+                f"{raw['hypothesis']}"
+            ),
+            acceptance="Select the already-trained candidate only after successful validation.",
+            unknown_ids=["u-validation-response"],
+            depends_on=[proposal_id],
+            information_gain=0.0,
+            expected_improvement=0.0,
+            estimated_cost=1e-9,
+            risk=0.0,
+        )
+        proposals.extend((probe, promote))
+        candidate_by_id[proposal_id] = candidate
+        effective_aurocs = tuple(
+            baseline_auroc if outcome is OutcomeKind.INFRASTRUCTURE_FAILURE else candidate_aurocs[i]
+            for i, outcome in enumerate(OutcomeKind)
+        )
+        branches = tuple(
+            DecisionBranch(
+                outcome=outcome,
+                probability=probabilities[i],
+                utilities=(baseline_auroc, effective_aurocs[i]),
+            )
+            for i, outcome in enumerate(OutcomeKind)
+        )
+        promotion_utility = sum(branch.probability * branch.utilities[1] for branch in branches)
+        estimate = DecisionEstimate(
+            proposal_id=proposal_id,
+            predictor="model-supplied-uncalibrated-auroc-forecast",
+            utility_version="researchbench-t1-pilot-v2-auroc",
+            group="wdbc",
+            rationale=raw["hypothesis"],
+            options=(
+                DecisionOption(key="common-baseline", prior_utility=baseline_auroc),
+                DecisionOption(
+                    key="promote-if-better",
+                    prior_utility=promotion_utility,
+                    proposal_id=promote_id,
+                ),
+            ),
+            branches=branches,
+        )
+        state.proposals[probe.id] = probe
+        state.proposals[promote.id] = promote
+        state.decision_estimates[proposal_id] = estimate
+        model_tables.append(
+            {
+                "proposal_id": proposal_id,
+                "candidate_sha256": digest(canonical(candidate)),
+                "baseline_auroc": baseline_auroc,
+                "probabilities": list(probabilities),
+                "model_candidate_auroc_by_outcome": list(candidate_aurocs),
+                "effective_candidate_auroc_by_outcome": list(effective_aurocs),
+                "outcome_order": [outcome.value for outcome in OutcomeKind],
+            }
+        )
+
+    action = _next_action(
+        state,
+        policy="conditional",
+        decision_ranker=_rank_conditional_auroc,
+    )
+    scores = [
+        _rank_conditional_auroc(state, estimate).model_dump(mode="json")
+        for estimate in state.decision_estimates.values()
+    ]
+    common = {
+        "selection_policy": "epipilot.research.cli._next_action(policy='conditional')",
+        "protocol_version": 2,
+        "utility_unit": "absolute development AUROC; net value is expected AUROC improvement",
+        "cost_mode": "hard per-cell training/call budgets; cost is not subtracted from AUROC",
+        "risk_mode": (
+            "infrastructure-failure probability is in the four-outcome table; promotion is "
+            "disabled on failure and the common baseline remains available"
+        ),
+        "additional_risk_penalty_auroc": 0.0,
+        "promotion_bookkeeping_cost_seconds": 1e-9,
+        "promotion_bookkeeping_cost_note": (
+            "The EpiPilot Proposal schema requires positive estimated_cost. This epsilon only "
+            "represents choosing an already-trained candidate; the cell ledger charges the "
+            "adaptive fit once, and the epsilon is not subtracted from AUROC."
+        ),
+        "stopping_threshold": "best net AUROC improvement <= 0",
+        "calibration_samples": 0,
+        "baseline_candidate_sha256": baselines[0]["candidate_sha256"],
+        "baseline_auroc": baseline_auroc,
+        "model_forecast_tables": model_tables,
+        "decision_scores": scores,
+        "action": action,
+        "forecast_qualification": (
+            "Model forecasts are uncalibrated predictions, not observed or causal value."
+        ),
+    }
+    if action["status"] == "decision_value_stop":
+        return dict(baselines[0]["candidate"]), {
+            **common,
+            "stopped_for_nonpositive_value": True,
+            "fallback": "common_baseline",
+            "planner_proposal": None,
+        }
+    if action["status"] != "ready_for_agent":
+        raise ValueError(f"conditional v2 did not produce a decision: {action['status']}")
+    selected_id = str(action["decision_score"]["proposal_id"])
+    return candidate_by_id[selected_id], {
+        **common,
+        "stopped_for_nonpositive_value": False,
+        "fallback": "common_baseline_if_adaptive_fit_fails_or_is_worse",
+        "planner_proposal": state.proposals[selected_id].model_dump(mode="json"),
+    }
+
+
 def _call_prompt(
-    arm: str, purpose: str, dataset: str, seed: int, history: list[dict[str, Any]], notes: list[str]
+    arm: str,
+    purpose: str,
+    dataset: str,
+    seed: int,
+    history: list[dict[str, Any]],
+    notes: list[str],
+    *,
+    protocol_version: int = 1,
 ) -> str:
     context = {
         "task": (
@@ -574,10 +851,14 @@ def _call_prompt(
         "seed": seed,
         "candidate_space": {
             "models": "regularized logistic regression or random forest",
-            "feature_mode": ["all", "numeric_only"],
+            "feature_mode": ["all"] if protocol_version == 2 else ["all", "numeric_only"],
             "class_weight": ["none", "balanced"],
             "metric": "development AUROC",
-            "trials_remaining": max(0, 2 - len(history)),
+            "trials_remaining": (
+                max(0, 1 - max(0, len(history) - 1))
+                if protocol_version == 2
+                else max(0, 2 - len(history))
+            ),
         },
         "development_history": [
             {"run_id": row["run_id"], "dev_auroc": row["dev_auroc"], "candidate": row["candidate"]}
@@ -626,6 +907,17 @@ def _call_prompt(
             "For exactly two paths, provide a root proposal and a feasible follow-up proposal "
             "with bounded heuristic scores. The controller passes them to EpiPilot rank_proposals, "
             "which applies its two-step lookahead. Scores are uncalibrated inputs, not facts.\n"
+        )
+    elif arm == "epipilot_conditional" and protocol_version == 2:
+        text += (
+            "For exactly two candidate experiments, return four probabilities in canonical order "
+            "[improved, no_gain, inconclusive, infrastructure_failure] and four candidate AUROC "
+            "forecasts in that same order. AUROC values are absolute development AUROCs in [0,1]. "
+            "The stop option is fixed to the measured common baseline; do not predict or edit it. "
+            "The infrastructure_failure branch must reflect that the incumbent remains available. "
+            "The controller uses hard trial/call budgets and EpiPilot's four-outcome value-of-"
+            "information formula; probabilities and candidate AUROC forecasts remain uncalibrated. "
+            "A nonpositive expected AUROC gain stops and submits the baseline.\n"
         )
     elif arm == "epipilot_conditional":
         text += (
@@ -699,6 +991,7 @@ def model_call(
     notes: list[str],
     guarded_call: Callable[..., Any],
     max_timeout: int,
+    protocol_version: int = 1,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     record_agent_call_started(
         work,
@@ -713,9 +1006,17 @@ def model_call(
     call_dir = Path(tempfile.mkdtemp(prefix="t1-call-", dir=work.parent))
     schema_path, response_path = call_dir / "schema.json", call_dir / "response.json"
     started_marker = call_dir / "process_attempt.started"
-    schema = _schema(arm, purpose)
+    schema = _schema(arm, purpose, protocol_version=protocol_version)
     schema_path.write_text(json.dumps(schema, separators=(",", ":")), encoding="utf-8")
-    prompt = _call_prompt(arm, purpose, dataset, seed, history, notes)
+    prompt = _call_prompt(
+        arm,
+        purpose,
+        dataset,
+        seed,
+        history,
+        notes,
+        protocol_version=protocol_version,
+    )
     argv = [
         codex,
         "--no-daemon",
@@ -1169,6 +1470,58 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
                 raise BenchmarkError("serial recovery manifest has invalid frozen resume counters")
     elif events:
         raise BenchmarkError("fresh Pilot workspace contains unexpected prior activity")
+    return meta, work, vault
+
+
+def _load_frozen_pilot_v2(root: Path) -> tuple[dict[str, Any], Path, Path]:
+    """Load only a fresh, committed, protocol-v2 workspace; recovery is disallowed."""
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    if work.is_symlink() or vault.is_symlink():
+        raise BenchmarkError("Pilot v2 work and vault directories must not be symlinks")
+    try:
+        meta = read_json(work / "meta.json")
+        vault_meta = read_json(vault / "meta.json")
+    except (OSError, ValueError) as exc:
+        raise BenchmarkError("prepare and freeze a new Pilot v2 manifest before execution") from exc
+    profile = meta.get("profile")
+    if (
+        meta.get("stage") != "pilot_v2"
+        or profile != STAGES["pilot_v2"]
+        or meta.get("code_revision") != _code_revision()
+    ):
+        raise BenchmarkError("prepared workspace does not match committed Pilot protocol v2")
+    order_seed = profile["execution_order_seed"]
+    expected = [
+        (arm, dataset, seed)
+        for dataset in profile["datasets"]
+        for seed in profile["seeds"]
+        for arm in profile["arms"]
+    ]
+    random.Random(order_seed).shuffle(expected)
+    if (
+        meta.get("execution_order_seed") != order_seed
+        or meta.get("execution_order") != [list(cell) for cell in expected]
+        or meta.get("cell_count") != 8
+        or meta.get("per_cell_trial_budget_seconds") != 30
+        or meta.get("required_development_seconds_for_all_cells") != 240
+        or meta.get("target_auroc") != 0.95
+        or meta.get("final_holdout_is_off_limits_during_search") is not True
+        or vault_meta.get("public_meta_sha256") != file_digest(work / "meta.json")
+        or ledger(work)
+        or list((work / "submissions").glob("*.json"))
+        or (work / "final.started").exists()
+    ):
+        raise BenchmarkError("Pilot v2 manifest is altered or its workspace was already used")
+    baseline = normalize_candidate(profile["baseline_candidate"])
+    if baseline != profile["baseline_candidate"] or baseline["feature_mode"] != "all":
+        raise BenchmarkError("Pilot v2 common baseline is not canonical")
+    if any((vault / dataset / "test.csv").exists() for dataset in profile["datasets"]):
+        raise BenchmarkError("holdout data was materialized before Pilot v2 execution")
+    for dataset, dataset_meta in meta["datasets"].items():
+        for split in ("train", "dev"):
+            path = work / "public" / dataset / f"{split}.csv"
+            if path.is_symlink() or file_digest(path) != dataset_meta["files"][split]["sha256"]:
+                raise BenchmarkError("prepared public split changed after manifest freeze")
     return meta, work, vault
 
 
@@ -2669,6 +3022,604 @@ def run_pilot(
         "qualification": (
             "Pilot. Holdout opens only after every cell has a submitted candidate "
             "and all model calls are closed."
+        ),
+    }
+
+
+def _pilot_v2_baseline_proposal(run_id: str) -> dict[str, Any]:
+    proposal = Proposal(
+        id=f"common-baseline-{run_id}",
+        title="Fixed common logistic baseline",
+        kind=ProposalKind.OPTIMIZE,
+        rationale="Protocol-v2 incumbent fixed before the model call: standardized logistic C=1.0.",
+        acceptance="One measured common baseline fit is required in every cell.",
+        unknown_ids=["u-validation-response"],
+        information_gain=0.0,
+        expected_improvement=0.0,
+        estimated_cost=float(STAGES["pilot_v2"]["trial_seconds"]),
+        risk=0.0,
+    )
+    return proposal.model_dump(mode="json")
+
+
+def _pilot_v2_trial_row(
+    trial: dict[str, Any], candidate: dict[str, Any], seed: int, *, role: str
+) -> dict[str, Any]:
+    candidate_sha = digest(canonical(candidate))
+    row: dict[str, Any] = {
+        "run_id": trial["id"],
+        "seed": seed,
+        "candidate": candidate,
+        "candidate_sha256": candidate_sha,
+        "dev_auroc": float(trial["dev_auroc"]),
+        "seconds": float(trial["seconds"]),
+        "metric_sha256": trial["metric_sha256"],
+        "role": role,
+    }
+    if role == "common_baseline":
+        row["planner_proposal"] = _pilot_v2_baseline_proposal(trial["id"])
+    return row
+
+
+def run_pilot_v2(
+    *,
+    root: Path,
+    codex: str,
+    confirm: str,
+    guarded_call: Callable[..., Any],
+    t1_call: Callable[..., dict[str, Any]],
+    inspect: Callable[[], Any],
+) -> dict[str, Any]:
+    """Run protocol v2: one measured shared incumbent plus one adaptive fit per cell."""
+    if confirm != "RUN_T1_PILOT_V2":
+        raise BenchmarkError("ResearchBench-T1 protocol v2 requires RUN_T1_PILOT_V2")
+    meta, work, vault = _load_frozen_pilot_v2(root)
+    profile = meta["profile"]
+    baseline_candidate = normalize_candidate(profile["baseline_candidate"])
+    baseline_candidate_sha = digest(canonical(baseline_candidate))
+    cells: list[dict[str, Any]] = []
+    stopped_for_resource = False
+    stopped_for_infrastructure = False
+    for arm, dataset, seed in meta["execution_order"]:
+        try:
+            inspect()
+        except ResourceRefusal:
+            stopped_for_resource = True
+            break
+
+        reason = ""
+        local_resource_stop = False
+        local_infrastructure_stop = False
+        history: list[dict[str, Any]] = []
+        notes: list[str] = []
+        call_number = 0
+        baseline_path = root / f"candidate-common-baseline-{arm}-{dataset}-{seed}.json"
+        baseline_path.write_bytes(canonical(baseline_candidate))
+        try:
+            baseline_trial = t1_call(
+                "trial",
+                "--work",
+                str(work),
+                "--arm",
+                arm,
+                "--dataset",
+                dataset,
+                "--seed",
+                str(seed),
+                "--candidate",
+                str(baseline_path),
+                timeout=80,
+            )
+        except (BenchmarkError, OSError, ResourceRefusal) as exc:
+            baseline_path.unlink(missing_ok=True)
+            reconciled = _reconcile_open_cell_trials(
+                work=work,
+                arm=arm,
+                dataset=dataset,
+                seed=seed,
+                t1_call=t1_call,
+                inspect=inspect,
+            )
+            if not reconciled:
+                cells.append(
+                    {
+                        "arm": arm,
+                        "dataset": dataset,
+                        "seed": seed,
+                        "outcome": "unreconciled",
+                        "reason": "baseline subprocess remains open after resource refusal",
+                        "model_calls": 0,
+                        "training_attempts": sum(
+                            row.get("kind") == "started"
+                            and (row.get("arm"), row.get("dataset"), row.get("seed"))
+                            == (arm, dataset, seed)
+                            for row in ledger(work)
+                        ),
+                        "best_dev_auroc": None,
+                    }
+                )
+                stopped_for_resource = True
+                break
+            record_cell_terminal(
+                work,
+                arm,
+                dataset,
+                seed,
+                "failed",
+                f"common baseline execution failed: {type(exc).__name__}",
+            )
+            cells.append(
+                {
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "outcome": "failed",
+                    "reason": "common baseline execution failed; no candidate was fabricated",
+                    "model_calls": 0,
+                    "training_attempts": sum(
+                        row.get("kind") == "started"
+                        and (row.get("arm"), row.get("dataset"), row.get("seed"))
+                        == (arm, dataset, seed)
+                        for row in ledger(work)
+                    ),
+                    "best_dev_auroc": None,
+                }
+            )
+            stopped_for_infrastructure = True
+            break
+        finally:
+            baseline_path.unlink(missing_ok=True)
+        if baseline_trial.get("exit_code") != 0:
+            record_cell_terminal(
+                work,
+                arm,
+                dataset,
+                seed,
+                "failed",
+                "fixed common baseline trial failed; no model call or candidate submission",
+            )
+            cells.append(
+                {
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "outcome": "failed",
+                    "reason": "fixed common baseline training failed",
+                    "model_calls": 0,
+                    "training_attempts": 1,
+                    "best_dev_auroc": None,
+                }
+            )
+            stopped_for_infrastructure = True
+            break
+
+        baseline_row = _pilot_v2_trial_row(
+            baseline_trial, baseline_candidate, seed, role="common_baseline"
+        )
+        history.append(baseline_row)
+        with exclusive(work):
+            event(
+                work,
+                {
+                    "kind": "common_baseline_validated",
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "run_id": baseline_row["run_id"],
+                    "candidate_sha256": baseline_candidate_sha,
+                    "dev_auroc": baseline_row["dev_auroc"],
+                    "seconds": baseline_row["seconds"],
+                    "metric_sha256": baseline_row["metric_sha256"],
+                    "baseline_spec": baseline_candidate,
+                },
+            )
+
+        if arm == "memory_only":
+            call_number += 1
+            try:
+                inspect()
+                note_payload, _note_usage = model_call(
+                    work=work,
+                    codex=codex,
+                    arm=arm,
+                    dataset=dataset,
+                    seed=seed,
+                    call_id=f"v2-{arm}-{dataset}-{seed}-call-{call_number}",
+                    call_no=call_number,
+                    purpose="memory_note",
+                    history=history,
+                    notes=notes,
+                    guarded_call=guarded_call,
+                    max_timeout=150,
+                    protocol_version=2,
+                )
+                expected_note = (
+                    f"On frozen split, run {baseline_row['run_id']}, candidate sha256 "
+                    f"{baseline_candidate_sha}, development AUROC "
+                    f"{baseline_row['dev_auroc']:.6f}; scope=current cell only."
+                )
+                note = note_payload.get("note")
+                if (
+                    set(note_payload) != {"note"}
+                    or not isinstance(note, str)
+                    or note.strip() != expected_note
+                ):
+                    record_cell_incident(
+                        work,
+                        arm,
+                        dataset,
+                        seed,
+                        "unsupported_claim",
+                        "memory note failed exact comparison with the verified baseline",
+                    )
+                    reason = "memory note was not source-verifiable; common baseline submitted"
+                else:
+                    add_memory(
+                        work,
+                        arm,
+                        dataset,
+                        seed,
+                        baseline_row["run_id"],
+                        expected_note,
+                    )
+                    notes.append(expected_note)
+            except ResourceRefusal as exc:
+                reason = "memory note call did not complete; common baseline submitted"
+                if "exceeded fixed wall timeout" in str(exc):
+                    reason += " after a charged call timeout"
+                else:
+                    local_resource_stop = True
+            except ModelCallFailure as exc:
+                record_cell_incident(
+                    work,
+                    arm,
+                    dataset,
+                    seed,
+                    "invalid",
+                    f"memory note failed: {exc.classification}",
+                )
+                reason = "memory note call failed; common baseline submitted"
+                local_infrastructure_stop = exc.infrastructure
+            except (BenchmarkError, ValueError, KeyError, TypeError) as exc:
+                record_cell_incident(
+                    work,
+                    arm,
+                    dataset,
+                    seed,
+                    "invalid",
+                    f"memory note rejected: {type(exc).__name__}",
+                )
+                reason = "memory note rejected; common baseline submitted"
+
+        if not reason:
+            call_number += 1
+            try:
+                inspect()
+                payload, _decision_usage = model_call(
+                    work=work,
+                    codex=codex,
+                    arm=arm,
+                    dataset=dataset,
+                    seed=seed,
+                    call_id=f"v2-{arm}-{dataset}-{seed}-call-{call_number}",
+                    call_no=call_number,
+                    purpose="decision",
+                    history=history,
+                    notes=notes,
+                    guarded_call=guarded_call,
+                    max_timeout=150,
+                    protocol_version=2,
+                )
+                if arm in {"agent_only", "memory_only"}:
+                    if set(payload) != {"candidate"}:
+                        raise ValueError("candidate response must contain exactly candidate")
+                    candidate = normalize_candidate(payload["candidate"])
+                    decision = {
+                        "selection_policy": "ordinary-model-candidate",
+                        "protocol_version": 2,
+                        "candidate_sha256": digest(canonical(candidate)),
+                        "baseline_candidate_sha256": baseline_candidate_sha,
+                    }
+                    planner_proposal = None
+                elif arm == "epipilot_heuristic":
+                    candidate, decision = choose_heuristic(payload, history, call_number)
+                    decision["protocol_version"] = 2
+                    decision["adaptive_trial_limit"] = 1
+                    decision["lookahead_execution_qualification"] = (
+                        "rank_proposals ranks one runnable root and its hypothetical successor; "
+                        "the controller trains only the selected root candidate under protocol v2"
+                    )
+                    planner_proposal = decision["planner_proposal"]
+                else:
+                    candidate, decision = choose_conditional_v2(payload, history, call_number)
+                    planner_proposal = decision.get("planner_proposal")
+
+                _record_strategy_decision(work, arm, dataset, seed, call_number, decision)
+                candidate = normalize_candidate(candidate)
+                candidate_sha = digest(canonical(candidate))
+                if decision.get("fallback") == "common_baseline":
+                    reason = (
+                        "Conditional v2 stopped at nonpositive value; common baseline submitted"
+                    )
+                elif candidate_sha == baseline_candidate_sha:
+                    record_cell_incident(
+                        work,
+                        arm,
+                        dataset,
+                        seed,
+                        "repeat",
+                        "adaptive candidate equals the measured common baseline",
+                    )
+                    reason = "adaptive choice repeated the incumbent; common baseline submitted"
+                else:
+                    try:
+                        inspect()
+                    except ResourceRefusal:
+                        local_resource_stop = True
+                        reason = (
+                            "resource guard refused the adaptive fit; common baseline submitted"
+                        )
+                    if not local_resource_stop:
+                        candidate_path = root / f"candidate-adaptive-{arm}-{dataset}-{seed}.json"
+                        candidate_path.write_bytes(canonical(candidate))
+                        try:
+                            adaptive_trial = t1_call(
+                                "trial",
+                                "--work",
+                                str(work),
+                                "--arm",
+                                arm,
+                                "--dataset",
+                                dataset,
+                                "--seed",
+                                str(seed),
+                                "--candidate",
+                                str(candidate_path),
+                                timeout=80,
+                            )
+                        except (
+                            BenchmarkError,
+                            OSError,
+                            ResourceRefusal,
+                            subprocess.SubprocessError,
+                        ):
+                            reason = "adaptive training command failed; common baseline submitted"
+                            local_infrastructure_stop = True
+                        finally:
+                            candidate_path.unlink(missing_ok=True)
+                        if local_infrastructure_stop:
+                            pass
+                        elif adaptive_trial.get("exit_code") == 0:
+                            history.append(
+                                _pilot_v2_trial_row(
+                                    adaptive_trial,
+                                    candidate,
+                                    seed,
+                                    role="adaptive_candidate",
+                                )
+                            )
+                            reason = "common baseline and one adaptive fit completed"
+                        else:
+                            record_cell_incident(
+                                work,
+                                arm,
+                                dataset,
+                                seed,
+                                "invalid",
+                                "adaptive candidate training failed; retained common baseline",
+                            )
+                            reason = "adaptive fit failed; common baseline submitted"
+                if planner_proposal is not None and history[-1]["role"] == "adaptive_candidate":
+                    history[-1]["planner_proposal"] = planner_proposal
+            except ResourceRefusal as exc:
+                reason = "decision call did not complete; common baseline submitted"
+                if "exceeded fixed wall timeout" in str(exc):
+                    reason += " after a charged call timeout"
+                else:
+                    local_resource_stop = True
+            except ModelCallFailure as exc:
+                record_cell_incident(
+                    work,
+                    arm,
+                    dataset,
+                    seed,
+                    "invalid",
+                    f"decision failed: {exc.classification}",
+                )
+                reason = "decision failed; common baseline submitted"
+                local_infrastructure_stop = exc.infrastructure
+            except (BenchmarkError, ValueError, KeyError, TypeError) as exc:
+                record_cell_incident(
+                    work,
+                    arm,
+                    dataset,
+                    seed,
+                    "invalid",
+                    f"decision rejected: {type(exc).__name__}",
+                )
+                reason = "decision rejected; common baseline submitted"
+
+        reconciled = _reconcile_open_cell_trials(
+            work=work,
+            arm=arm,
+            dataset=dataset,
+            seed=seed,
+            t1_call=t1_call,
+            inspect=inspect,
+        )
+        if not reconciled:
+            cells.append(
+                {
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "outcome": "unreconciled",
+                    "reason": "training subprocess remains open; holdout stays sealed",
+                    "model_calls": call_number,
+                    "training_attempts": sum(
+                        row.get("kind") == "started"
+                        and (row.get("arm"), row.get("dataset"), row.get("seed"))
+                        == (arm, dataset, seed)
+                        for row in ledger(work)
+                    ),
+                    "best_dev_auroc": baseline_row["dev_auroc"],
+                }
+            )
+            stopped_for_resource = True
+            break
+        selection = select(work, arm, dataset, seed)
+        selected_role = (
+            "common_baseline"
+            if selection["run_id"] == baseline_row["run_id"]
+            else "adaptive_candidate"
+        )
+        if not reason:
+            reason = f"{selected_role} selected by development AUROC"
+        elif selected_role == "adaptive_candidate":
+            reason += "; adaptive candidate had higher development AUROC"
+        else:
+            reason += "; common baseline retained by development AUROC"
+        record_cell_terminal(work, arm, dataset, seed, "submitted", reason)
+        cell_events = ledger(work)
+        cell_rows = [
+            row
+            for row in cell_events
+            if row.get("kind") == "started"
+            and (row.get("arm"), row.get("dataset"), row.get("seed")) == (arm, dataset, seed)
+        ]
+        cell_calls = sum(
+            row.get("kind") == "agent_call_started"
+            and (row.get("arm"), row.get("dataset"), row.get("seed")) == (arm, dataset, seed)
+            for row in cell_events
+        )
+        cell_call_finishes = [
+            row
+            for row in cell_events
+            if row.get("kind") == "agent_call_finished"
+            and any(
+                started.get("call_id") == row.get("call_id")
+                and (started.get("arm"), started.get("dataset"), started.get("seed"))
+                == (arm, dataset, seed)
+                for started in cell_events
+                if started.get("kind") == "agent_call_started"
+            )
+        ]
+        cell_usage_rows = [row for row in cell_call_finishes if row.get("usage_available") is True]
+        cell_seconds = sum(
+            float(row.get("seconds", 0.0))
+            for row in cell_events
+            if row.get("kind") in {"finished", "aborted"}
+            and (row.get("arm"), row.get("dataset"), row.get("seed")) == (arm, dataset, seed)
+        )
+        cells.append(
+            {
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "outcome": "submitted",
+                "selected_role": selected_role,
+                "reason": reason,
+                "training_attempts": len(cell_rows),
+                "model_calls": cell_calls,
+                "training_seconds": round(cell_seconds, 6),
+                "best_dev_auroc": selection["dev_auroc"],
+                "candidate_sha256": selection["candidate_sha256"],
+                "model_call_usage": {
+                    "available_call_count": len(cell_usage_rows),
+                    "missing_call_count": cell_calls - len(cell_usage_rows),
+                    "input_tokens": sum(row.get("input_tokens", 0) for row in cell_usage_rows),
+                    "output_tokens": sum(row.get("output_tokens", 0) for row in cell_usage_rows),
+                    "cached_input_tokens": sum(
+                        row.get("cached_input_tokens", 0) for row in cell_usage_rows
+                    ),
+                },
+            }
+        )
+        stopped_for_resource = stopped_for_resource or local_resource_stop
+        stopped_for_infrastructure = stopped_for_infrastructure or local_infrastructure_stop
+        if stopped_for_resource or stopped_for_infrastructure:
+            break
+
+    summary = status(work)
+    final_result: dict[str, Any] | None = None
+    expected_cells = len(meta["execution_order"])
+    if (
+        not stopped_for_resource
+        and not stopped_for_infrastructure
+        and len(cells) == expected_cells
+        and summary["submitted"] == expected_cells
+        and summary["model_calls_open"] == 0
+    ):
+        history_events = ledger(work)
+        audit: dict[str, Any] = {}
+        for arm, dataset, seed in meta["execution_order"]:
+            key = f"{arm}__{dataset}__{seed}"
+            audit[key] = {
+                "human_interventions": 0,
+                "repeated_experiments": sum(
+                    row.get("category") == "repeat"
+                    and (row.get("arm"), row.get("dataset"), row.get("seed"))
+                    == (arm, dataset, seed)
+                    for row in history_events
+                    if row["kind"] == "cell_incident"
+                ),
+                "unsupported_claims": sum(
+                    row.get("category") == "unsupported_claim"
+                    and (row.get("arm"), row.get("dataset"), row.get("seed"))
+                    == (arm, dataset, seed)
+                    for row in history_events
+                    if row["kind"] == "cell_incident"
+                ),
+            }
+        audit_path = work / "audit.json"
+        audit_path.write_bytes(canonical(audit))
+        final_result = t1_call(
+            "finalize",
+            "--work",
+            str(work),
+            "--vault",
+            str(vault),
+            "--audit",
+            str(audit_path),
+            timeout=200,
+        )
+        summary = status(work)
+    return {
+        "protocol_version": 2,
+        "work": str(work),
+        "vault": str(vault),
+        "execution_order": meta["execution_order"],
+        "execution_order_seed": meta["execution_order_seed"],
+        "cells": cells,
+        "cell_count_completed_or_terminal": len(cells),
+        "stopped_for_resource_guard": stopped_for_resource,
+        "paused_for_infrastructure": stopped_for_infrastructure,
+        "training_trials": summary["total_started"],
+        "training_seconds": summary["reserved_or_spent_seconds"],
+        "model_call_attempts": summary["model_call_attempts_current_run"],
+        "codex_process_starts": summary["codex_process_starts"],
+        "model_call_usage": summary["model_usage"],
+        "target_auroc": summary["target_auroc"],
+        "target_attained_trials": summary["target_attained_trials"],
+        "invalid_events": summary["invalid_events"],
+        "repeated_experiments": summary["repeated_experiments"],
+        "manual_interventions": 0,
+        "unsupported_claims": summary["unsupported_claim_events"],
+        "holdout_evaluated": summary["holdout_evaluated"],
+        "final_evaluation": final_result,
+        "pilot_run_status": (
+            "paused_for_infrastructure"
+            if stopped_for_infrastructure
+            else "paused_for_resource_guard"
+            if stopped_for_resource
+            else "incomplete_missing_cells"
+            if summary["submitted"] != expected_cells
+            else "completed"
+        ),
+        "qualification": (
+            "One WDBC comparison under frozen protocol v2. Baseline is trained once in every "
+            "cell and counts as one of two training slots; one adaptive fit is available. "
+            "This does not establish a long-horizon research advantage."
         ),
     }
 

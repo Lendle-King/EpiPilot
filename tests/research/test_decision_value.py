@@ -165,6 +165,12 @@ def test_frozen_forecast_requires_approved_proposal_and_real_evidence(root: Path
     assert score.value_of_information > 0
     assert score.enabled_before == (True, False)
     assert score.enabled_after[0] == (True, True)
+    auroc_scale_score = rank_decision(before, est, cost_penalty_scale=0.0, risk_penalty_scale=0.0)
+    assert auroc_scale_score.normalized_cost > 0
+    assert auroc_scale_score.risk_penalty == 0
+    assert auroc_scale_score.net_value == pytest.approx(auroc_scale_score.value_of_information)
+    with pytest.raises(ValueError, match="penalty scales"):
+        rank_decision(before, est, cost_penalty_scale=-1.0)
     register(store, root)
     frozen = store.load()[0].decision_forecasts["PRE-1"]
     assert frozen.estimate == est

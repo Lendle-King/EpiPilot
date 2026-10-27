@@ -17,6 +17,7 @@ added, no local GPU job is used, and no model call occurs without the explicit
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `smoke` (default) | WDBC (built into scikit-learn) | `offline_baseline` | 42 | 2 | 12 s | 24 s | 30 s | 0 | 15 s |
 | `pilot` (explicit opt-in) | WDBC | Agent, Memory, EpiPilot heuristic, EpiPilot conditional | 42, 137 | 2 | 15 s | 30 s | 240 s | 4 (32 across eight cells) | 20 s |
+| `pilot_v2` (fixed-incumbent comparison) | WDBC | same four policies | 42, 137 | 2 total: 1 shared baseline + up to 1 adaptive fit | 15 s | 30 s | 240 s | 4 (32 across eight cells) | 20 s |
 | `full` (explicit opt-in) | Adult, Bank Marketing, MAGIC Gamma Telescope | same four policies | 42, 137, 271 | 2 | 20 s | 40 s | 900 s — underfunded | not authorized | 35 s |
 
 To avoid leaking information from the already inspected smoke holdout,
@@ -176,6 +177,77 @@ cells are terminal and submitted; a stopped cell without a candidate leaves
 the holdout sealed. Failed requests and training attempts remain in the
 ledger and are never silently replaced. The final evaluation is single-use;
 no automatic rerun is allowed.
+
+### Protocol v2: fixed-incumbent WDBC comparison
+
+`pilot_v2` is a new, separate eight-cell run. It does not alter the old Pilot
+or its failed-call ledger. It keeps the Pilot's stratified 60/20/20 WDBC split
+seed (`20272025`) so the two runs use the same data membership. Seeds 42 and
+137 are estimator seeds on that one split; they are paired repeats, not two
+independent data samples. Cell order is randomized from seed `20271028` and
+is frozen in the new manifest.
+
+Every cell first receives one measured, shared incumbent fit: standardized
+logistic regression, `C=1.0`, `feature_mode=all`, and no class weighting. That
+fit consumes one of the cell's two training slots and is visible to each
+policy through its permitted evidence path. Each policy may then request one
+adaptive candidate fit, also capped at 15 seconds. Total development spend is
+30 seconds per cell and 240 seconds across eight cells; the 240-second stage
+limit remains a safety cap. Each cell has the same maximum of four model-call
+attempts, including failures. The controller does not issue filler calls:
+Agent Only, Heuristic, and Conditional need one decision call; Memory Only
+can use one extra call to write its source-checked baseline note before its
+candidate decision. Failed model calls are charged, with no automatic retry.
+Token usage is recorded when returned, but is not forced to match.
+
+The v2 candidate space removes WDBC's equivalent `numeric_only` feature mode;
+logistic `C` is normalized to a float before candidate hashing so `1` and
+`1.0` cannot appear as distinct configurations. All four arms use the same
+allowlisted logistic and forest parameters, split, baseline candidate,
+estimator seed, model, reasoning effort, and per-cell call and fit ceilings.
+A failed or invalid adaptive decision leaves the measured baseline as a
+valid submission. A real infrastructure-wide failure pauses later cells; it
+does not erase the baseline or the failed-call record.
+Heuristic's two-step lookahead can score a hypothetical successor, but the
+controller executes only its selected root candidate because v2 reserves one
+adaptive trial per cell.
+
+Conditional v2 receives exactly two candidate forecasts, each with the four
+canonical outcome probabilities and absolute candidate development-AUROC
+forecasts. The controller compares expected post-outcome AUROC against the
+measured baseline through EpiPilot's `_next_action(policy="conditional")`
+and `rank_decision` path. The forecast is uncalibrated. The infrastructure
+failure branch retains the baseline; trial and call limits are hard
+constraints, so seconds are not subtracted from AUROC. A nonpositive expected
+AUROC gain stops and submits the baseline. The EpiPilot `Proposal` model
+requires positive estimated action cost, so promotion of an already-fitted
+candidate carries a logged `1e-9`-second bookkeeping epsilon; it adds no
+training slot and has no AUROC penalty.
+
+Prepare and inspect the new protocol before making any model call:
+
+```bash
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_v2_prepare --provider ccswitch_codex --model gpt-6-luna \
+  --results /path/to/local/T1-Pilot-V2-Results
+
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_v2 --provider ccswitch_codex --model gpt-6-luna \
+  --confirm RUN_T1_PILOT_V2 \
+  --results /path/to/local/T1-Pilot-V2-Results
+```
+
+The first command freezes the code revision, baseline, data and split hashes,
+randomized order, and equal training and call ceilings to a new local
+manifest. It does not call the model or materialize test data. The second
+command uses exact `gpt-6-luna`, `max` reasoning, read-only ephemeral context,
+disabled tools, and zero configured retries. After all eight cells have
+submitted frozen candidate hashes and all model processes have ended, the
+evaluator opens the test split once. It scores the eight submitted candidates
+plus the common baseline once per estimator seed (ten evaluation records).
+Test scores are never sent back to a research agent or used to change a
+candidate. This is one bounded WDBC comparison, not a long-horizon research
+conclusion or a statistically powered test. Full T1 remains unauthorized.
 
 ### Bounded single-cell recovery
 
