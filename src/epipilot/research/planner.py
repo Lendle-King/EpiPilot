@@ -85,11 +85,15 @@ def _immediate_score(proposal: Proposal, state: ResearchState, phase: str) -> fl
     return value / (0.5 + _calibrated_cost(proposal, state)) - 0.2 * proposal.risk
 
 
-def _runnable_after(parent: Proposal, child: Proposal, state: ResearchState) -> bool:
+def _runnable_after(
+    parent: Proposal, child: Proposal, state: ResearchState, max_cost: float | None = None
+) -> bool:
     """A child must be affordable and have no other unresolved dependencies."""
     if child.status != "proposed" or parent.id not in child.depends_on:
         return False
-    if parent.estimated_cost + child.estimated_cost > state.remaining + 1e-9:
+    if parent.estimated_cost + child.estimated_cost > (
+        state.remaining if max_cost is None else min(state.remaining, max_cost)
+    ) + 1e-9:
         return False
     return all(
         dependency == parent.id or state.proposals[dependency].status == "completed"
@@ -97,16 +101,25 @@ def _runnable_after(parent: Proposal, child: Proposal, state: ResearchState) -> 
     )
 
 
-def rank_proposals(state: ResearchState, limit: int = 5) -> list[RankedProposal]:
-    """Rank directly feasible actions; look ahead only to a feasible immediate successor."""
+def rank_proposals(
+    state: ResearchState,
+    limit: int = 5,
+    *,
+    kind: ProposalKind | None = None,
+    max_cost: float | None = None,
+    phase_override: str | None = None,
+) -> list[RankedProposal]:
+    """Rank feasible proposals; explicit exploration filters never modify the default."""
     if limit < 1:
         raise ValueError("limit must be positive")
-    phase = research_phase(state)
+    phase = phase_override or research_phase(state)
+    available = state.remaining if max_cost is None else min(state.remaining, max_cost)
     eligible = [
         proposal
         for proposal in state.proposals.values()
         if proposal.status == "proposed"
-        and proposal.estimated_cost <= state.remaining + 1e-9
+        and (kind is None or proposal.kind is kind)
+        and proposal.estimated_cost <= available + 1e-9
         and all(state.proposals[parent].status == "completed" for parent in proposal.depends_on)
     ]
     ranked: list[RankedProposal] = []
@@ -116,7 +129,7 @@ def rank_proposals(state: ResearchState, limit: int = 5) -> list[RankedProposal]
             (
                 _immediate_score(child, state, phase)
                 for child in state.proposals.values()
-                if _runnable_after(proposal, child, state)
+                if _runnable_after(proposal, child, state, max_cost)
             ),
             default=0.0,
         )
