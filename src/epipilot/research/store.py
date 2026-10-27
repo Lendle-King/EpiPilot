@@ -68,16 +68,16 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
             raise ValueError("goal already exists; goal changes need explicit user authorization")
         state.goal = ResearchGoal.model_validate(p)
     elif kind == "exploration_enabled":
-        config = ExplorationConfig.model_validate(p)
-        if legacy or state.goal is None or not config.enabled:
+        new_config = ExplorationConfig.model_validate(p)
+        if legacy or state.goal is None or not new_config.enabled:
             raise ValueError("exploration enable requires a v2 goal and enabled config")
-        if config.stage is not ExplorationStage.EXPLORATION:
+        if new_config.stage is not ExplorationStage.EXPLORATION:
             raise ValueError("exploration enable must begin with the discovery stage")
         if state.exploration is not None and state.exploration.enabled:
             raise ValueError("exploration mode is already enabled")
         if pending_research(state):
             raise ValueError("finish in-flight research before changing exploration mode")
-        state.exploration = config
+        state.exploration = new_config
     elif kind == "exploration_disabled":
         reason = str(p.get("reason", "")).strip()
         if state.exploration is None or not state.exploration.enabled or len(reason) < 8:
@@ -129,12 +129,12 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         if insight.id in state.problem_insights:
             raise ValueError("duplicate problem insight id")
         sources: set[str] = set()
-        for claim_id, status in insight.claim_statuses.items():
+        for claim_id, claim_verdict in insight.claim_statuses.items():
             claim = state.claims.get(claim_id)
             if (
                 claim is None
-                or claim.status is not status
-                or status not in {ClaimStatus.SUPPORTED, ClaimStatus.REFUTED}
+                or claim.status is not claim_verdict
+                or claim_verdict not in {ClaimStatus.SUPPORTED, ClaimStatus.REFUTED}
             ):
                 raise ValueError("problem guidance requires conclusive, reviewed claims")
             sources.update(claim.supporting_evidence_ids + claim.contradicting_evidence_ids)
@@ -778,6 +778,8 @@ class ResearchStore:
         self,
         kind: str,
         record: ResearchGoal
+        | ExplorationConfig
+        | ProblemInsight
         | Unknown
         | Claim
         | Proposal
