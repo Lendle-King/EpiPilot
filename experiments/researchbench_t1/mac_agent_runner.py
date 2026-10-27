@@ -621,9 +621,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--origin-results", type=Path)
     parser.add_argument("--prior-results", type=Path)
-    parser.add_argument("--cell-arm", choices=["memory_only"])
+    parser.add_argument(
+        "--cell-arm",
+        choices=["agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"],
+    )
     parser.add_argument("--cell-dataset", choices=["wdbc"])
-    parser.add_argument("--cell-seed", type=int, choices=[42])
+    parser.add_argument("--cell-seed", type=int, choices=[42, 137])
     args = parser.parse_args(argv)
     root = args.results.absolute()
     if args.mode in {"pilot", "pilot_step"}:

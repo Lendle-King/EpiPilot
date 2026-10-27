@@ -366,11 +366,51 @@ def test_nonzero_cli_exit_is_redacted_and_pauses_after_first_cell(
     assert status(work)["terminal_cells"] == 1
 
 
-def test_cli_output_schemas_are_valid_json_schema() -> None:
+def test_cli_output_schemas_are_strict_and_preserve_candidate_semantics() -> None:
     jsonschema = pytest.importorskip("jsonschema")
+
+    def assert_strict_subset(node: Any) -> None:
+        if isinstance(node, list):
+            for value in node:
+                assert_strict_subset(value)
+            return
+        if not isinstance(node, dict):
+            return
+        assert "oneOf" not in node
+        if node.get("type") == "object":
+            properties = node.get("properties", {})
+            assert node.get("additionalProperties") is False
+            assert set(node.get("required", [])) == set(properties)
+        for value in node.values():
+            assert_strict_subset(value)
+
     for arm in ("agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"):
         for purpose in ("decision", "memory_note"):
-            jsonschema.Draft202012Validator.check_schema(pilot_controller._schema(arm, purpose))
+            schema = pilot_controller._schema(arm, purpose)
+            jsonschema.Draft202012Validator.check_schema(schema)
+            assert_strict_subset(schema)
+
+    assert set(pilot_controller.CandidateSchema) == {"anyOf"}
+    candidate_validator = jsonschema.Draft202012Validator(pilot_controller.CandidateSchema)
+    allowed_candidates = (
+        _candidate(1.25),
+        {
+            "model": "forest",
+            "feature_mode": "numeric_only",
+            "n_estimators": 40,
+            "max_depth": 8,
+            "min_samples_leaf": 2,
+            "class_weight": "balanced",
+        },
+    )
+    for candidate in allowed_candidates:
+        assert candidate_validator.is_valid(candidate)
+        assert t1_module.normalize_candidate(candidate)
+
+    invalid_candidate = {**allowed_candidates[0], "n_estimators": 40}
+    assert not candidate_validator.is_valid(invalid_candidate)
+    with pytest.raises(t1_module.BenchmarkError, match="inconsistent parameter schema"):
+        t1_module.normalize_candidate(invalid_candidate)
 
 
 def test_recovery_manifest_links_prior_failures_and_cumulative_call_budget(
@@ -556,12 +596,12 @@ def test_single_step_recovery_preserves_lineage_and_caps_call_and_training_work(
         encoding="utf-8",
     )
 
-    recovery = tmp_path / "T1_Pilot_Recovery_3"
-    recovery.mkdir(mode=0o700)
+    recovery3 = tmp_path / "T1_Pilot_Recovery_3"
+    recovery3.mkdir(mode=0o700)
     monkeypatch.setattr(t1_module, "_code_revision", lambda: "d" * 40)
     monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "d" * 40)
-    prepared = pilot_controller.prepare_pilot_single_step_recovery(
-        root=recovery,
+    memory_prepared = pilot_controller.prepare_pilot_single_step_recovery(
+        root=recovery3,
         origin_root=origin,
         prior_root=recovery2,
         t1_call=setup_t1,
@@ -569,24 +609,70 @@ def test_single_step_recovery_preserves_lineage_and_caps_call_and_training_work(
         dataset=target[1],
         seed=target[2],
     )
+    assert memory_prepared["prior_call_attempts"] == 10
+    assert memory_prepared["target_prior_call_attempts"] == 3
+    assert memory_prepared["remaining_total_call_budget"] == 22
+    recovery3_work = recovery3 / "pilot_work"
+    fourth_id = "memory_only-wdbc-42-call-4"
+    record_agent_call_started(recovery3_work, *target, fourth_id, "decision")
+    record_agent_call_finished(
+        recovery3_work,
+        fourth_id,
+        "failed",
+        {"usage_available": False, "process_started": True, "turn_count": 0},
+    )
+    (recovery3 / "summary.json").write_text(
+        json.dumps(
+            {
+                "status": "paused_for_infrastructure",
+                "pilot_run_status": "paused_for_infrastructure",
+                "model_call_attempts": 11,
+                "training_trials": 0,
+                "holdout_evaluated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    recovery = tmp_path / "T1_Pilot_Recovery_4"
+    recovery.mkdir(mode=0o700)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "e" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "e" * 40)
+    step_target = ("agent_only", "wdbc", 42)
+    prepared = pilot_controller.prepare_pilot_single_step_recovery(
+        root=recovery,
+        origin_root=origin,
+        prior_root=recovery3,
+        t1_call=setup_t1,
+        arm=step_target[0],
+        dataset=step_target[1],
+        seed=step_target[2],
+    )
     meta, work, vault = pilot_controller._load_frozen_pilot(recovery)
-    assert prepared["prior_call_attempts"] == 10
-    assert prepared["remaining_total_call_budget"] == 22
-    assert prepared["target_prior_call_attempts"] == 3
-    assert prepared["target_remaining_call_budget"] == 1
-    assert meta["code_revision"] == "d" * 40
-    assert sum(meta["recovery"]["prior_call_attempts_by_cell"].values()) == 10
-    assert len(meta["recovery"]["prior_call_ids"]) == 10
-    assert len(set(meta["recovery"]["prior_call_ids"])) == 10
+    assert prepared["prior_call_attempts"] == 11
+    assert prepared["remaining_total_call_budget"] == 21
+    assert prepared["target_prior_call_attempts"] == 1
+    assert prepared["target_remaining_call_budget"] == 3
+    assert meta["code_revision"] == "e" * 40
+    assert sum(meta["recovery"]["prior_call_attempts_by_cell"].values()) == 11
+    assert len(meta["recovery"]["prior_call_ids"]) == 11
+    assert len(set(meta["recovery"]["prior_call_ids"])) == 11
     assert meta["recovery"]["recovery_ancestor_directories"] == [
         "T1_Pilot_Recovery_1",
         "T1_Pilot_Recovery_2",
+        "T1_Pilot_Recovery_3",
     ]
-    assert meta["recovery"]["prior_call_attempts_by_cell"]["memory_only__wdbc__42"] == 3
+    assert meta["recovery"]["prior_call_attempts_by_cell"]["memory_only__wdbc__42"] == 4
+    assert meta["recovery"]["prior_call_attempts_by_cell"]["agent_only__wdbc__42"] == 1
+    assert meta["recovery"]["single_step_target"] == {
+        "arm": "agent_only",
+        "dataset": "wdbc",
+        "seed": 42,
+    }
     assert not (vault / "wdbc" / "test.csv").exists()
 
     with pytest.raises(t1_module.BenchmarkError, match="duplicate model call identifier"):
-        record_agent_call_started(work, *target, "memory_only-wdbc-42-call-3", "decision")
+        record_agent_call_started(work, *step_target, "agent_only-wdbc-42-call-1", "decision")
 
     model_calls: list[str] = []
 
@@ -641,9 +727,9 @@ def test_single_step_recovery_preserves_lineage_and_caps_call_and_training_work(
         guarded_call=fake_model,
         t1_call=step_t1,
         inspect=lambda: None,
-        arm=target[0],
-        dataset=target[1],
-        seed=target[2],
+        arm=step_target[0],
+        dataset=step_target[1],
+        seed=step_target[2],
     )
     assert model_calls == ["gpt-6-luna"]
     assert result["model_calls_this_invocation"] == 1
@@ -654,10 +740,10 @@ def test_single_step_recovery_preserves_lineage_and_caps_call_and_training_work(
     assert result["usage"]["usage_available"] is True
     assert result["usage"]["input_tokens"] == 120
     assert result["pilot_run_status"] == "checkpointed"
-    assert read_json(work / "checkpoints" / "memory_only__wdbc__42-call-4.json")["status"] == (
+    assert read_json(work / "checkpoints" / "agent_only__wdbc__42-call-2.json")["status"] == (
         "trial_validated"
     )
-    assert status(work)["model_call_attempts"] == 11
+    assert status(work)["model_call_attempts"] == 12
     assert status(work)["completed"] == 1
     assert status(work)["holdout_evaluated"] is False
     assert not (work / "final.started").exists()
@@ -673,8 +759,12 @@ def test_single_step_recovery_preserves_lineage_and_caps_call_and_training_work(
         )
     assert model_calls == ["gpt-6-luna"]
 
+    for ordinal in (3, 4):
+        call_id = f"agent_only-wdbc-42-call-{ordinal}"
+        assert record_agent_call_started(work, *step_target, call_id, "decision") == ordinal
+        record_agent_call_finished(work, call_id, "failed", {"usage_available": False})
     with pytest.raises(
         t1_module.BenchmarkError, match="per-cell model decision-call budget exhausted"
     ):
-        record_agent_call_started(work, *target, "memory_only-wdbc-42-call-5", "decision")
-    assert status(work)["model_call_attempts"] == 11
+        record_agent_call_started(work, *step_target, "agent_only-wdbc-42-call-5", "decision")
+    assert status(work)["model_call_attempts"] == 14

@@ -56,7 +56,7 @@ from experiments.researchbench_t1.t1 import (
 )
 
 CandidateSchema: dict[str, Any] = {
-    "oneOf": [
+    "anyOf": [
         {
             "type": "object",
             "properties": {
@@ -1030,8 +1030,16 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
                 or len(prior_ids) != len(set(prior_ids))
                 or len(prior_ids) != sum(int(value) for value in prior_counts.values())
                 or recovery.get("single_step_calls_per_invocation") != 1
-                or target != {"arm": "memory_only", "dataset": "wdbc", "seed": 42}
+                or not isinstance(target, dict)
+                or set(target) != {"arm", "dataset", "seed"}
+                or not isinstance(target.get("arm"), str)
+                or not isinstance(target.get("dataset"), str)
+                or type(target.get("seed")) is not int
+                or (target.get("arm"), target.get("dataset"), target.get("seed"))
+                not in {tuple(cell) for cell in meta["execution_order"]}
                 or target_key not in prior_counts
+                or int(prior_counts[target_key])
+                >= meta["profile"]["max_model_decision_calls_per_cell"]
             ):
                 raise BenchmarkError(
                     "single-step recovery target or cumulative counters are invalid"
@@ -1431,6 +1439,12 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
             raise BenchmarkError("recovery-origin event disagrees with validated lineage")
 
         local_starts, local_trials, _ = consume_ledger(rows)
+        summary_training_trials = summary.get("training_trials")
+        if summary_training_trials is None:
+            summary_training_trials = summary.get("training_trials_this_invocation")
+            expected_summary_training_trials = len(local_trials)
+        else:
+            expected_summary_training_trials = sum(trials_by_cell.values())
         local_terminals = [row for row in rows if row.get("kind") == "cell_terminal"]
         if (
             len(local_starts) != 1
@@ -1453,19 +1467,29 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
                 )
             )
             or summary.get("model_call_attempts") != sum(calls_by_cell.values())
-            or summary.get("training_trials") != sum(trials_by_cell.values())
+            or summary_training_trials != expected_summary_training_trials
         ):
             raise BenchmarkError("recovery generation is not a single failed-call checkpoint")
+        local_target = (
+            local_starts[0].get("arm"),
+            local_starts[0].get("dataset"),
+            local_starts[0].get("seed"),
+        )
         target = receipt.get("single_step_target")
-        if target is not None and target != ["memory_only", "wdbc", 42]:
-            raise BenchmarkError("recovery generation changed the frozen single-step target")
+        manifest_target = recovery.get("single_step_target")
         if (
-            local_starts[0].get("arm") != "memory_only"
-            or local_starts[0].get("dataset") != "wdbc"
-            or local_starts[0].get("seed") != 42
+            local_target not in {tuple(cell) for cell in origin_meta["execution_order"]}
+            or (
+                target is not None
+                and (not isinstance(target, list) or tuple(target) != local_target)
+            )
+            or (
+                manifest_target is not None
+                and manifest_target
+                != {"arm": local_target[0], "dataset": local_target[1], "seed": local_target[2]}
+            )
         ):
-            raise BenchmarkError("recovery generation contains a call for another cell")
-    target_key = "memory_only__wdbc__42"
+            raise BenchmarkError("recovery generation target differs from its model-call event")
     return {
         "origin_hashes": root_hashes,
         "chain": chain,
@@ -1482,7 +1506,6 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
         "terminal_outcomes": terminal_outcomes,
         "call_ids": sorted(all_call_ids),
         "total_calls": sum(calls_by_cell.values()),
-        "target_key": target_key,
     }
 
 
@@ -1497,8 +1520,6 @@ def prepare_pilot_single_step_recovery(
     seed: int,
 ) -> dict[str, Any]:
     """Prepare a new linked workspace for exactly one explicitly resumed cell."""
-    if (arm, dataset, seed) != ("memory_only", "wdbc", 42):
-        raise BenchmarkError("single-step recovery is frozen to memory_only / WDBC / seed 42")
     if root.exists() and any(root.iterdir()):
         raise BenchmarkError("single-step recovery destination must be empty")
 
@@ -1517,7 +1538,26 @@ def prepare_pilot_single_step_recovery(
     prior_terminal_outcomes = lineage["terminal_outcomes"]
     prior_call_ids = lineage["call_ids"]
     total_prior_calls = lineage["total_calls"]
-    target_key = lineage["target_key"]
+    target_key = f"{arm}__{dataset}__{seed}"
+    execution_order = [tuple(cell) for cell in prior_meta["execution_order"]]
+    if (arm, dataset, seed) not in set(execution_order):
+        raise BenchmarkError("single-step target is outside the frozen Pilot cells")
+    next_cell = next(
+        (
+            cell
+            for cell in execution_order
+            if prior_calls_by_cell.get(f"{cell[0]}__{cell[1]}__{cell[2]}", 0)
+            < prior_meta["profile"]["max_model_decision_calls_per_cell"]
+            and prior_trials_by_cell.get(f"{cell[0]}__{cell[1]}__{cell[2]}", 0)
+            < prior_meta["profile"]["per_cell_trials"]
+            and prior_terminal_outcomes.get(f"{cell[0]}__{cell[1]}__{cell[2]}") != "completed"
+        ),
+        None,
+    )
+    if (arm, dataset, seed) != next_cell:
+        raise BenchmarkError(
+            "single-step recovery must use the next cell in frozen execution order"
+        )
     if (
         prior_trials_by_cell.get(target_key, 0) >= 2
         or prior_terminal_outcomes.get(target_key) != "failed"
@@ -2100,8 +2140,6 @@ def run_pilot_single_step(
     target = recovery.get("single_step_target")
     if target != {"arm": arm, "dataset": dataset, "seed": seed}:
         raise BenchmarkError("requested cell differs from the frozen single-step target")
-    if (arm, dataset, seed) != ("memory_only", "wdbc", 42):
-        raise BenchmarkError("single-step recovery is frozen to memory_only / WDBC / seed 42")
     if (work / "final.started").exists() or any(
         (vault / name / "test.csv").exists() for name in meta["profile"]["datasets"]
     ):
