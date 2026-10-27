@@ -289,6 +289,7 @@ def test_stage_transition_refuses_pending_frozen_work(repo: Path) -> None:
     )
     assert command(repo, "explore", "enable") == 0
 
+
 def test_blocked_experiment_preempts_new_exploration_design(repo: Path) -> None:
     store = setup_store(repo, budget=10)
     assert command(repo, "explore", "enable", "--budget-share", "0.5") == 0
