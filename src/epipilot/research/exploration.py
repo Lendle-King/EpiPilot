@@ -39,9 +39,7 @@ def qualified_exploration_evidence(state: ResearchState) -> list[str]:
             continue
         if any(
             claim.status in {ClaimStatus.SUPPORTED, ClaimStatus.REFUTED}
-            and evidence.id in (
-                claim.supporting_evidence_ids + claim.contradicting_evidence_ids
-            )
+            and evidence.id in (claim.supporting_evidence_ids + claim.contradicting_evidence_ids)
             for claim in state.claims.values()
         ):
             qualified.append(evidence.id)
@@ -53,17 +51,14 @@ def pending_research(state: ResearchState) -> list[str]:
     pending = [
         contract.id
         for contract in state.contracts.values()
-        if contract.status in {
+        if contract.status
+        in {
             ContractStatus.PREREGISTERED,
             ContractStatus.RUNNING,
             ContractStatus.AWAITING_VERIFICATION,
         }
     ]
-    pending.extend(
-        run.id
-        for run in state.scout_runs.values()
-        if run.status is ScoutStatus.RUNNING
-    )
+    pending.extend(run.id for run in state.scout_runs.values() if run.status is ScoutStatus.RUNNING)
     return sorted(pending)
 
 
@@ -131,10 +126,7 @@ def ensure_action_allowed(state: ResearchState, proposal: Proposal) -> None:
     config = state.exploration
     if config is None or not config.enabled:
         return
-    if (
-        config.stage is ExplorationStage.EXPLORATION
-        and proposal.kind is not ProposalKind.EXPLORE
-    ):
+    if config.stage is ExplorationStage.EXPLORATION and proposal.kind is not ProposalKind.EXPLORE:
         raise ValueError("exploration phase blocks optimization/verification proposals")
     if (
         config.stage is ExplorationStage.OPTIMIZATION
