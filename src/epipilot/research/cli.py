@@ -15,12 +15,21 @@ from epipilot.core.models import utc_now
 from epipilot.research.benchmark import compare_suite
 from epipilot.research.decision_models import DecisionEstimate
 from epipilot.research.decision_value import rank_decision
+from epipilot.research.exploration import (
+    ensure_action_allowed,
+    readiness,
+    unseen_critical_reopenings,
+)
 from epipilot.research.models import (
     Claim,
     ClaimStatus,
     ContractStatus,
     EvidenceRecord,
     Experiment,
+    ExplorationConfig,
+    ExplorationDimension,
+    ExplorationStage,
+    ProblemInsight,
     ExperimentContract,
     MetricDirection,
     MetricRule,
@@ -36,6 +45,8 @@ from epipilot.research.models import (
 )
 from epipilot.research.onboarding import inspect_repository
 from epipilot.research.planner import rank_proposals, research_phase
+from epipilot.research.probe_templates import probe_templates
+from epipilot.research.problem_profile import problem_profile
 from epipilot.research.runner import execute_frozen_runner, recover_receipt
 from epipilot.research.scout_core import frontier_fingerprint, validate_source
 from epipilot.research.scout_models import (
@@ -77,6 +88,32 @@ def _parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--manifest", type=Path, required=True)
     benchmark.add_argument("--min-cases", type=int, default=2)
     sub.add_parser("doctor", help="replay the event stream and diagnose pending work")
+
+    explore = sub.add_parser("explore", help="opt-in problem characterization before optimization")
+    explore_sub = explore.add_subparsers(dest="action", required=True)
+    explore_enable = explore_sub.add_parser("enable", help="start the exploratory phase")
+    explore_enable.add_argument("--budget-share", type=float, default=0.2)
+    explore_enable.add_argument("--reason", default="User opted into problem exploration mode")
+    explore_sub.add_parser("status", help="show exploration budget and readiness gate")
+    explore_sub.add_parser("profile", help="show scoped claims and algorithm guidance")
+    explore_probes = explore_sub.add_parser("probes", help="suggest diagnostic experiment designs")
+    explore_probes.add_argument("--dimension", choices=[x.value for x in ExplorationDimension])
+    explore_probes.add_argument("--limit", type=int, default=5)
+    explore_guide = explore_sub.add_parser("guide", help="add evidence-linked algorithm guidance")
+    explore_guide.add_argument("--title", required=True)
+    explore_guide.add_argument("--dimension", choices=[x.value for x in ExplorationDimension], required=True)
+    explore_guide.add_argument("--scope", required=True)
+    explore_guide.add_argument("--claim", action="append", required=True)
+    explore_guide.add_argument("--recommend", required=True)
+    explore_guide.add_argument("--avoid", default="")
+    explore_guide.add_argument("--reason", required=True)
+    explore_advance = explore_sub.add_parser("advance", help="enter optimization when ready")
+    explore_advance.add_argument("--reason", required=True)
+    explore_advance.add_argument("--override", action="store_true")
+    explore_reopen = explore_sub.add_parser("reopen", help="return to diagnosis after new evidence")
+    explore_reopen.add_argument("--reason", required=True)
+    explore_disable = explore_sub.add_parser("disable", help="return to original research mode")
+    explore_disable.add_argument("--reason", required=True)
 
     unknown = sub.add_parser("unknown", help="add or resolve a research unknown")
     unknown_sub = unknown.add_subparsers(dest="action", required=True)
@@ -238,6 +275,8 @@ def _status(state: ResearchState) -> dict[str, object]:
         "remaining": state.remaining,
         "overrun": state.overrun,
         "phase": research_phase(state),
+        "exploration": readiness(state),
+        "problem_guidance_count": len(state.problem_insights),
         "unknowns_open": sum(item.status == "open" for item in state.unknowns.values()),
         "claims": len(state.claims),
         "proposals": len(state.proposals),
@@ -272,6 +311,14 @@ def _plan(state: ResearchState, proposal_id: str) -> dict[str, object]:
         raise ValueError("proposal is not currently available")
     if proposal.estimated_cost > state.remaining:
         raise ValueError("proposal exceeds remaining budget")
+    ensure_action_allowed(state, proposal)
+    if (
+        state.exploration is not None
+        and state.exploration.enabled
+        and proposal.kind is ProposalKind.EXPLORE
+        and proposal.estimated_cost > state.exploration_remaining + 1e-9
+    ):
+        raise ValueError("proposal exceeds remaining exploration budget")
     if any(state.proposals[parent].status != "completed" for parent in proposal.depends_on):
         raise ValueError("proposal dependencies are not independently checked")
     return {
