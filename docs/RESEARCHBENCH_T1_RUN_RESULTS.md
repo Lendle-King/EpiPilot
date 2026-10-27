@@ -209,3 +209,91 @@ recommendations for a new frozen Pilot are in
 The sanitized, portable aggregate receipt is
 [`RESEARCHBENCH_T1_PILOT_RECEIPT.json`](RESEARCHBENCH_T1_PILOT_RECEIPT.json);
 the raw linked ledgers and provider output were not published.
+
+## Protocol v2 fixed-incumbent comparison — 2026-10-27
+
+The separate protocol-v2 run completed all eight WDBC cells and the one
+permitted final holdout evaluation. The run used frozen controller revision
+`b045629f898e7fea49346cc64a74b452fbe540a9`, exact `gpt-6-luna` with reasoning
+effort `max`, and the same stratified 60/20/20 split as v1 (seed `20272025`).
+Estimator seeds 42 and 137 were paired on that one split. The randomized cell
+order was frozen with seed `20271028`. The source, train, and development
+hashes are preserved in the portable receipt; the holdout file and its hash
+are not published.
+
+Each cell trained the shared standardized Logistic Regression baseline
+(`C=1.0`, all features, no class weighting) and one adaptive candidate, for
+two successful fits per cell. Both fit slots were capped at 15 seconds; each
+cell had a 30-second total cap and four model-call opportunities. All 16 fits
+completed in 12.909826 worker seconds (less than 1.66 seconds per cell). Ten
+model calls completed successfully: Agent Only, Heuristic, and Conditional
+used one per cell; Memory Only used two for its isolated source-checked note
+and candidate decision. All returned usage telemetry totals 126,564 input and
+11,321 output tokens; provider request count and monetary cost were not
+metered. There were no retries, failed calls, repeated experiments, or manual
+interventions.
+
+| Strategy | Seed | Calls | Input / output tokens | Fits / worker seconds | Adaptive candidate | Adaptive dev AUROC | Frozen submission / test AUROC |
+|---|---:|---:|---:|---:|---|---:|---|
+| Agent Only | 42 | 1 | 12,570 / 402 | 2 / 1.652951 | Logistic, C=0.1 | 0.983623 | Common baseline / 1.000000 |
+| Memory Only | 42 | 2 | 25,056 / 956 | 2 / 1.606002 | Logistic, C=0.1 | 0.983623 | Common baseline / 1.000000 |
+| EpiPilot Heuristic | 42 | 1 | 12,913 / 1,905 | 2 / 1.579594 | Logistic, C=0.3 | 0.987226 | Common baseline / 1.000000 |
+| EpiPilot Conditional | 42 | 1 | 12,745 / 1,934 | 2 / 1.650083 | Forest, 100 trees, depth 4, leaf 2 | 0.979365 | Common baseline / 1.000000 |
+| Agent Only | 137 | 1 | 12,568 / 614 | 2 / 1.606161 | Logistic, C=0.1 | 0.983623 | Common baseline / 1.000000 |
+| Memory Only | 137 | 2 | 25,054 / 690 | 2 / 1.581762 | Logistic, C=0.1 | 0.983623 | Common baseline / 1.000000 |
+| EpiPilot Heuristic | 137 | 1 | 12,913 / 2,085 | 2 / 1.617737 | Logistic, C=0.3 | 0.987226 | Common baseline / 1.000000 |
+| EpiPilot Conditional | 137 | 1 | 12,745 / 2,735 | 2 / 1.615536 | Forest, 40 trees, depth 5, leaf 2 | 0.976744 | Common baseline / 1.000000 |
+
+The baseline had development AUROC `0.987553` in both seeds and holdout
+AUROC `1.000000` in both. Every arm selected the baseline after its adaptive
+fit scored lower on development data. As a result, all eight frozen
+submissions have the same candidate hash and all eight test scores are the
+same submitted model configuration; the test scores do not rank the policies.
+The adaptive candidates were not scored on the holdout, and no test result was
+returned to a research agent.
+
+The strategies took distinct, auditable paths. Agent Only submitted its
+ordinary structured candidate proposal; Memory Only used a per-cell
+source-checked baseline note before its candidate decision; Heuristic called
+EpiPilot `rank_proposals` with a hypothetical two-step successor but trained
+only the selected root candidate. Conditional called EpiPilot
+`_next_action(policy="conditional")` and ranked absolute development-AUROC
+forecasts against the measured baseline. It selected forest candidates after
+forecasting positive expected gains of about `0.000734` and `0.001378` AUROC;
+those forecasts had zero calibration samples and are heuristic model
+predictions, not observed value. Both actual forest dev scores were below the
+baseline.
+
+## Interpretation and record limits
+
+This is a completed, bounded WDBC comparison, not evidence that one method is
+better at long-horizon research. There is one dataset and two paired estimator
+seeds on the same split, not two independent data samples. The heuristic had
+the best adaptive development scores, but both remained below the shared
+baseline; the submitted policies tied because every one chose the same
+baseline, whose holdout AUROC was at ceiling. The holdout result therefore
+does not establish a winner.
+
+The prior v1 ledger remains a separate run: 25 call attempts (12 successful,
+12 failed, one timeout), eight completed training attempts, and no holdout
+evaluation. Across v1 and v2 there are 35 CLI attempts, 24 training attempts,
+and 19.322903 worker seconds. Usage is available for 22 calls and missing for
+13; combined available usage is 278,431 input, 26,418 output, and 11,904
+cached input tokens. Provider-side request counts and monetary cost remain
+unknown / unmetered. These combined operational totals do not merge the two
+protocols or their scientific outcomes.
+
+**Timing instrumentation note:** the v2 raw runner summary reports zero in
+each cell's `training_seconds` field, despite 16 successful trial-finish
+events totaling `12.909826` seconds. Per-cell values above are from the
+validated trial events and comparison manifest, which reconcile to the
+aggregate; the portable receipt preserves that same audited source. The raw
+runner summary and event ledgers remain local and are not included in the
+publication.
+
+The portable, sanitized v2 receipt is
+[`RESEARCHBENCH_T1_PILOT_V2_RECEIPT.json`](RESEARCHBENCH_T1_PILOT_V2_RECEIPT.json).
+It contains per-cell configurations, development outcomes, candidate hashes,
+usage, final submission scores, and conditional decision values, with no
+local machine paths, raw prompts or responses, holdout data, or holdout hash.
+Full T1 was not run.

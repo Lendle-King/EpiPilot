@@ -248,6 +248,10 @@ plus the common baseline once per estimator seed (ten evaluation records).
 Test scores are never sent back to a research agent or used to change a
 candidate. This is one bounded WDBC comparison, not a long-horizon research
 conclusion or a statistically powered test. Full T1 remains unauthorized.
+The completed run's per-cell outcomes and limitations are recorded in
+[`RESEARCHBENCH_T1_RUN_RESULTS.md`](RESEARCHBENCH_T1_RUN_RESULTS.md), with a
+portable sanitized receipt in
+[`RESEARCHBENCH_T1_PILOT_V2_RECEIPT.json`](RESEARCHBENCH_T1_PILOT_V2_RECEIPT.json).
 
 ### Bounded single-cell recovery
 

@@ -1,0 +1,712 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-10-27",
+  "study": "ResearchBench-T1 WDBC fixed-incumbent comparison",
+  "protocol_version": 2,
+  "status": "completed",
+  "interpretation": "One bounded WDBC comparison. The four submitted policy outputs have the same candidate hash and tie at holdout AUROC 1.0; this is not evidence of a method advantage or long-horizon research superiority.",
+  "frozen_code_revision": "b045629f898e7fea49346cc64a74b452fbe540a9",
+  "model": {
+    "requested": "gpt-6-luna",
+    "reasoning_effort": "max"
+  },
+  "dataset": {
+    "name": "WDBC",
+    "rows": 569,
+    "features": 30,
+    "source_sha256": "fed3eb72d0575ef6192293f5093c6e801b1476b577d0386bf4455504522172ed",
+    "split": "sklearn.train_test_split stratified 60/20/20, random_state=split_seed then split_seed+1",
+    "split_seed": 20272025,
+    "train_rows": 341,
+    "train_sha256": "ce81c90eaf146955abae45bb2f071abaaf153b727adfc19813da5ab1a7c02d7d",
+    "development_rows": 114,
+    "development_sha256": "ba4f0ff2eda9f4111cc65f2829f5a6009869acc66facd60737474a5868774c1a",
+    "holdout_rows": 114,
+    "holdout_hash_published": false,
+    "versions": {
+      "numpy": "1.26.4",
+      "pandas": "3.0.2",
+      "sklearn": "1.8.0"
+    }
+  },
+  "randomization": {
+    "execution_order_seed": 20271028,
+    "cell_order": [
+      {
+        "arm": "memory_only",
+        "dataset": "wdbc",
+        "seed": 42
+      },
+      {
+        "arm": "agent_only",
+        "dataset": "wdbc",
+        "seed": 137
+      },
+      {
+        "arm": "epipilot_conditional",
+        "dataset": "wdbc",
+        "seed": 42
+      },
+      {
+        "arm": "epipilot_heuristic",
+        "dataset": "wdbc",
+        "seed": 137
+      },
+      {
+        "arm": "agent_only",
+        "dataset": "wdbc",
+        "seed": 42
+      },
+      {
+        "arm": "epipilot_conditional",
+        "dataset": "wdbc",
+        "seed": 137
+      },
+      {
+        "arm": "memory_only",
+        "dataset": "wdbc",
+        "seed": 137
+      },
+      {
+        "arm": "epipilot_heuristic",
+        "dataset": "wdbc",
+        "seed": 42
+      }
+    ],
+    "estimator_seeds": [
+      42,
+      137
+    ],
+    "seed_interpretation": "Paired estimator seeds on the same split, not independent dataset samples."
+  },
+  "budget": {
+    "cells": 8,
+    "models": [
+      "agent_only",
+      "memory_only",
+      "epipilot_heuristic",
+      "epipilot_conditional"
+    ],
+    "baseline_per_cell": {
+      "C": 1.0,
+      "class_weight": "none",
+      "feature_mode": "all",
+      "model": "logistic"
+    },
+    "training_attempt_cap_per_cell": 2,
+    "adaptive_fit_cap_per_cell": 1,
+    "seconds_per_fit_cap": 15,
+    "seconds_per_cell_cap": 30,
+    "global_training_seconds_safety_cap": 240,
+    "model_call_cap_per_cell": 4,
+    "global_model_call_cap": 32,
+    "training_attempts": 16,
+    "successful_training_attempts": 16,
+    "failed_training_attempts": 0,
+    "actual_training_seconds": 12.909826,
+    "model_call_attempts": 10,
+    "successful_model_calls": 10,
+    "failed_model_calls": 0,
+    "automatic_retries": 0,
+    "resource_guard_triggered": false,
+    "manual_interventions": 0
+  },
+  "aggregate_usage_when_reported": {
+    "calls_with_usage": 10,
+    "calls_missing_usage": 0,
+    "input_tokens": 126564,
+    "output_tokens": 11321,
+    "cached_input_tokens": 0,
+    "provider_request_count": "not observable",
+    "provider_cost": "not metered"
+  },
+  "cells": [
+    {
+      "strategy": "agent_only",
+      "seed": 42,
+      "model_calls": 1,
+      "successful_model_calls": 1,
+      "failed_model_calls": 0,
+      "model_call_cap": 4,
+      "usage": {
+        "input_tokens": 12570,
+        "output_tokens": 402,
+        "cached_input_tokens": 0,
+        "missing_usage_calls": 0
+      },
+      "training_attempts": 2,
+      "successful_training_attempts": 2,
+      "training_seconds": 1.652951,
+      "baseline": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "candidate": {
+          "C": 1.0,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9875532263347527,
+        "training_seconds": 0.789916,
+        "outcome": "success"
+      },
+      "adaptive": {
+        "role": "adaptive",
+        "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+        "candidate": {
+          "C": 0.1,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9836226662299378,
+        "training_seconds": 0.863035,
+        "outcome": "success"
+      },
+      "selected_submission": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "development_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "holdout_auroc": 1.0
+    },
+    {
+      "strategy": "memory_only",
+      "seed": 42,
+      "model_calls": 2,
+      "successful_model_calls": 2,
+      "failed_model_calls": 0,
+      "model_call_cap": 4,
+      "usage": {
+        "input_tokens": 25056,
+        "output_tokens": 956,
+        "cached_input_tokens": 0,
+        "missing_usage_calls": 0
+      },
+      "training_attempts": 2,
+      "successful_training_attempts": 2,
+      "training_seconds": 1.606002,
+      "baseline": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "candidate": {
+          "C": 1.0,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9875532263347527,
+        "training_seconds": 0.803527,
+        "outcome": "success"
+      },
+      "adaptive": {
+        "role": "adaptive",
+        "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+        "candidate": {
+          "C": 0.1,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9836226662299378,
+        "training_seconds": 0.802475,
+        "outcome": "success"
+      },
+      "selected_submission": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "development_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "holdout_auroc": 1.0
+    },
+    {
+      "strategy": "epipilot_heuristic",
+      "seed": 42,
+      "model_calls": 1,
+      "successful_model_calls": 1,
+      "failed_model_calls": 0,
+      "model_call_cap": 4,
+      "usage": {
+        "input_tokens": 12913,
+        "output_tokens": 1905,
+        "cached_input_tokens": 0,
+        "missing_usage_calls": 0
+      },
+      "training_attempts": 2,
+      "successful_training_attempts": 2,
+      "training_seconds": 1.579594,
+      "baseline": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "candidate": {
+          "C": 1.0,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9875532263347527,
+        "training_seconds": 0.784767,
+        "outcome": "success"
+      },
+      "adaptive": {
+        "role": "adaptive",
+        "candidate_sha256": "9b7f72c9d7669318efa92975cfe889d68af31a15db37d7f84196d88072de3f3d",
+        "candidate": {
+          "C": 0.3,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9872256796593515,
+        "training_seconds": 0.794827,
+        "outcome": "success"
+      },
+      "selected_submission": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "development_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "holdout_auroc": 1.0
+    },
+    {
+      "strategy": "epipilot_conditional",
+      "seed": 42,
+      "model_calls": 1,
+      "successful_model_calls": 1,
+      "failed_model_calls": 0,
+      "model_call_cap": 4,
+      "usage": {
+        "input_tokens": 12745,
+        "output_tokens": 1934,
+        "cached_input_tokens": 0,
+        "missing_usage_calls": 0
+      },
+      "training_attempts": 2,
+      "successful_training_attempts": 2,
+      "training_seconds": 1.650083,
+      "baseline": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "candidate": {
+          "C": 1.0,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9875532263347527,
+        "training_seconds": 0.791764,
+        "outcome": "success"
+      },
+      "adaptive": {
+        "role": "adaptive",
+        "candidate_sha256": "f891bb4d933baa98d58ee932255eb1d34f972047efd95648612d95345f0038da",
+        "candidate": {
+          "class_weight": "none",
+          "feature_mode": "all",
+          "max_depth": 4,
+          "min_samples_leaf": 2,
+          "model": "forest",
+          "n_estimators": 100
+        },
+        "development_auroc": 0.9793645594497216,
+        "training_seconds": 0.858319,
+        "outcome": "success"
+      },
+      "selected_submission": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "development_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "holdout_auroc": 1.0
+    },
+    {
+      "strategy": "agent_only",
+      "seed": 137,
+      "model_calls": 1,
+      "successful_model_calls": 1,
+      "failed_model_calls": 0,
+      "model_call_cap": 4,
+      "usage": {
+        "input_tokens": 12568,
+        "output_tokens": 614,
+        "cached_input_tokens": 0,
+        "missing_usage_calls": 0
+      },
+      "training_attempts": 2,
+      "successful_training_attempts": 2,
+      "training_seconds": 1.606161,
+      "baseline": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "candidate": {
+          "C": 1.0,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9875532263347527,
+        "training_seconds": 0.791969,
+        "outcome": "success"
+      },
+      "adaptive": {
+        "role": "adaptive",
+        "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+        "candidate": {
+          "C": 0.1,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9836226662299378,
+        "training_seconds": 0.814192,
+        "outcome": "success"
+      },
+      "selected_submission": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "development_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "holdout_auroc": 1.0
+    },
+    {
+      "strategy": "memory_only",
+      "seed": 137,
+      "model_calls": 2,
+      "successful_model_calls": 2,
+      "failed_model_calls": 0,
+      "model_call_cap": 4,
+      "usage": {
+        "input_tokens": 25054,
+        "output_tokens": 690,
+        "cached_input_tokens": 0,
+        "missing_usage_calls": 0
+      },
+      "training_attempts": 2,
+      "successful_training_attempts": 2,
+      "training_seconds": 1.581762,
+      "baseline": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "candidate": {
+          "C": 1.0,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9875532263347527,
+        "training_seconds": 0.794714,
+        "outcome": "success"
+      },
+      "adaptive": {
+        "role": "adaptive",
+        "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+        "candidate": {
+          "C": 0.1,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9836226662299378,
+        "training_seconds": 0.787048,
+        "outcome": "success"
+      },
+      "selected_submission": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "development_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "holdout_auroc": 1.0
+    },
+    {
+      "strategy": "epipilot_heuristic",
+      "seed": 137,
+      "model_calls": 1,
+      "successful_model_calls": 1,
+      "failed_model_calls": 0,
+      "model_call_cap": 4,
+      "usage": {
+        "input_tokens": 12913,
+        "output_tokens": 2085,
+        "cached_input_tokens": 0,
+        "missing_usage_calls": 0
+      },
+      "training_attempts": 2,
+      "successful_training_attempts": 2,
+      "training_seconds": 1.617737,
+      "baseline": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "candidate": {
+          "C": 1.0,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9875532263347527,
+        "training_seconds": 0.800338,
+        "outcome": "success"
+      },
+      "adaptive": {
+        "role": "adaptive",
+        "candidate_sha256": "9b7f72c9d7669318efa92975cfe889d68af31a15db37d7f84196d88072de3f3d",
+        "candidate": {
+          "C": 0.3,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9872256796593515,
+        "training_seconds": 0.817399,
+        "outcome": "success"
+      },
+      "selected_submission": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "development_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "holdout_auroc": 1.0
+    },
+    {
+      "strategy": "epipilot_conditional",
+      "seed": 137,
+      "model_calls": 1,
+      "successful_model_calls": 1,
+      "failed_model_calls": 0,
+      "model_call_cap": 4,
+      "usage": {
+        "input_tokens": 12745,
+        "output_tokens": 2735,
+        "cached_input_tokens": 0,
+        "missing_usage_calls": 0
+      },
+      "training_attempts": 2,
+      "successful_training_attempts": 2,
+      "training_seconds": 1.615536,
+      "baseline": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "candidate": {
+          "C": 1.0,
+          "class_weight": "none",
+          "feature_mode": "all",
+          "model": "logistic"
+        },
+        "development_auroc": 0.9875532263347527,
+        "training_seconds": 0.802748,
+        "outcome": "success"
+      },
+      "adaptive": {
+        "role": "adaptive",
+        "candidate_sha256": "653b9e505d38827026e256787cb5021595c96ce3cd78a24160675489a440f579",
+        "candidate": {
+          "class_weight": "none",
+          "feature_mode": "all",
+          "max_depth": 5,
+          "min_samples_leaf": 2,
+          "model": "forest",
+          "n_estimators": 40
+        },
+        "development_auroc": 0.9767441860465117,
+        "training_seconds": 0.812788,
+        "outcome": "success"
+      },
+      "selected_submission": {
+        "role": "common_baseline",
+        "candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+        "development_auroc": 0.9875532263347527,
+        "holdout_auroc": 1.0
+      },
+      "holdout_auroc": 1.0
+    }
+  ],
+  "strategy_audit": {
+    "agent_only": "Ordinary structured candidate proposal from development-only evidence; one model call per cell.",
+    "memory_only": "Cell-scoped source-checked baseline note followed by a candidate decision; two calls per cell. No note was shared across cells.",
+    "epipilot_heuristic": "Invoked EpiPilot rank_proposals with a hypothetical two-step successor ranking; the controller trained only the selected root candidate. Both cells selected logistic C=0.3.",
+    "epipilot_conditional": {
+      "mechanism": "EpiPilot _next_action(policy=conditional) and rank_decision on four outcome forecasts in absolute development-AUROC units; hard call/training budgets, no AUROC cost subtraction; common-baseline fallback.",
+      "decisions": [
+        {
+          "seed": 42,
+          "baseline_auroc": 0.9875532263347527,
+          "utility_unit": "absolute development AUROC; net value is expected AUROC improvement",
+          "calibration_samples": 0,
+          "stopped_for_nonpositive_value": false,
+          "selected_proposal_id": "call1_c2",
+          "cost_mode": "hard per-cell training/call budgets; cost is not subtracted from AUROC",
+          "normalized_cost_per_trial": 0.3,
+          "forecasts": [
+            {
+              "candidate_sha256": "9b7f72c9d7669318efa92975cfe889d68af31a15db37d7f84196d88072de3f3d",
+              "probabilities": [
+                0.28,
+                0.42,
+                0.22,
+                0.08
+              ],
+              "forecast_auroc_by_outcome": [
+                0.989,
+                0.9875532263347527,
+                0.9875532263347527,
+                0.9875532263347527
+              ]
+            },
+            {
+              "candidate_sha256": "f891bb4d933baa98d58ee932255eb1d34f972047efd95648612d95345f0038da",
+              "probabilities": [
+                0.3,
+                0.39,
+                0.2,
+                0.11
+              ],
+              "forecast_auroc_by_outcome": [
+                0.99,
+                0.9875532263347527,
+                0.9875532263347527,
+                0.9875532263347527
+              ]
+            }
+          ],
+          "decision_scores": [
+            {
+              "proposal_id": "call1_c1",
+              "value_of_information_auroc": 0.00040509662626919685,
+              "risk_penalty_auroc": 0.0,
+              "net_value_auroc": 0.00040509662626919685
+            },
+            {
+              "proposal_id": "call1_c2",
+              "value_of_information_auroc": 0.0007340320995741223,
+              "risk_penalty_auroc": 0.0,
+              "net_value_auroc": 0.0007340320995741223
+            }
+          ]
+        },
+        {
+          "seed": 137,
+          "baseline_auroc": 0.9875532263347527,
+          "utility_unit": "absolute development AUROC; net value is expected AUROC improvement",
+          "calibration_samples": 0,
+          "stopped_for_nonpositive_value": false,
+          "selected_proposal_id": "call1_c2",
+          "cost_mode": "hard per-cell training/call budgets; cost is not subtracted from AUROC",
+          "normalized_cost_per_trial": 0.3,
+          "forecasts": [
+            {
+              "candidate_sha256": "493ea2840e36c33d368a6b8b5f7b15c4905ade3008a7225141ba4697f3b1f444",
+              "probabilities": [
+                0.24,
+                0.53,
+                0.18,
+                0.05
+              ],
+              "forecast_auroc_by_outcome": [
+                0.9902,
+                0.9875532263347527,
+                0.9868,
+                0.9875532263347527
+              ]
+            },
+            {
+              "candidate_sha256": "653b9e505d38827026e256787cb5021595c96ce3cd78a24160675489a440f579",
+              "probabilities": [
+                0.31,
+                0.47,
+                0.16,
+                0.06
+              ],
+              "forecast_auroc_by_outcome": [
+                0.992,
+                0.9875532263347527,
+                0.9858,
+                0.9875532263347527
+              ]
+            }
+          ],
+          "decision_scores": [
+            {
+              "proposal_id": "call1_c1",
+              "value_of_information_auroc": 0.0006352256796592348,
+              "risk_penalty_auroc": 0.0,
+              "net_value_auroc": 0.0006352256796592348
+            },
+            {
+              "proposal_id": "call1_c2",
+              "value_of_information_auroc": 0.001378499836226732,
+              "risk_penalty_auroc": 0.0,
+              "net_value_auroc": 0.001378499836226732
+            }
+          ]
+        }
+      ],
+      "qualification": "Forecasts were uncalibrated, with zero calibration samples; both expected positive AUROC gain and chose forest candidates, but observed development AUROC was below the baseline."
+    }
+  },
+  "holdout_evaluation": {
+    "opened_after_all_cells_submitted_and_model_processes_finished": true,
+    "single_finalization": true,
+    "evaluation_records": 10,
+    "policy_submissions": 8,
+    "shared_baseline_evaluations": 2,
+    "common_baseline_holdout_auroc_by_seed": {
+      "137": 1.0,
+      "42": 1.0
+    },
+    "policy_submission_holdout_auroc": {
+      "agent_only__wdbc__137": 1.0,
+      "agent_only__wdbc__42": 1.0,
+      "epipilot_conditional__wdbc__137": 1.0,
+      "epipilot_conditional__wdbc__42": 1.0,
+      "epipilot_heuristic__wdbc__137": 1.0,
+      "epipilot_heuristic__wdbc__42": 1.0,
+      "memory_only__wdbc__137": 1.0,
+      "memory_only__wdbc__42": 1.0
+    },
+    "all_policy_submissions_same_candidate_sha256": "bb3f6d8459b6559be4c4cc0fe16b19eab9170cfd972eeab32f88bbbba67ba601",
+    "adaptive_candidates_scored_on_holdout": false,
+    "holdout_feedback_returned_to_agents": false
+  },
+  "historical_run_separation": {
+    "previous_protocol_v1_attempts": 25,
+    "previous_outcomes": {
+      "success": 12,
+      "failed": 12,
+      "timeout": 1
+    },
+    "previous_completed_training_attempts": 8,
+    "previous_holdout_evaluation": false,
+    "runs_are_kept_separate": true,
+    "combined_operational_counts_only": {
+      "model_call_attempts": 35,
+      "successful_cli_attempts": 22,
+      "failed_cli_attempts": 12,
+      "timeouts": 1,
+      "training_attempts": 24,
+      "training_seconds": 19.322903,
+      "calls_missing_usage": 13,
+      "available_usage_input_tokens": 278431,
+      "available_usage_output_tokens": 26418,
+      "available_usage_cached_input_tokens": 11904
+    },
+    "combined_provider_cost": "unknown / not metered"
+  },
+  "limitations": [
+    "All eight policy submissions were the same fixed baseline, so holdout AUROC ties at 1.0 and cannot rank policies.",
+    "All adaptive candidates scored below the common baseline on development data; the independent holdout was not used to choose among them.",
+    "One dataset and two paired estimator seeds do not provide independent samples or statistical power for a general superiority claim.",
+    "Provider request count and monetary spend are unavailable."
+  ],
+  "publication_limits": {
+    "raw_model_prompts_or_outputs_included": false,
+    "raw_event_ledger_included": false,
+    "holdout_data_or_hash_included": false,
+    "local_machine_paths_included": false
+  }
+}
