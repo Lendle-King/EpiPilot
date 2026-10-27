@@ -85,7 +85,7 @@ def probe_templates(
     if limit < 1:
         raise ValueError("limit must be positive")
     unknowns = [u for u in state.unknowns.values() if u.status == "open"]
-    proposals: list[tuple[float, dict[str, object]]] = []
+    proposals: list[tuple[float, str, dict[str, object]]] = []
     for dim, title, experiment, measurement, decision in _TEMPLATES:
         if dimension is not None and dim is not dimension:
             continue
@@ -101,6 +101,7 @@ def probe_templates(
         proposals.append(
             (
                 score,
+                dim.value,
                 {
                     "dimension": dim.value,
                     "title": title,
@@ -113,5 +114,5 @@ def probe_templates(
                 },
             )
         )
-    proposals.sort(key=lambda item: (-item[0], item[1]["dimension"]))
-    return [item[1] for item in proposals[:limit]]
+    proposals.sort(key=lambda item: (-item[0], item[1]))
+    return [item[2] for item in proposals[:limit]]
