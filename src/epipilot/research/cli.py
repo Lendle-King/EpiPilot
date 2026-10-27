@@ -451,6 +451,16 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
                     "contract": item.model_dump(mode="json"),
                     "guidance": guidance,
                 }
+    blocked = [
+        item.id for item in state.contracts.values() if item.status is ContractStatus.BLOCKED
+    ]
+    if blocked:
+        return {
+            "status": "blocked",
+            "contracts": blocked,
+            "guidance": "Diagnose failure; epi retry --reason for changed validation strategy "
+            "or register a new scientifically different proposal.",
+        }
     config = state.exploration
     if config is not None and config.enabled:
         if config.stage is ExplorationStage.EXPLORATION:
@@ -555,16 +565,6 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
                 "No affordable exploratory Proposal is registered. Design a discriminative "
                 "study from the open Unknowns, or explicitly override the phase gate."
             ),
-        }
-    blocked = [
-        item.id for item in state.contracts.values() if item.status is ContractStatus.BLOCKED
-    ]
-    if blocked:
-        return {
-            "status": "blocked",
-            "contracts": blocked,
-            "guidance": "Diagnose failure; epi retry --reason for changed validation strategy "
-            "or register a new scientifically different proposal.",
         }
     return {
         "status": "no_runnable_proposal",

@@ -198,6 +198,26 @@ def test_verified_problem_knowledge_guides_algorithms_and_counterevidence_stales
     )
     profile = problem_profile(store.load()[0])
     assert profile["dimensions"][0]["insights"][0]["current"] is True
+    assert (
+        command(
+            repo,
+            "explore",
+            "guide",
+            "--title",
+            "Unsupported universal route preference",
+            "--dimension",
+            "conditional_dependence",
+            "--scope",
+            "all tasks",
+            "--claim",
+            "C",
+            "--recommend",
+            "Use this everywhere",
+            "--reason",
+            "Overbroad advice must be rejected by the canonical store",
+        )
+        == 2
+    )
     assert command(repo, "explore", "advance", "--reason", "Critical scoped unknown resolved") == 0
     assert store.load()[0].exploration is not None
     assert store.load()[0].exploration.stage is ExplorationStage.OPTIMIZATION
@@ -268,3 +288,13 @@ def test_stage_transition_refuses_pending_frozen_work(repo: Path) -> None:
         {"contract_id": "PRE-1", "actual_cost": 0.0, "reason": "Cancel unstarted run"},
     )
     assert command(repo, "explore", "enable") == 0
+
+def test_blocked_experiment_preempts_new_exploration_design(repo: Path) -> None:
+    store = setup_store(repo, budget=10)
+    assert command(repo, "explore", "enable", "--budget-share", "0.5") == 0
+    register(store, repo)
+    observe(store, repo)
+    (repo / "results" / "metrics.json").unlink()
+    assert validate(repo) == 2
+    state, _ = store.load()
+    assert _next_action(state)["status"] == "blocked"

@@ -129,6 +129,7 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
         if insight.id in state.problem_insights:
             raise ValueError("duplicate problem insight id")
         sources: set[str] = set()
+        scopes: set[str] = set()
         for claim_id, claim_verdict in insight.claim_statuses.items():
             claim = state.claims.get(claim_id)
             if (
@@ -137,7 +138,10 @@ def _apply(state: ResearchState, event: ResearchEvent) -> None:
                 or claim_verdict not in {ClaimStatus.SUPPORTED, ClaimStatus.REFUTED}
             ):
                 raise ValueError("problem guidance requires conclusive, reviewed claims")
+            scopes.add(claim.scope)
             sources.update(claim.supporting_evidence_ids + claim.contradicting_evidence_ids)
+        if scopes != {insight.scope}:
+            raise ValueError("problem guidance scope must match all supporting claim scopes")
         if set(insight.evidence_ids) != sources or len(insight.evidence_ids) != len(sources):
             raise ValueError("problem guidance must use exactly the reviewed claim evidence")
         if not sources or any(
