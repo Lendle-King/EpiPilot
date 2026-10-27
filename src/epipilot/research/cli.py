@@ -44,7 +44,7 @@ from epipilot.research.models import (
     research_id,
 )
 from epipilot.research.onboarding import inspect_repository
-from epipilot.research.planner import rank_proposals, research_phase
+from epipilot.research.planner import RankedProposal, rank_proposals, research_phase
 from epipilot.research.probe_templates import probe_templates
 from epipilot.research.problem_profile import problem_profile
 from epipilot.research.runner import execute_frozen_runner, recover_receipt
@@ -387,7 +387,7 @@ def _safe_verifier(parts: list[str]) -> list[str]:
     return argv
 
 
-def _rank_for_state(state: ResearchState, limit: int = 5) -> list[object]:
+def _rank_for_state(state: ResearchState, limit: int = 5) -> list[RankedProposal]:
     config = state.exploration
     if config is not None and config.enabled and config.stage is ExplorationStage.EXPLORATION:
         return list(
@@ -401,7 +401,7 @@ def _rank_for_state(state: ResearchState, limit: int = 5) -> list[object]:
         )
     if unseen_critical_reopenings(state):
         return []
-    return list(rank_proposals(state, limit=limit))
+    return rank_proposals(state, limit=limit)
 
 
 def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str, object]:
