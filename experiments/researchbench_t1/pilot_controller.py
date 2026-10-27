@@ -60,7 +60,7 @@ CandidateSchema: dict[str, Any] = {
         {
             "type": "object",
             "properties": {
-                "model": {"type": "string", "const": "logistic"},
+                "model": {"type": "string", "enum": ["logistic"]},
                 "feature_mode": {"type": "string", "enum": ["all", "numeric_only"]},
                 "C": {"type": "number", "minimum": 0.01, "maximum": 10},
                 "class_weight": {"type": "string", "enum": ["none", "balanced"]},
@@ -71,7 +71,7 @@ CandidateSchema: dict[str, Any] = {
         {
             "type": "object",
             "properties": {
-                "model": {"type": "string", "const": "forest"},
+                "model": {"type": "string", "enum": ["forest"]},
                 "feature_mode": {"type": "string", "enum": ["all", "numeric_only"]},
                 "n_estimators": {"type": "integer", "minimum": 20, "maximum": 120},
                 "max_depth": {"type": "integer", "minimum": 2, "maximum": 16},

@@ -368,6 +368,44 @@ def test_nonzero_cli_exit_is_redacted_and_pauses_after_first_cell(
 
 def test_cli_output_schemas_are_strict_and_preserve_candidate_semantics() -> None:
     jsonschema = pytest.importorskip("jsonschema")
+    supported_keywords = {
+        "type",
+        "properties",
+        "required",
+        "additionalProperties",
+        "anyOf",
+        "enum",
+        "minimum",
+        "maximum",
+        "minItems",
+        "maxItems",
+        "items",
+        "minLength",
+        "maxLength",
+        "format",
+        "pattern",
+    }
+    unsupported_keywords = {
+        "oneOf",
+        "allOf",
+        "not",
+        "if",
+        "then",
+        "else",
+        "dependentRequired",
+        "dependentSchemas",
+        "patternProperties",
+        "unevaluatedProperties",
+        "unevaluatedItems",
+        "propertyNames",
+        "minProperties",
+        "maxProperties",
+        "contains",
+        "minContains",
+        "maxContains",
+        "uniqueItems",
+        "const",
+    }
 
     def assert_strict_subset(node: Any) -> None:
         if isinstance(node, list):
@@ -376,15 +414,20 @@ def test_cli_output_schemas_are_strict_and_preserve_candidate_semantics() -> Non
             return
         if not isinstance(node, dict):
             return
-        assert "oneOf" not in node
-        if "const" in node or "enum" in node:
+        assert set(node).isdisjoint(unsupported_keywords)
+        assert set(node) <= supported_keywords
+        if "enum" in node:
             assert node.get("type") == "string"
         if node.get("type") == "object":
             properties = node.get("properties", {})
             assert node.get("additionalProperties") is False
             assert set(node.get("required", [])) == set(properties)
-        for value in node.values():
+        for value in node.get("properties", {}).values():
             assert_strict_subset(value)
+        if "items" in node:
+            assert_strict_subset(node["items"])
+        for branch in node.get("anyOf", []):
+            assert_strict_subset(branch)
 
     for arm in ("agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"):
         for purpose in ("decision", "memory_note"):
@@ -393,6 +436,13 @@ def test_cli_output_schemas_are_strict_and_preserve_candidate_semantics() -> Non
             assert_strict_subset(schema)
 
     assert set(pilot_controller.CandidateSchema) == {"anyOf"}
+    assert [
+        branch["properties"]["model"]["enum"]
+        for branch in pilot_controller.CandidateSchema["anyOf"]
+    ] == [
+        ["logistic"],
+        ["forest"],
+    ]
     candidate_validator = jsonschema.Draft202012Validator(pilot_controller.CandidateSchema)
     allowed_candidates = (
         _candidate(1.25),
