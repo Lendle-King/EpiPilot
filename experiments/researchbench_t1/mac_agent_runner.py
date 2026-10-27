@@ -61,6 +61,8 @@ ALLOWED_MODES = (
     "pilot_recover_prepare",
     "pilot_step_prepare",
     "pilot_step",
+    "pilot_resume_prepare",
+    "pilot_resume",
     "pilot",
 )
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
@@ -558,6 +560,27 @@ def run(
             )
         except MacRunBlocked as exc:
             raise BenchmarkError("guarded single-step Pilot recovery preparation failed") from exc
+    if mode == "pilot_resume_prepare":
+        inspect_host()
+        if origin_results is None or prior_results is None:
+            raise MacRunBlocked(
+                "serial Pilot recovery requires --origin-results and --prior-results"
+            )
+        if cell_arm is None or cell_dataset is None or cell_seed is None:
+            raise MacRunBlocked("serial Pilot recovery requires the frozen resume-start cell")
+        try:
+            return prepare_pilot_single_step_recovery(
+                root=root,
+                origin_root=origin_results,
+                prior_root=prior_results,
+                t1_call=lambda *args, timeout=90: _t1(*args, timeout=timeout),
+                arm=cell_arm,
+                dataset=cell_dataset,
+                seed=cell_seed,
+                serial_resume=True,
+            )
+        except MacRunBlocked as exc:
+            raise BenchmarkError("guarded serial Pilot recovery preparation failed") from exc
     if mode == "pilot_step":
         if confirm != "RUN_ONE_PILOT_STEP":
             raise MacRunBlocked("single-call Pilot recovery requires RUN_ONE_PILOT_STEP")
@@ -583,7 +606,7 @@ def run(
             dataset=cell_dataset,
             seed=cell_seed,
         )
-    if mode == "pilot":
+    if mode in {"pilot", "pilot_resume"}:
         if confirm != "RUN_FOUR_POLICY_PILOT":
             raise MacRunBlocked("four-policy Pilot requires RUN_FOUR_POLICY_PILOT")
         inspect_host()
@@ -629,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cell-seed", type=int, choices=[42, 137])
     args = parser.parse_args(argv)
     root = args.results.absolute()
-    if args.mode in {"pilot", "pilot_step"}:
+    if args.mode in {"pilot", "pilot_step", "pilot_resume"}:
         expected_entries = {"pilot_work", "pilot_vault", "prepare_summary.json"}
         actual_entries = {path.name for path in root.iterdir()} if root.is_dir() else set()
         if (
@@ -691,6 +714,9 @@ def main(argv: list[str] | None = None) -> int:
         }:
             summary["status"] = outcome["pilot_run_status"]
             returncode = 2
+        elif outcome.get("pilot_run_status") == "incomplete_missing_cells":
+            summary["status"] = "incomplete_missing_cells"
+            returncode = 0
         else:
             summary["status"] = "completed"
             returncode = 0
@@ -707,7 +733,13 @@ def main(argv: list[str] | None = None) -> int:
         summary["codex_process_attempts"] = pilot_processes + int(one_cell_started)
         summary_name = (
             "prepare_summary.json"
-            if args.mode in {"pilot_prepare", "pilot_recover_prepare", "pilot_step_prepare"}
+            if args.mode
+            in {
+                "pilot_prepare",
+                "pilot_recover_prepare",
+                "pilot_step_prepare",
+                "pilot_resume_prepare",
+            }
             else "summary.json"
         )
         (root / summary_name).write_text(

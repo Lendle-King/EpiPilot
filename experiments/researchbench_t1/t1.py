@@ -756,22 +756,60 @@ def perform_trial(
         matches = [
             e for e in started if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
         ]
-        if len(matches) >= profile["per_cell_trials"]:
+        recovery = meta.get("recovery", {})
+        cell_key = f"{arm}__{dataset}__{seed}"
+        imported_matches = [
+            e for e in matches if e.get("recovery_imported_from") is not None
+        ]
+        inherited_trials = int(
+            recovery.get("prior_training_attempts_by_cell", {}).get(cell_key, 0)
+        )
+        inherited_unimported_attempts = max(0, inherited_trials - len(imported_matches))
+        if len(matches) + inherited_unimported_attempts >= profile["per_cell_trials"]:
             raise BenchmarkError("per-cell experiment count budget exhausted")
         if any(e["candidate_sha256"] == c_hash for e in matches):
             raise BenchmarkError("identical candidate already attempted for this research cell")
         # Enforce the same independent training allowance for every cell first.
         per_cell_seconds = profile["per_cell_trials"] * profile["trial_seconds"]
+        ended_by_id = {
+            e["id"]: e for e in history if e["kind"] in {"finished", "aborted"}
+        }
+        imported_seconds = sum(
+            float(ended_by_id[row["id"]].get("seconds", 0.0))
+            for row in imported_matches
+            if row["id"] in ended_by_id
+        )
+        inherited_seconds = float(
+            recovery.get("prior_training_seconds_by_cell", {}).get(cell_key, 0.0)
+        )
+        inherited_unimported_seconds = max(0.0, inherited_seconds - imported_seconds)
         if (
             _spent_by_cell(history, profile["trial_seconds"], arm, dataset, seed)
+            + inherited_unimported_seconds
             + profile["trial_seconds"]
             > per_cell_seconds + 1e-9
         ):
             raise BenchmarkError("per-cell CPU wall-budget exhausted, cannot reserve trial")
         # The global cap is only a final safety ceiling. setup() refuses any stage
         # whose cap cannot cover every cell's full equal allocation.
+        total_inherited_unimported_seconds = sum(
+            max(
+                0.0,
+                float(value)
+                - sum(
+                    float(ended_by_id[row["id"]].get("seconds", 0.0))
+                    for row in started
+                    if row.get("recovery_imported_from") is not None
+                    and row["id"] in ended_by_id
+                    and f"{row['arm']}__{row['dataset']}__{row['seed']}" == key
+                ),
+            )
+            for key, value in recovery.get("prior_training_seconds_by_cell", {}).items()
+        )
         if (
-            _spent(history, profile["trial_seconds"]) + profile["trial_seconds"]
+            _spent(history, profile["trial_seconds"])
+            + total_inherited_unimported_seconds
+            + profile["trial_seconds"]
             > profile["total_seconds"] + 1e-9
         ):
             raise BenchmarkError("global CPU wall safety cap exhausted, cannot reserve trial")

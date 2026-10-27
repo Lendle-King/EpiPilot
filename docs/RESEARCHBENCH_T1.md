@@ -211,6 +211,36 @@ python experiments/researchbench_t1/mac_agent_runner.py \
   --cell-arm memory_only --cell-dataset wdbc --cell-seed 42
 ```
 
+### Cumulative serial recovery
+
+When earlier recovery ledgers contain successful development trials as well as
+failed calls, `pilot_resume_prepare` validates the full hash-linked chain,
+imports successful candidate/metric artifacts into a fresh work ledger, and
+charges their original trial count and seconds. Imported trials are evidence
+only; they are never trained again. `pilot_resume` then walks the remaining
+frozen cells in sequence, deriving each stable call number and training slot
+from the ancestor ledgers plus the new ledger. Failed calls stay charged, the
+four-call and two-trial cell caps remain cumulative, and an infrastructure
+failure stops the serial pass. Holdout evaluation runs only if all eight cells
+have submitted candidates after the pass; a cell with no candidate keeps the
+holdout sealed and the result is marked incomplete.
+
+For a cumulative recovery whose next eligible cell is Agent Only / WDBC / 42:
+
+```bash
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_resume_prepare --provider ccswitch_codex --model gpt-6-luna \
+  --origin-results /path/to/T1_Pilot_Results \
+  --prior-results /path/to/T1_Pilot_Recovery_5 \
+  --results /path/to/T1_Pilot_Recovery_6 \
+  --cell-arm agent_only --cell-dataset wdbc --cell-seed 42
+
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_resume --provider ccswitch_codex --model gpt-6-luna \
+  --confirm RUN_FOUR_POLICY_PILOT \
+  --results /path/to/T1_Pilot_Recovery_6
+```
+
 ### Full T1: original three real UCI data sets
 
 No automatic downloads are performed. Supply the unmodified locally

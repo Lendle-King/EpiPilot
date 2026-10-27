@@ -251,6 +251,54 @@ def test_pilot_step_mode_requires_explicit_single_cell_confirmation(
     assert observed["seed"] == 42
 
 
+def test_serial_resume_modes_prepare_and_dispatch_one_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(mac.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(mac, "_python_ready", lambda: True)
+    monkeypatch.setattr(mac, "_codex", lambda: "/mock/codex")
+    monkeypatch.setattr(mac, "inspect_host", lambda: None)
+    prepared: dict[str, Any] = {}
+
+    def prepare(**kwargs: Any) -> dict[str, Any]:
+        prepared.update(kwargs)
+        return {"serial_resume": kwargs["serial_resume"], "model_calls_started": 0}
+
+    monkeypatch.setattr(mac, "prepare_pilot_single_step_recovery", prepare)
+    target = {"cell_arm": "agent_only", "cell_dataset": "wdbc", "cell_seed": 42}
+    result = mac.run(
+        "pilot_resume_prepare",
+        "ccswitch_codex",
+        "gpt-6-luna",
+        "",
+        tmp_path,
+        origin_results=tmp_path / "origin",
+        prior_results=tmp_path / "prior",
+        **target,
+    )
+    assert result["serial_resume"] is True
+    assert prepared["serial_resume"] is True
+    assert prepared["arm"] == "agent_only"
+
+    observed: dict[str, Any] = {}
+
+    def resume(**kwargs: Any) -> dict[str, Any]:
+        observed.update(kwargs)
+        return {"pilot_run_status": "incomplete_missing_cells"}
+
+    monkeypatch.setattr(mac, "run_pilot", resume)
+    outcome = mac.run(
+        "pilot_resume",
+        "ccswitch_codex",
+        "gpt-6-luna",
+        "RUN_FOUR_POLICY_PILOT",
+        tmp_path,
+    )
+    assert outcome["pilot_run_status"] == "incomplete_missing_cells"
+    assert observed["confirm"] == "RUN_FOUR_POLICY_PILOT"
+    assert observed["codex"] == "/mock/codex"
+
+
 def test_environment_scrubs_github_and_ssh_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "not-to-be-inherited")
     monkeypatch.setenv("ACTIONS_RUNTIME_TOKEN", "not-to-be-inherited")

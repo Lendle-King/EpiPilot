@@ -820,3 +820,205 @@ def test_single_step_recovery_preserves_lineage_and_caps_call_and_training_work(
     ):
         record_agent_call_started(work, *step_target, "agent_only-wdbc-42-call-5", "decision")
     assert status(work)["model_call_attempts"] == 14
+
+
+def test_serial_recovery_imports_verified_successful_trial_without_retraining(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    origin = tmp_path / "T1_Pilot_Results"
+    origin.mkdir(mode=0o700)
+    origin_work, origin_vault = origin / "pilot_work", origin / "pilot_vault"
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "a" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "a" * 40)
+    setup(origin_work, origin_vault, "pilot", {}, True)
+    origin_meta = read_json(origin_work / "meta.json")
+    for arm, dataset, seed in origin_meta["execution_order"]:
+        call_id = f"{arm}-{dataset}-{seed}-call-1"
+        record_agent_call_started(origin_work, arm, dataset, seed, call_id, "decision")
+        record_agent_call_finished(
+            origin_work,
+            call_id,
+            "failed",
+            {"usage_available": False, "process_started": True, "turn_count": 0},
+        )
+        record_cell_terminal(origin_work, arm, dataset, seed, "failed", "origin failure")
+    (origin / "summary.json").write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "model_call_attempts": 8,
+                "training_trials": 0,
+                "holdout_evaluated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def setup_t1(*args: str, timeout: int = 60) -> dict[str, Any]:
+        assert args[0] == "init" and timeout == 90
+        values = list(args[1:])
+        return setup(
+            Path(values[values.index("--work") + 1]),
+            Path(values[values.index("--vault") + 1]),
+            "pilot",
+            {},
+            True,
+        )
+
+    first = tuple(origin_meta["execution_order"][0])
+    prior = tmp_path / "T1_Pilot_Recovery_1"
+    prior.mkdir(mode=0o700)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "b" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "b" * 40)
+    pilot_controller.prepare_pilot_recovery(
+        root=prior, origin_root=origin, t1_call=setup_t1
+    )
+    prior_work = prior / "pilot_work"
+    prior_call = f"{first[0]}-{first[1]}-{first[2]}-call-2"
+    record_agent_call_started(prior_work, *first, prior_call, "decision")
+    record_agent_call_finished(
+        prior_work,
+        prior_call,
+        "success",
+        {"usage_available": True, "process_started": True, "turn_count": 1},
+    )
+    original_candidate = _candidate(0.75)
+    candidate_input = prior / "candidate.json"
+    candidate_input.write_bytes(t1_module.canonical(original_candidate))
+    scores = iter((0.91, 0.84))
+    worker_calls: list[str] = []
+
+    def fake_dev_worker(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        output_path = Path(argv[argv.index("--output") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps({"auroc": next(scores)}), encoding="utf-8")
+        worker_calls.append(output_path.parent.name)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(t1_module.subprocess, "run", fake_dev_worker)
+    prior_trial = perform_trial(prior_work, *first, candidate_input)
+    candidate_input.unlink()
+    assert prior_trial["id"] == "trial-0001"
+    (prior / "summary.json").write_text(
+        json.dumps(
+            {
+                "status": "checkpointed",
+                "model_call_attempts": 9,
+                "training_trials": 1,
+                "holdout_evaluated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    recovery = tmp_path / "T1_Pilot_Recovery_2"
+    recovery.mkdir(mode=0o700)
+    monkeypatch.setattr(t1_module, "_code_revision", lambda: "c" * 40)
+    monkeypatch.setattr(pilot_controller, "_code_revision", lambda: "c" * 40)
+    prepared = pilot_controller.prepare_pilot_single_step_recovery(
+        root=recovery,
+        origin_root=origin,
+        prior_root=prior,
+        t1_call=setup_t1,
+        arm=first[0],
+        dataset=first[1],
+        seed=first[2],
+        serial_resume=True,
+    )
+    meta, work, vault = pilot_controller._load_frozen_pilot(recovery)
+    key = f"{first[0]}__{first[1]}__{first[2]}"
+    assert prepared["prior_call_attempts"] == 9
+    assert prepared["prior_training_attempts"] == 1
+    assert prepared["prior_successful_trials"] == 1
+    assert meta["recovery"]["prior_training_attempts_by_cell"][key] == 1
+    assert meta["recovery"]["prior_successful_trials_by_cell"][key][0]["dev_auroc"] == 0.91
+    assert status(work)["completed"] == 1
+    assert not (vault / "wdbc" / "test.csv").exists()
+    history, _notes = pilot_controller._single_step_history(work, *first)
+    assert len(history) == 1
+    assert history[0]["candidate"] == original_candidate
+    assert history[0]["dev_auroc"] == 0.91
+
+    provider_calls = 0
+
+    def fake_serial_model(
+        argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int, started_marker: Path
+    ) -> Any:
+        nonlocal provider_calls
+        provider_calls += 1
+        started_marker.write_text("started", encoding="utf-8")
+        prompt = argv[-1]
+        context_text = prompt.split("Cell information (no train/dev rows or labels):\n", 1)[1]
+        context = json.loads(context_text)
+        strategy = context["strategy"]
+        if "verified_trial" in context:
+            verified = context["verified_trial"]
+            payload = {
+                "note": (
+                    f"On frozen split, run {verified['run_id']}, candidate sha256 "
+                    f"{verified['candidate_sha256']}, development AUROC "
+                    f"{verified['dev_auroc']:.6f}; scope=current cell only."
+                )
+            }
+        elif strategy == "epipilot_heuristic":
+            payload = _heuristic_response(provider_calls)
+        elif strategy == "epipilot_conditional":
+            payload = _conditional_response()
+        elif strategy == "agent_only" and context["seed"] == 137:
+            payload = {"candidate": {"model": "outside-allowlist"}}
+        else:
+            payload = {"candidate": _candidate(0.3 + provider_calls / 10)}
+        response_path = Path(argv[argv.index("--output-last-message") + 1])
+        response_path.write_text(json.dumps(payload), encoding="utf-8")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 80,
+                        "output_tokens": 20,
+                        "input_tokens_details": {"cached_tokens": 0},
+                    },
+                }
+            ),
+            stderr="",
+        )
+
+    score_counter = 1
+
+    def fake_serial_worker(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal score_counter
+        score_counter += 1
+        output_path = Path(argv[argv.index("--output") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps({"auroc": 0.7 + score_counter / 100}), encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(t1_module.subprocess, "run", fake_serial_worker)
+    result = pilot_controller.run_pilot(
+        root=recovery,
+        codex="/mock/codex",
+        confirm="RUN_FOUR_POLICY_PILOT",
+        guarded_call=fake_serial_model,
+        t1_call=lambda *args, timeout=60: perform_trial(
+            Path(list(args)[list(args).index("--work") + 1]),
+            list(args)[list(args).index("--arm") + 1],
+            list(args)[list(args).index("--dataset") + 1],
+            int(list(args)[list(args).index("--seed") + 1]),
+            Path(list(args)[list(args).index("--candidate") + 1]),
+        ),
+        inspect=lambda: None,
+    )
+    assert result["cell_count_completed_or_terminal"] == 8
+    assert result["model_call_attempts"] <= 32
+    assert result["model_call_attempts"] == 9 + provider_calls
+    assert result["pilot_run_status"] == "incomplete_missing_cells"
+    assert result["holdout_evaluated"] is False
+    assert result["final_evaluation"] is None
+    assert not (work / "final.started").exists()
+    assert status(work)["submitted"] == 7
+    assert status(work)["completed"] >= 2
+    assert worker_calls.count("trial-0001") == 1

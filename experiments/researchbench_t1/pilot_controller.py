@@ -1047,6 +1047,30 @@ def _load_frozen_pilot(root: Path) -> tuple[dict[str, Any], Path, Path]:
                 raise BenchmarkError(
                     "single-step recovery target or cumulative counters are invalid"
                 )
+        if recovery.get("serial_resume") is True:
+            start = recovery.get("resume_start_cell")
+            if (
+                origin.get("serial_resume") is not True
+                or not isinstance(start, dict)
+                or set(start) != {"arm", "dataset", "seed"}
+                or (start.get("arm"), start.get("dataset"), start.get("seed"))
+                not in {tuple(cell) for cell in meta["execution_order"]}
+                or sum(
+                    int(value)
+                    for value in recovery.get("prior_call_attempts_by_cell", {}).values()
+                )
+                > meta["cell_count"]
+                * meta["profile"]["max_model_decision_calls_per_cell"]
+                or any(
+                    int(value) > meta["profile"]["max_model_decision_calls_per_cell"]
+                    for value in recovery.get("prior_call_attempts_by_cell", {}).values()
+                )
+                or any(
+                    int(value) > meta["profile"]["per_cell_trials"]
+                    for value in recovery.get("prior_training_attempts_by_cell", {}).values()
+                )
+            ):
+                raise BenchmarkError("serial recovery manifest has invalid frozen resume counters")
     elif events:
         raise BenchmarkError("fresh Pilot workspace contains unexpected prior activity")
     return meta, work, vault
@@ -1232,12 +1256,19 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
     calls_by_cell = dict.fromkeys(expected_cell_keys, 0)
     processes_by_cell = dict.fromkeys(expected_cell_keys, 0)
     trials_by_cell = dict.fromkeys(expected_cell_keys, 0)
+    training_seconds_by_cell = dict.fromkeys(expected_cell_keys, 0.0)
+    successful_trials_by_cell: dict[str, list[dict[str, Any]]] = {
+        key: [] for key in expected_cell_keys
+    }
     terminal_outcomes: dict[str, str] = {}
     all_call_ids: list[str] = []
     seen_call_ids: set[str] = set()
 
     def consume_ledger(
-        rows: list[dict[str, Any]], *, expected_call_count: int | None = None
+        rows: list[dict[str, Any]],
+        ledger_root: Path,
+        *,
+        expected_call_count: int | None = None,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
         starts = [row for row in rows if row.get("kind") == "agent_call_started"]
         finishes = [row for row in rows if row.get("kind") == "agent_call_finished"]
@@ -1256,16 +1287,18 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
         for row in starts:
             arm_name, dataset_name, seed_value = row.get("arm"), row.get("dataset"), row.get("seed")
             key = f"{arm_name}__{dataset_name}__{seed_value}"
+            finish = finish_by_id[row["call_id"]]
             if (
                 key not in calls_by_cell
                 or row.get("model") != "gpt-6-luna"
                 or row.get("model_reasoning_effort") != "max"
-                or finish_by_id[row["call_id"]].get("outcome") != "failed"
-                or finish_by_id[row["call_id"]].get("process_started") is not True
-                or finish_by_id[row["call_id"]].get("turn_count") != 0
-                or event_positions[id(finish_by_id[row["call_id"]])] <= event_positions[id(row)]
+                or finish.get("outcome")
+                not in {"failed", "timeout", "invalid_output", "success"}
+                or finish.get("process_started") is not True
+                or (finish.get("outcome") == "success" and finish.get("turn_count") != 1)
+                or event_positions[id(finish)] <= event_positions[id(row)]
             ):
-                raise BenchmarkError("recovery lineage contains a non-frozen model-call outcome")
+                raise BenchmarkError("recovery lineage contains an invalid model-call outcome")
             calls_by_cell[key] += 1
             expected_ordinal = calls_by_cell[key]
             stable_id = f"{arm_name}-{dataset_name}-{seed_value}-call-{expected_ordinal}"
@@ -1289,21 +1322,85 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
             or len(ended_trials) != len(trial_ids)
         ):
             raise BenchmarkError("recovery lineage contains an unreconciled training attempt")
+        local_trial_ends = {row.get("id"): row for row in ended_trials}
         for row in started_trials:
             key = f"{row.get('arm')}__{row.get('dataset')}__{row.get('seed')}"
             if key not in trials_by_cell:
                 raise BenchmarkError("recovery lineage contains a trial outside the frozen cells")
+            end = local_trial_ends[row["id"]]
+            candidate_path = ledger_root / "runs" / row["id"] / "candidate.json"
+            metric_path = ledger_root / "runs" / row["id"] / "metric.json"
+            if end.get("exit_code") == 0 and (
+                not candidate_path.is_file()
+                or digest(canonical(read_json(candidate_path))) != row.get("candidate_sha256")
+                or not metric_path.is_file()
+                or file_digest(metric_path) != end.get("metric_sha256")
+                or read_json(metric_path).get("auroc") != end.get("dev_auroc")
+            ):
+                raise BenchmarkError("recovery lineage trial artifacts failed hash checks")
+            seconds = end.get("seconds")
+            if (
+                isinstance(seconds, bool)
+                or not isinstance(seconds, (int, float))
+                or not 0 <= seconds <= STAGES["pilot"]["trial_seconds"]
+                or row.get("time_limit") != STAGES["pilot"]["trial_seconds"]
+            ):
+                raise BenchmarkError("recovery lineage trial duration exceeds its frozen limit")
+            imported = row.get("recovery_imported_from")
+            if imported is not None:
+                if not isinstance(imported, dict) or set(imported) != {
+                    "results_directory",
+                    "run_id",
+                    "candidate_sha256",
+                    "metric_sha256",
+                }:
+                    raise BenchmarkError("recovery trial import receipt is malformed")
+                prior_matches = [
+                    item
+                    for item in successful_trials_by_cell[key]
+                    if item.get("results_directory") == imported["results_directory"]
+                    and item.get("run_id") == imported["run_id"]
+                    and item.get("candidate_sha256") == imported["candidate_sha256"]
+                    and item.get("metric_sha256") == imported["metric_sha256"]
+                ]
+                if len(prior_matches) != 1 or row.get("candidate_sha256") != imported[
+                    "candidate_sha256"
+                ] or end.get("metric_sha256") != imported["metric_sha256"]:
+                    raise BenchmarkError("recovery generation imported an unverified trial")
+                continue
             trials_by_cell[key] += 1
+            seconds = float(seconds)
+            training_seconds_by_cell[key] += seconds
+            if end.get("exit_code") == 0 and end.get("dev_auroc") is not None:
+                successful_trials_by_cell[key].append(
+                    {
+                        "results_directory": ledger_root.parent.name,
+                        "run_id": row["id"],
+                        "candidate": read_json(candidate_path),
+                        "candidate_sha256": row["candidate_sha256"],
+                        "dev_auroc": end["dev_auroc"],
+                        "seconds": seconds,
+                        "metric_sha256": end["metric_sha256"],
+                    }
+                )
 
         for row in rows:
             if row.get("kind") == "cell_terminal":
                 key = f"{row.get('arm')}__{row.get('dataset')}__{row.get('seed')}"
-                if key not in calls_by_cell or row.get("outcome") not in {"failed", "completed"}:
+                if key not in calls_by_cell or row.get("outcome") not in {
+                    "failed",
+                    "completed",
+                    "submitted",
+                    "stopped",
+                    "invalid",
+                }:
                     raise BenchmarkError("recovery lineage contains an invalid terminal event")
                 terminal_outcomes[key] = row["outcome"]
         return starts, started_trials, finishes
 
-    _, origin_trials, _ = consume_ledger(origin_events, expected_call_count=8)
+    _, origin_trials, _ = consume_ledger(
+        origin_events, origin_work, expected_call_count=8
+    )
     origin_terminals = [row for row in origin_events if row.get("kind") == "cell_terminal"]
     if len(origin_trials) != 0 or len(origin_terminals) != 8 or len(terminal_outcomes) != 8:
         raise BenchmarkError("root origin does not contain eight failed terminal cells")
@@ -1414,6 +1511,10 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
         prior_calls_before = dict(calls_by_cell)
         prior_processes_before = dict(processes_by_cell)
         prior_trials_before = dict(trials_by_cell)
+        prior_training_seconds_before = dict(training_seconds_by_cell)
+        prior_successful_trials_before = {
+            key: list(value) for key, value in successful_trials_by_cell.items()
+        }
         prior_terminals_before = dict(terminal_outcomes)
         prior_ids_before = sorted(all_call_ids)
         for label, expected_value in (
@@ -1423,6 +1524,14 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
             ("prior_terminal_outcomes_by_cell", prior_terminals_before),
         ):
             if receipt.get(label) != expected_value:
+                raise BenchmarkError(f"recovery receipt {label} disagrees with ancestor ledgers")
+            if label in recovery and recovery.get(label) != expected_value:
+                raise BenchmarkError(f"recovery manifest {label} disagrees with ancestor ledgers")
+        for label, expected_value in (
+            ("prior_training_seconds_by_cell", prior_training_seconds_before),
+            ("prior_successful_trials_by_cell", prior_successful_trials_before),
+        ):
+            if label in receipt and receipt.get(label) != expected_value:
                 raise BenchmarkError(f"recovery receipt {label} disagrees with ancestor ledgers")
             if label in recovery and recovery.get(label) != expected_value:
                 raise BenchmarkError(f"recovery manifest {label} disagrees with ancestor ledgers")
@@ -1441,31 +1550,41 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
         ):
             raise BenchmarkError("recovery-origin event disagrees with validated lineage")
 
-        local_starts, local_trials, _ = consume_ledger(rows)
+        local_starts, local_trials, _ = consume_ledger(rows, work)
+        if (
+            any(value > 4 for value in calls_by_cell.values())
+            or any(value > 2 for value in trials_by_cell.values())
+            or any(value > 30 + 1e-9 for value in training_seconds_by_cell.values())
+        ):
+            raise BenchmarkError("recovery lineage exceeds a frozen per-cell budget")
         summary_training_trials = summary.get("training_trials")
+        local_actual_trials = [
+            row for row in local_trials if row.get("recovery_imported_from") is None
+        ]
         if summary_training_trials is None:
             summary_training_trials = summary.get("training_trials_this_invocation")
-            expected_summary_training_trials = len(local_trials)
+            expected_summary_training_trials = len(local_actual_trials)
         else:
             expected_summary_training_trials = sum(trials_by_cell.values())
         local_terminals = [row for row in rows if row.get("kind") == "cell_terminal"]
         if (
-            len(local_starts) != 1
-            or len(local_trials) != 0
+            not local_starts
+            or len(local_starts) > sum(calls_by_cell.values())
+            or any(value > 2 for value in trials_by_cell.values())
             or (
                 local_terminals
                 and (
-                    len(local_terminals) != 1
-                    or local_terminals[0].get("outcome") != "failed"
-                    or (
-                        local_terminals[0].get("arm"),
-                        local_terminals[0].get("dataset"),
-                        local_terminals[0].get("seed"),
+                    len(
+                        {
+                            (row.get("arm"), row.get("dataset"), row.get("seed"))
+                            for row in local_terminals
+                        }
                     )
-                    != (
-                        local_starts[0].get("arm"),
-                        local_starts[0].get("dataset"),
-                        local_starts[0].get("seed"),
+                    != len(local_terminals)
+                    or any(
+                        row.get("outcome")
+                        not in {"failed", "completed", "submitted", "stopped", "invalid"}
+                        for row in local_terminals
                     )
                 )
             )
@@ -1506,6 +1625,8 @@ def _read_single_step_recovery_lineage(*, origin_root: Path, prior_root: Path) -
         "calls_by_cell": calls_by_cell,
         "processes_by_cell": processes_by_cell,
         "trials_by_cell": trials_by_cell,
+        "training_seconds_by_cell": training_seconds_by_cell,
+        "successful_trials_by_cell": successful_trials_by_cell,
         "terminal_outcomes": terminal_outcomes,
         "call_ids": sorted(all_call_ids),
         "total_calls": sum(calls_by_cell.values()),
@@ -1521,8 +1642,9 @@ def prepare_pilot_single_step_recovery(
     arm: str,
     dataset: str,
     seed: int,
+    serial_resume: bool = False,
 ) -> dict[str, Any]:
-    """Prepare a new linked workspace for exactly one explicitly resumed cell."""
+    """Prepare a linked checkpoint, optionally for one persistent serial resume run."""
     if root.exists() and any(root.iterdir()):
         raise BenchmarkError("single-step recovery destination must be empty")
 
@@ -1538,6 +1660,8 @@ def prepare_pilot_single_step_recovery(
     prior_calls_by_cell = lineage["calls_by_cell"]
     prior_processes_by_cell = lineage["processes_by_cell"]
     prior_trials_by_cell = lineage["trials_by_cell"]
+    prior_training_seconds_by_cell = lineage["training_seconds_by_cell"]
+    prior_successful_trials_by_cell = lineage["successful_trials_by_cell"]
     prior_terminal_outcomes = lineage["terminal_outcomes"]
     prior_call_ids = lineage["call_ids"]
     total_prior_calls = lineage["total_calls"]
@@ -1553,7 +1677,8 @@ def prepare_pilot_single_step_recovery(
             < prior_meta["profile"]["max_model_decision_calls_per_cell"]
             and prior_trials_by_cell.get(f"{cell[0]}__{cell[1]}__{cell[2]}", 0)
             < prior_meta["profile"]["per_cell_trials"]
-            and prior_terminal_outcomes.get(f"{cell[0]}__{cell[1]}__{cell[2]}") != "completed"
+            and prior_terminal_outcomes.get(f"{cell[0]}__{cell[1]}__{cell[2]}")
+            in {None, "failed"}
         ),
         None,
     )
@@ -1606,14 +1731,20 @@ def prepare_pilot_single_step_recovery(
         "prior_call_attempts_by_cell": prior_calls_by_cell,
         "prior_process_starts_by_cell": prior_processes_by_cell,
         "prior_training_attempts_by_cell": prior_trials_by_cell,
+        "prior_training_seconds_by_cell": prior_training_seconds_by_cell,
+        "prior_successful_trials_by_cell": prior_successful_trials_by_cell,
         "prior_call_ids": prior_call_ids,
         "prior_terminal_outcomes_by_cell": prior_terminal_outcomes,
-        "single_step_target": [arm, dataset, seed],
         "recovery_ancestor_directories": [path.name for path in lineage["chain"]],
-        "single_step_calls_per_invocation": 1,
+        "serial_resume": serial_resume,
         "provider_usage_and_cost": "unknown; prior run had no usage telemetry",
         "holdout_evaluated_in_ancestors": False,
     }
+    if serial_resume:
+        receipt["resume_start_cell"] = [arm, dataset, seed]
+    else:
+        receipt["single_step_target"] = [arm, dataset, seed]
+        receipt["single_step_calls_per_invocation"] = 1
     atomic_json(work / "recovery_origin.json", receipt)
     recovery_meta["recovery"] = {
         "origin_manifest_sha256": root_manifest_sha,
@@ -1626,12 +1757,26 @@ def prepare_pilot_single_step_recovery(
         "prior_call_attempts_by_cell": prior_calls_by_cell,
         "prior_process_starts_by_cell": prior_processes_by_cell,
         "prior_training_attempts_by_cell": prior_trials_by_cell,
+        "prior_training_seconds_by_cell": prior_training_seconds_by_cell,
+        "prior_successful_trials_by_cell": prior_successful_trials_by_cell,
         "prior_call_ids": prior_call_ids,
         "prior_terminal_outcomes_by_cell": prior_terminal_outcomes,
-        "single_step_target": {"arm": arm, "dataset": dataset, "seed": seed},
-        "single_step_calls_per_invocation": 1,
+        "serial_resume": serial_resume,
         "recovery_origin_sha256": file_digest(work / "recovery_origin.json"),
     }
+    if serial_resume:
+        recovery_meta["recovery"]["resume_start_cell"] = {
+            "arm": arm,
+            "dataset": dataset,
+            "seed": seed,
+        }
+    else:
+        recovery_meta["recovery"]["single_step_target"] = {
+            "arm": arm,
+            "dataset": dataset,
+            "seed": seed,
+        }
+        recovery_meta["recovery"]["single_step_calls_per_invocation"] = 1
     _replace_json_file(work / "meta.json", recovery_meta)
     recovery_vault["public_meta_sha256"] = file_digest(work / "meta.json")
     _replace_json_file(vault / "meta.json", recovery_vault)
@@ -1648,6 +1793,68 @@ def prepare_pilot_single_step_recovery(
             "prior_training_attempts": sum(prior_trials_by_cell.values()),
         },
     )
+    imported_count = 0
+    for cell in execution_order:
+        key = f"{cell[0]}__{cell[1]}__{cell[2]}"
+        for item in prior_successful_trials_by_cell.get(key, []):
+            source_name = item.get("results_directory")
+            source_run_id = item.get("run_id")
+            if (
+                not isinstance(source_name, str)
+                or Path(source_name).name != source_name
+                or not isinstance(source_run_id, str)
+                or not source_run_id.startswith("trial-")
+            ):
+                raise BenchmarkError("successful recovery trial has an unsafe source reference")
+            source_work = origin_root.parent / source_name / "pilot_work"
+            candidate_source = source_work / "runs" / source_run_id / "candidate.json"
+            metric_source = source_work / "runs" / source_run_id / "metric.json"
+            if (
+                source_work.parent.is_symlink()
+                or not candidate_source.is_file()
+                or not metric_source.is_file()
+                or file_digest(candidate_source) != item["candidate_sha256"]
+                or file_digest(metric_source) != item["metric_sha256"]
+                or digest(canonical(read_json(candidate_source))) != item["candidate_sha256"]
+                or read_json(metric_source).get("auroc") != item["dev_auroc"]
+            ):
+                raise BenchmarkError("successful recovery trial changed after lineage validation")
+            imported_count += 1
+            imported_id = f"trial-{imported_count:04d}"
+            imported_dir = work / "runs" / imported_id
+            imported_dir.mkdir(parents=True, exist_ok=False)
+            (imported_dir / "candidate.json").write_bytes(candidate_source.read_bytes())
+            (imported_dir / "metric.json").write_bytes(metric_source.read_bytes())
+            event(
+                work,
+                {
+                    "kind": "started",
+                    "id": imported_id,
+                    "arm": cell[0],
+                    "dataset": cell[1],
+                    "seed": cell[2],
+                    "candidate_sha256": item["candidate_sha256"],
+                    "time_limit": prior_meta["profile"]["trial_seconds"],
+                    "recovery_imported_from": {
+                        "results_directory": source_name,
+                        "run_id": source_run_id,
+                        "candidate_sha256": item["candidate_sha256"],
+                        "metric_sha256": item["metric_sha256"],
+                    },
+                },
+            )
+            event(
+                work,
+                {
+                    "kind": "finished",
+                    "id": imported_id,
+                    "exit_code": 0,
+                    "dev_auroc": item["dev_auroc"],
+                    "seconds": item["seconds"],
+                    "metric_sha256": item["metric_sha256"],
+                    "error": "inherited development evidence; no training rerun",
+                },
+            )
     return {
         "origin_manifest_sha256": root_manifest_sha,
         "prior_manifest_sha256": prior_manifest_sha,
@@ -1658,7 +1865,10 @@ def prepare_pilot_single_step_recovery(
         "cumulative_call_cap": 32,
         "remaining_total_call_budget": 32 - total_prior_calls,
         "target_remaining_call_budget": 4 - prior_calls_by_cell[target_key],
-        "single_step_calls_per_invocation": 1,
+        "prior_training_attempts": sum(prior_trials_by_cell.values()),
+        "prior_successful_trials": imported_count,
+        "serial_resume": serial_resume,
+        "single_step_calls_per_invocation": None if serial_resume else 1,
         "holdout_materialized": False,
         "model_calls_started": 0,
     }
@@ -1677,14 +1887,15 @@ def run_pilot(
     if confirm != "RUN_FOUR_POLICY_PILOT":
         raise BenchmarkError("four-policy Pilot requires RUN_FOUR_POLICY_PILOT")
     meta, work, vault = _load_frozen_pilot(root)
-    if meta.get("recovery", {}).get("single_step_target"):
+    recovery = meta.get("recovery", {})
+    if recovery.get("single_step_target") and not recovery.get("serial_resume"):
         raise BenchmarkError("single-step recovery must use the bounded pilot_step mode")
     order = meta["execution_order"]
     cells: list[dict[str, Any]] = []
     stopped_for_resource = False
     stopped_for_infrastructure = False
-    recovery = meta.get("recovery", {})
     prior_call_counts = recovery.get("prior_call_attempts_by_cell", {})
+    prior_trial_counts = recovery.get("prior_training_attempts_by_cell", {})
     existing_terminals = {
         (row["arm"], row["dataset"], row["seed"]): row
         for row in ledger(work)
@@ -1694,6 +1905,13 @@ def run_pilot(
     for arm, dataset, seed in order:
         terminal = existing_terminals.get((arm, dataset, seed))
         if terminal:
+            cell_key = f"{arm}__{dataset}__{seed}"
+            local_attempts = sum(
+                row["kind"] == "started"
+                and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                and row.get("recovery_imported_from") is None
+                for row in ledger(work)
+            )
             cells.append(
                 {
                     "arm": arm,
@@ -1701,11 +1919,8 @@ def run_pilot(
                     "seed": seed,
                     "outcome": terminal["outcome"],
                     "reason": "previously terminal cell preserved during recovery",
-                    "training_attempts": sum(
-                        row["kind"] == "started"
-                        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
-                        for row in ledger(work)
-                    ),
+                    "training_attempts": int(prior_trial_counts.get(cell_key, 0))
+                    + local_attempts,
                     "model_calls": int(prior_call_counts.get(f"{arm}__{dataset}__{seed}", 0))
                     + sum(
                         row["kind"] == "agent_call_started"
@@ -1727,8 +1942,7 @@ def run_pilot(
         except ResourceRefusal:
             stopped_for_resource = True
             break
-        history: list[dict[str, Any]] = []
-        notes: list[str] = []
+        history, notes = _single_step_history(work, arm, dataset, seed)
         cell_key = f"{arm}__{dataset}__{seed}"
         call_number = int(prior_call_counts.get(cell_key, 0)) + sum(
             row["kind"] == "agent_call_started"
@@ -1737,7 +1951,19 @@ def run_pilot(
         )
         cell_outcome = "failed"
         reason = "no successful trial"
-        for trial_index in range(2):
+        local_trials = [
+            row
+            for row in ledger(work)
+            if row.get("kind") == "started"
+            and (row.get("arm"), row.get("dataset"), row.get("seed")) == (arm, dataset, seed)
+            and row.get("recovery_imported_from") is None
+        ]
+        prior_trials = int(prior_trial_counts.get(cell_key, 0))
+        trial_slots = max(0, meta["profile"]["per_cell_trials"] - prior_trials - len(local_trials))
+        for trial_index in range(trial_slots):
+            if call_number >= meta["profile"]["max_model_decision_calls_per_cell"]:
+                reason = "per-cell model-call budget exhausted"
+                break
             purpose = "decision"
             call_number += 1
             call_id = f"{arm}-{dataset}-{seed}-call-{call_number}"
@@ -1841,69 +2067,81 @@ def run_pilot(
                     row["planner_proposal"] = plan_proposal
                 history.append(row)
                 if arm == "memory_only":
-                    note_call_id = f"{arm}-{dataset}-{seed}-call-{call_number + 1}"
-                    call_number += 1
-                    try:
-                        note_payload, _note_telemetry = model_call(
-                            work=work,
-                            codex=codex,
-                            arm=arm,
-                            dataset=dataset,
-                            seed=seed,
-                            call_id=note_call_id,
-                            call_no=call_number,
-                            purpose="memory_note",
-                            history=history,
-                            notes=notes,
-                            guarded_call=guarded_call,
-                            max_timeout=150,
-                        )
-                        note = note_payload.get("note")
-                        expected_note = (
-                            f"On frozen split, run {row['run_id']}, candidate sha256 "
-                            f"{row['candidate_sha256']}, "
-                            f"development AUROC {row['dev_auroc']:.6f}; scope=current cell only."
-                        )
-                        if (
-                            set(note_payload) != {"note"}
-                            or not isinstance(note, str)
-                            or note.strip() != expected_note
-                        ):
+                    calls_used = prior_call_counts.get(cell_key, 0) + sum(
+                        row["kind"] == "agent_call_started"
+                        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                        for row in ledger(work)
+                    )
+                    if calls_used < meta["profile"]["max_model_decision_calls_per_cell"]:
+                        note_call_id = f"{arm}-{dataset}-{seed}-call-{call_number + 1}"
+                        call_number += 1
+                        try:
+                            note_payload, _note_telemetry = model_call(
+                                work=work,
+                                codex=codex,
+                                arm=arm,
+                                dataset=dataset,
+                                seed=seed,
+                                call_id=note_call_id,
+                                call_no=call_number,
+                                purpose="memory_note",
+                                history=history,
+                                notes=notes,
+                                guarded_call=guarded_call,
+                                max_timeout=150,
+                            )
+                            note = note_payload.get("note")
+                            expected_note = (
+                                f"On frozen split, run {row['run_id']}, candidate sha256 "
+                                f"{row['candidate_sha256']}, "
+                                f"development AUROC {row['dev_auroc']:.6f}; "
+                                "scope=current cell only."
+                            )
+                            if (
+                                set(note_payload) != {"note"}
+                                or not isinstance(note, str)
+                                or note.strip() != expected_note
+                            ):
+                                record_cell_incident(
+                                    work,
+                                    arm,
+                                    dataset,
+                                    seed,
+                                    "unsupported_claim",
+                                    "memory note did not exactly match its verified "
+                                    "source measurement",
+                                )
+                                raise ValueError("memory note was not source-verifiable")
+                            add_memory(work, arm, dataset, seed, row["run_id"], note)
+                            notes.append(note.strip())
+                        except ModelCallFailure as exc:
                             record_cell_incident(
                                 work,
                                 arm,
                                 dataset,
                                 seed,
-                                "unsupported_claim",
-                                "memory note did not exactly match its verified source measurement",
+                                "invalid",
+                                f"memory-note call failed: {exc.classification}",
                             )
-                            raise ValueError("memory note was not source-verifiable")
-                        add_memory(work, arm, dataset, seed, row["run_id"], note)
-                        notes.append(note.strip())
-                    except ModelCallFailure as exc:
-                        record_cell_incident(
-                            work,
-                            arm,
-                            dataset,
-                            seed,
-                            "invalid",
-                            f"memory-note call failed: {exc.classification}",
+                            reason = f"memory-note call failed: {exc.classification}; no retry"
+                            stopped_for_infrastructure = exc.infrastructure
+                            break
+                        except (BenchmarkError, ValueError) as exc:
+                            record_cell_incident(
+                                work,
+                                arm,
+                                dataset,
+                                seed,
+                                "invalid",
+                                "memory note call or validation failed",
+                            )
+                            reason = str(exc)
+                            break
+                    else:
+                        reason = (
+                            "memory-note omitted because this cell's model-call budget is spent"
                         )
-                        reason = f"memory-note call failed: {exc.classification}; no retry"
-                        stopped_for_infrastructure = exc.infrastructure
-                        break
-                    except (BenchmarkError, ValueError) as exc:
-                        record_cell_incident(
-                            work,
-                            arm,
-                            dataset,
-                            seed,
-                            "invalid",
-                            "memory note call or validation failed",
-                        )
-                        reason = str(exc)
-                        break
-                if trial_index == 1:
+                if trial_index + 1 == trial_slots:
                     cell_outcome, reason = "submitted", "two bounded training attempts completed"
             except ResourceRefusal:
                 stopped_for_resource = True
@@ -1953,9 +2191,16 @@ def run_pilot(
                     "outcome": "unreconciled",
                     "reason": "trial remains open because the guard refused reconciliation",
                     "training_attempts": sum(
-                        row["kind"] == "started"
-                        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
-                        for row in ledger(work)
+                        [
+                            int(prior_trial_counts.get(f"{arm}__{dataset}__{seed}", 0)),
+                            sum(
+                                row["kind"] == "started"
+                                and (row["arm"], row["dataset"], row["seed"])
+                                == (arm, dataset, seed)
+                                and row.get("recovery_imported_from") is None
+                                for row in ledger(work)
+                            ),
+                        ]
                     ),
                     "model_calls": call_number,
                     "successful_trials": len(history),
@@ -1982,11 +2227,17 @@ def run_pilot(
             if row["kind"] == "started"
             and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
         ]
-        trial_ids = {row["id"] for row in cell_trial_starts}
-        measured_seconds = sum(
+        prior_seconds = float(recovery.get("prior_training_seconds_by_cell", {}).get(cell_key, 0.0))
+        local_actual_trial_ids = {
+            row["id"]
+            for row in cell_trial_starts
+            if row.get("recovery_imported_from") is None
+        }
+        measured_seconds = prior_seconds + sum(
             float(row["seconds"])
             for row in cell_events
-            if row["kind"] in {"finished", "aborted"} and row.get("id") in trial_ids
+            if row["kind"] in {"finished", "aborted"}
+            and row.get("id") in local_actual_trial_ids
         )
         cells.append(
             {
@@ -1995,7 +2246,8 @@ def run_pilot(
                 "seed": seed,
                 "outcome": cell_outcome,
                 "reason": reason,
-                "training_attempts": len(cell_trial_starts),
+                "training_attempts": int(prior_trial_counts.get(cell_key, 0))
+                + len(local_actual_trial_ids),
                 "model_calls": call_number,
                 "successful_trials": len(history),
                 "training_seconds": round(measured_seconds, 6),
@@ -2058,7 +2310,20 @@ def run_pilot(
         "cell_count_completed_or_terminal": len(cells),
         "stopped_for_resource_guard": stopped_for_resource,
         "paused_for_infrastructure": stopped_for_infrastructure,
-        "training_trials": summary["completed"],
+        "training_trials": summary["total_started"]
+        + sum(
+            max(
+                0,
+                int(prior_trial_counts.get(key, 0))
+                - sum(
+                    row["kind"] == "started"
+                    and f"{row.get('arm')}__{row.get('dataset')}__{row.get('seed')}" == key
+                    and row.get("recovery_imported_from") is not None
+                    for row in ledger(work)
+                ),
+            )
+            for key in prior_trial_counts
+        ),
         "model_call_attempts": summary["model_call_attempts"],
         "codex_process_starts": summary["codex_process_starts"],
         "model_call_usage": summary["model_usage"],
@@ -2070,7 +2335,13 @@ def run_pilot(
         "unsupported_claims": summary["unsupported_claim_events"],
         "holdout_evaluated": summary["holdout_evaluated"],
         "pilot_run_status": (
-            "paused_for_infrastructure" if stopped_for_infrastructure else "completed"
+            "paused_for_infrastructure"
+            if stopped_for_infrastructure
+            else "paused_for_resource_guard"
+            if stopped_for_resource
+            else "incomplete_missing_cells"
+            if summary["submitted"] != expected_cells
+            else "completed"
         ),
         "final_evaluation": final_result,
         "qualification": (
