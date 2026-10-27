@@ -114,6 +114,31 @@ slug and explicit max effort. Focused non-model regressions passed: 28 tests.
 The test command used an empty pytest config because this environment lacks
 the repository's optional `pytest-asyncio` plugin.
 
+## Four-policy Pilot execution — 2026-10-27
+
+The frozen Pilot manifest was prepared from code revision
+`f47ec2d919953781e2b3411472d6beec169dd731`. It records eight WDBC cells,
+stratified split seed `20272025`, randomized order seed `20271027`, a maximum
+of four Codex call attempts and two 15-second training trials per cell, 30
+training seconds per cell, and a 240-second total training safety ceiling.
+The holdout was not materialized before or during this run.
+
+The formal `pilot` command launched one Codex CLI process for each of the
+eight cells. All eight returned in about 0.36 seconds with a failed call
+outcome, zero completed turns, zero observed tool events, and no available
+usage telemetry. No development trial or submission was produced, no cell
+was retried, and final holdout evaluation did not start. The provider-side
+request count and cost remain unknown; the sanitized runner did not retain
+CLI stderr, so the underlying failure cause is undetermined. The runner's
+`status=completed` means it finished recording all eight failed cells; it
+does not indicate a successful experimental Pilot.
+
+The manifest, event ledger, and sanitized runner summary remain local in the
+ignored results directory `T1_Pilot_Results/` in the Codex task workspace.
+`pilot_work/events.jsonl` is the source of truth for the eight attempts;
+`summary.json` records zero trials and no holdout evaluation. No further
+model call was made after this failure-only run. Full T1 remains paused.
+
 ## Research conclusions allowed now
 
 1. A pinned Mac runner can execute the offline reference benchmark with
