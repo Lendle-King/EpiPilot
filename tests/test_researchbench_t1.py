@@ -13,10 +13,15 @@ from experiments.researchbench_t1.t1 import (
     STAGES,
     BenchmarkError,
     add_memory,
+    canonical,
+    digest,
+    event,
     finalize,
     ledger,
     normalize_candidate,
     perform_trial,
+    record_agent_call_finished,
+    record_agent_call_started,
     recover_failed_trial,
     select,
     setup,
@@ -51,10 +56,122 @@ def test_default_stage_and_caps_are_small_and_offline() -> None:
     assert STAGES["pilot"]["per_cell_trials"] * STAGES["pilot"]["trial_seconds"] == 30
     assert STAGES["pilot"]["total_seconds"] == 240
     assert STAGES["pilot"]["max_model_decision_calls_per_cell"] == 4
+    continuation = STAGES["pilot_v2_continuation"]
+    assert continuation["per_cell_trials"] == 4
+    assert continuation["additional_trials_per_cell"] == 2
+    assert continuation["additional_model_decision_calls_per_cell"] == 4
+    assert continuation["additional_model_decision_calls_total"] == 32
+    assert continuation["per_cell_trials"] * continuation["trial_seconds"] == 60
+    assert continuation["total_seconds"] == 480
+    assert continuation["additional_total_seconds"] == 240
     assert STAGES["full"]["datasets"] == ["adult", "bank", "magic"]
     assert len(STAGES["full"]["arms"]) == 4
     assert len(STAGES["full"]["seeds"]) == 3
     assert STAGES["full"]["total_seconds"] <= 900
+
+
+def test_v2_continuation_call_segment_cap_is_enforced(tmp_path: Path) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    work, vault = tmp_path / "work", tmp_path / "vault"
+    setup(work, vault, "pilot_v2_continuation", {}, True)
+    cell = ("agent_only", "wdbc", 42)
+    for index in range(4):
+        call_id = f"continuation-call-{index + 1}"
+        record_agent_call_started(
+            work, *cell, call_id, "decision", model="gpt-6-luna", reasoning_effort="max"
+        )
+        record_agent_call_finished(work, call_id, "success", {"usage_available": False})
+    with pytest.raises(BenchmarkError, match="continuation model-call allowance"):
+        record_agent_call_started(
+            work,
+            *cell,
+            "continuation-call-5",
+            "decision",
+            model="gpt-6-luna",
+            reasoning_effort="max",
+        )
+    assert status(work)["continuation_model_call_attempts"] == 4
+
+
+def test_v2_continuation_duplicate_candidate_is_not_retrained(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    work, vault = tmp_path / "work", tmp_path / "vault"
+    setup(work, vault, "pilot_v2_continuation", {}, True)
+    candidate = _candidate()
+    run_dir = work / "runs" / "trial-0001"
+    run_dir.mkdir(parents=True)
+    (run_dir / "candidate.json").write_bytes(canonical(candidate))
+    metric = b'{"auroc":0.8}'
+    (run_dir / "metric.json").write_bytes(metric)
+    event(
+        work,
+        {
+            "kind": "started",
+            "id": "trial-0001",
+            "arm": "agent_only",
+            "dataset": "wdbc",
+            "seed": 42,
+            "candidate_sha256": digest(canonical(candidate)),
+            "time_limit": 15,
+            "continuation_segment": False,
+            "continuation_imported_from": "parent-sha",
+        },
+    )
+    event(
+        work,
+        {
+            "kind": "finished",
+            "id": "trial-0001",
+            "seconds": 0.5,
+            "exit_code": 0,
+            "dev_auroc": 0.8,
+            "metric_sha256": digest(metric),
+            "continuation_segment": False,
+            "continuation_imported_from": "parent-sha",
+        },
+    )
+    candidate_path = tmp_path / "duplicate.json"
+    candidate_path.write_bytes(canonical(candidate))
+    monkeypatch.setattr(
+        t1_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("duplicate candidates must not start a worker"),
+    )
+    with pytest.raises(BenchmarkError, match="identical candidate already attempted"):
+        perform_trial(work, "agent_only", "wdbc", 42, candidate_path)
+    assert status(work)["total_started"] == 1
+
+
+def test_v2_continuation_allows_only_two_new_training_attempts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    work, vault = tmp_path / "work", tmp_path / "vault"
+    setup(work, vault, "pilot_v2_continuation", {}, True)
+    worker_calls = 0
+
+    def fake_worker(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal worker_calls
+        worker_calls += 1
+        output = Path(argv[argv.index("--output") + 1])
+        output.write_text('{"auroc":0.81}', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(t1_module.subprocess, "run", fake_worker)
+    for c in (0.5, 0.8):
+        path = tmp_path / f"candidate-{c}.json"
+        path.write_bytes(canonical({**_candidate(), "C": c}))
+        assert perform_trial(work, "agent_only", "wdbc", 42, path)["exit_code"] == 0
+    third = tmp_path / "candidate-1.2.json"
+    third.write_bytes(canonical({**_candidate(), "C": 1.2}))
+    with pytest.raises(BenchmarkError, match="continuation adaptive-training allowance"):
+        perform_trial(work, "agent_only", "wdbc", 42, third)
+    assert worker_calls == 2
 
 
 def test_full_stage_refuses_global_cap_below_equal_cell_allocations(tmp_path: Path) -> None:

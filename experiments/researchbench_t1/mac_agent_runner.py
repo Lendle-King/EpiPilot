@@ -32,9 +32,11 @@ for _path in (REPO_ROOT / "src", REPO_ROOT):
 from experiments.researchbench_t1.pilot_controller import (  # noqa: E402
     prepare_pilot_recovery,
     prepare_pilot_single_step_recovery,
+    prepare_pilot_v2_continuation,
     run_pilot,
     run_pilot_single_step,
     run_pilot_v2,
+    run_pilot_v2_continuation,
 )
 from experiments.researchbench_t1.resource_guard import (  # noqa: E402
     ResourceRefusal,
@@ -67,6 +69,8 @@ ALLOWED_MODES = (
     "pilot",
     "pilot_v2_prepare",
     "pilot_v2",
+    "pilot_v2_continue_prepare",
+    "pilot_v2_continue",
 )
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./():-]{0,99}$")
 
@@ -196,12 +200,13 @@ def _redacted_agent_env() -> dict[str, str]:
     } | {"GIT_TERMINAL_PROMPT": "0", "CI": "1"}
 
 
-def _count_pilot_calls(root: Path) -> int:
+def _count_pilot_calls(root: Path, *, continuation_only: bool = False) -> int:
     events = root / "pilot_work" / "events.jsonl"
     try:
         current = (
             sum(
                 json.loads(line).get("kind") == "agent_call_started"
+                and (not continuation_only or json.loads(line).get("continuation_segment") is True)
                 for line in events.read_text(encoding="utf-8").splitlines()
             )
             if events.is_file()
@@ -218,7 +223,7 @@ def _count_pilot_calls(root: Path) -> int:
         return 0
 
 
-def _count_pilot_processes(root: Path) -> int:
+def _count_pilot_processes(root: Path, *, continuation_only: bool = False) -> int:
     events = root / "pilot_work" / "events.jsonl"
     try:
         current = (
@@ -226,6 +231,7 @@ def _count_pilot_processes(root: Path) -> int:
                 json.loads(line).get("process_started") is True
                 for line in events.read_text(encoding="utf-8").splitlines()
                 if json.loads(line).get("kind") == "agent_call_finished"
+                and (not continuation_only or json.loads(line).get("continuation_segment") is True)
             )
             if events.is_file()
             else 0
@@ -475,6 +481,7 @@ def run(
     cell_arm: str | None = None,
     cell_dataset: str | None = None,
     cell_seed: int | None = None,
+    parent_results: Path | None = None,
 ) -> dict[str, Any]:
     if mode not in ALLOWED_MODES or provider not in ALLOWED_PROVIDERS:
         raise MacRunBlocked("unknown mode or provider")
@@ -567,6 +574,18 @@ def run(
             "holdout_materialized": False,
             "model_calls_started": 0,
         }
+    if mode == "pilot_v2_continue_prepare":
+        inspect_host()
+        if parent_results is None:
+            raise MacRunBlocked("v2 continuation preparation requires --parent-results")
+        try:
+            return prepare_pilot_v2_continuation(
+                root=root,
+                parent_root=parent_results,
+                t1_call=lambda *args, timeout=90: _t1(*args, timeout=timeout),
+            )
+        except MacRunBlocked as exc:
+            raise BenchmarkError("guarded v2 continuation preparation failed") from exc
     if mode == "pilot_recover_prepare":
         inspect_host()
         if origin_results is None:
@@ -685,6 +704,26 @@ def run(
             t1_call=pilot_v2_t1_call,
             inspect=inspect_host,
         )
+    if mode == "pilot_v2_continue":
+        if confirm != "RUN_T1_PILOT_V2_CONTINUATION":
+            raise MacRunBlocked("v2 continuation requires RUN_T1_PILOT_V2_CONTINUATION")
+        inspect_host()
+        codex = _codex()
+
+        def continuation_t1_call(*args: str, timeout: int = 60) -> dict[str, Any]:
+            try:
+                return _t1(*args, timeout=timeout)
+            except MacRunBlocked as exc:
+                raise BenchmarkError("guarded local T1 continuation command failed") from exc
+
+        return run_pilot_v2_continuation(
+            root=root,
+            codex=codex,
+            confirm=confirm,
+            guarded_call=guarded_run,
+            t1_call=continuation_t1_call,
+            inspect=inspect_host,
+        )
     if confirm != "RUN_ONE_CELL":
         raise MacRunBlocked("one-cell agent invocation requires explicit RUN_ONE_CELL")
     # Refuse before paid inference if physical RAM use already exceeds 95%.
@@ -703,6 +742,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--origin-results", type=Path)
     parser.add_argument("--prior-results", type=Path)
+    parser.add_argument("--parent-results", type=Path)
     parser.add_argument(
         "--cell-arm",
         choices=["agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"],
@@ -711,8 +751,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cell-seed", type=int, choices=[42, 137])
     args = parser.parse_args(argv)
     root = args.results.absolute()
-    if args.mode in {"pilot", "pilot_step", "pilot_resume", "pilot_v2"}:
+    if args.mode in {"pilot", "pilot_step", "pilot_resume", "pilot_v2", "pilot_v2_continue"}:
         expected_entries = {"pilot_work", "pilot_vault", "prepare_summary.json"}
+        if args.mode == "pilot_v2_continue":
+            expected_entries.add("continuation_manifest.json")
         actual_entries = {path.name for path in root.iterdir()} if root.is_dir() else set()
         if (
             not root.is_dir()
@@ -763,6 +805,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.cell_arm,
                 args.cell_dataset,
                 args.cell_seed,
+                args.parent_results,
             )
         summary.update(outcome)
         if outcome.get("pilot_run_status") in {
@@ -784,8 +827,9 @@ def main(argv: list[str] | None = None) -> int:
         returncode = 2
     finally:
         summary["elapsed_wall_seconds"] = round(time.monotonic() - began, 3)
-        pilot_calls = _count_pilot_calls(root)
-        pilot_processes = _count_pilot_processes(root)
+        continuation_only = args.mode == "pilot_v2_continue"
+        pilot_calls = _count_pilot_calls(root, continuation_only=continuation_only)
+        pilot_processes = _count_pilot_processes(root, continuation_only=continuation_only)
         one_cell_started = (root / "agent_attempt.started").exists()
         summary["model_attempt_started"] = bool(pilot_processes or one_cell_started)
         summary["model_call_attempts"] = pilot_calls
@@ -799,6 +843,7 @@ def main(argv: list[str] | None = None) -> int:
                 "pilot_step_prepare",
                 "pilot_resume_prepare",
                 "pilot_v2_prepare",
+                "pilot_v2_continue_prepare",
             }
             else "summary.json"
         )

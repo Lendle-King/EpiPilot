@@ -69,6 +69,34 @@ STAGES: dict[str, dict[str, Any]] = {
         "conditional_risk_mode": "infrastructure_failure_branch_falls_back_to_incumbent",
         "final_eval_seconds": 20,
     },
+    "pilot_v2_continuation": {
+        "protocol_version": 2,
+        "continuation_of": "pilot_v2",
+        "datasets": ["wdbc"],
+        "arms": ["agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"],
+        "seeds": [42, 137],
+        "per_cell_trials": 4,
+        "additional_trials_per_cell": 2,
+        "trial_seconds": 15,
+        "total_seconds": 480,
+        "additional_total_seconds": 240,
+        "max_model_decision_calls_per_cell": 8,
+        "additional_model_decision_calls_per_cell": 4,
+        "additional_model_decision_calls_total": 32,
+        "model": "gpt-6-luna",
+        "model_reasoning_effort": "max",
+        "execution_order_seed": 20271029,
+        "baseline_candidate": {
+            "model": "logistic",
+            "feature_mode": "all",
+            "C": 1.0,
+            "class_weight": "none",
+        },
+        "conditional_utility_unit": "development_auroc",
+        "conditional_cost_mode": "hard_per_cell_trial_and_call_budget",
+        "conditional_risk_mode": "infrastructure_failure_branch_falls_back_to_incumbent",
+        "final_eval_seconds": 20,
+    },
     "full": {
         "datasets": ["adult", "bank", "magic"],
         "arms": ["agent_only", "memory_only", "epipilot_heuristic", "epipilot_conditional"],
@@ -126,9 +154,9 @@ def read_json(path: Path) -> dict[str, Any]:
     return result
 
 
-def atomic_json(path: Path, data: dict[str, Any]) -> None:
+def atomic_json(path: Path, data: dict[str, Any], *, replace_existing: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
+    if path.is_symlink() or (path.exists() and not replace_existing):
         raise BenchmarkError(f"refusing to overwrite existing data: {path}")
     tmp: Path | None = None
     try:
@@ -369,7 +397,7 @@ def setup(
             )
     profile = STAGES[stage]
     code_revision = _code_revision()
-    if stage in {"pilot", "pilot_v2"} and code_revision is None:
+    if stage in {"pilot", "pilot_v2", "pilot_v2_continuation"} and code_revision is None:
         raise BenchmarkError("Pilot requires a committed Git revision before any model call")
     cell_count, per_cell_seconds, required_seconds = _budget_allocation(profile)
     if profile["total_seconds"] < required_seconds:
@@ -394,7 +422,16 @@ def setup(
     private_holdout_hashes: dict[str, str] = {}
     # Do not reuse the already-inspected smoke holdout in real policy comparisons.
     # Fix the split per stage BEFORE any research agent sees validation feedback.
-    split_seed = SPLIT_SEED + {"smoke": 0, "pilot": 1000, "pilot_v2": 1000, "full": 2000}[stage]
+    split_seed = (
+        SPLIT_SEED
+        + {
+            "smoke": 0,
+            "pilot": 1000,
+            "pilot_v2": 1000,
+            "pilot_v2_continuation": 1000,
+            "full": 2000,
+        }[stage]
+    )
     for dataset in spec["datasets"]:
         dataset_meta[dataset], private_indices[dataset], private_holdout_hashes[dataset] = (
             _write_dataset(work, dataset, sources.get(dataset), split_seed)
@@ -420,7 +457,7 @@ def setup(
         "datasets": dataset_meta,
         "execution_order_seed": order_seed,
         "execution_order": [list(cell) for cell in cells],
-        "target_auroc": 0.95 if stage in {"pilot", "pilot_v2"} else None,
+        "target_auroc": (0.95 if stage in {"pilot", "pilot_v2", "pilot_v2_continuation"} else None),
         "total_external_api_calls": 0,
         "final_holdout_is_off_limits_during_search": True,
     }
@@ -621,7 +658,7 @@ def record_agent_call_started(
     meta = _load_meta(work)
     _unit(meta, arm, dataset, seed)
     if (
-        meta["stage"] not in {"pilot", "pilot_v2"}
+        meta["stage"] not in {"pilot", "pilot_v2", "pilot_v2_continuation"}
         or not call_id
         or not purpose
         or model != meta["profile"]["model"]
@@ -637,18 +674,30 @@ def record_agent_call_started(
         cell_starts = [
             e for e in starts if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
         ]
-        cap = meta["profile"]["max_model_decision_calls_per_cell"]
+        continuation = meta["stage"] == "pilot_v2_continuation"
         recovery = meta.get("recovery", {})
         prior_counts = recovery.get("prior_call_attempts_by_cell", {})
-        prior_cell_calls = int(prior_counts.get(f"{arm}__{dataset}__{seed}", 0))
-        prior_total_calls = sum(int(value) for value in prior_counts.values())
-        prior_call_ids = set(recovery.get("prior_call_ids", []))
+        prior_cell_calls = (
+            0 if continuation else int(prior_counts.get(f"{arm}__{dataset}__{seed}", 0))
+        )
+        prior_total_calls = (
+            0 if continuation else sum(int(value) for value in prior_counts.values())
+        )
+        prior_call_ids = set() if continuation else set(recovery.get("prior_call_ids", []))
+        cap = meta["profile"]["max_model_decision_calls_per_cell"]
         if prior_cell_calls + len(cell_starts) >= cap:
             raise BenchmarkError("per-cell model decision-call budget exhausted")
         if prior_total_calls + len(starts) >= meta["cell_count"] * cap:
             raise BenchmarkError("global model decision-call safety ceiling exhausted")
         if call_id in prior_call_ids or any(e["call_id"] == call_id for e in starts):
             raise BenchmarkError("duplicate model call identifier")
+        local_calls = [e for e in cell_starts if e.get("continuation_segment") is True]
+        local_total_calls = [e for e in starts if e.get("continuation_segment") is True]
+        if continuation and (
+            len(local_calls) >= meta["profile"]["additional_model_decision_calls_per_cell"]
+            or len(local_total_calls) >= meta["profile"]["additional_model_decision_calls_total"]
+        ):
+            raise BenchmarkError("continuation model-call allowance exhausted")
         ordinal = prior_cell_calls + len(cell_starts) + 1
         event(
             work,
@@ -662,6 +711,7 @@ def record_agent_call_started(
                 "purpose": purpose,
                 "model": model,
                 "model_reasoning_effort": reasoning_effort,
+                **({"continuation_segment": True} if continuation else {}),
             },
         )
         return ordinal
@@ -703,9 +753,20 @@ def record_agent_call_finished(
         ]
         if len(starts) != 1 or ends:
             raise BenchmarkError("model call is missing or already reconciled")
+        started = starts[0]
         event(
             work,
-            {"kind": "agent_call_finished", "call_id": call_id, "outcome": outcome, **safe},
+            {
+                "kind": "agent_call_finished",
+                "call_id": call_id,
+                "outcome": outcome,
+                **safe,
+                **(
+                    {"continuation_segment": True}
+                    if started.get("continuation_segment") is True
+                    else {}
+                ),
+            },
         )
 
 
@@ -790,6 +851,15 @@ def perform_trial(
         inherited_unimported_attempts = max(0, inherited_trials - len(imported_matches))
         if len(matches) + inherited_unimported_attempts >= profile["per_cell_trials"]:
             raise BenchmarkError("per-cell experiment count budget exhausted")
+        continuation = meta["stage"] == "pilot_v2_continuation"
+        local_matches = [row for row in matches if row.get("continuation_segment") is True]
+        local_total_matches = [row for row in started if row.get("continuation_segment") is True]
+        if continuation and (
+            len(local_matches) >= profile["additional_trials_per_cell"]
+            or len(local_total_matches)
+            >= profile["additional_trials_per_cell"] * meta["cell_count"]
+        ):
+            raise BenchmarkError("continuation adaptive-training allowance exhausted")
         if any(e["candidate_sha256"] == c_hash for e in matches):
             raise BenchmarkError("identical candidate already attempted for this research cell")
         # Enforce the same independent training allowance for every cell first.
@@ -804,6 +874,29 @@ def perform_trial(
             recovery.get("prior_training_seconds_by_cell", {}).get(cell_key, 0.0)
         )
         inherited_unimported_seconds = max(0.0, inherited_seconds - imported_seconds)
+        if continuation:
+            local_ended = {
+                e["id"]: e
+                for e in history
+                if e["kind"] in {"finished", "aborted"} and e.get("continuation_segment") is True
+            }
+            local_cell_seconds = sum(
+                float(local_ended[row["id"]].get("seconds", 0.0))
+                for row in local_matches
+                if row["id"] in local_ended
+            )
+            local_global_seconds = sum(
+                float(local_ended[row["id"]].get("seconds", 0.0))
+                for row in local_total_matches
+                if row["id"] in local_ended
+            )
+            if (
+                local_cell_seconds + profile["trial_seconds"]
+                > profile["additional_trials_per_cell"] * profile["trial_seconds"] + 1e-9
+                or local_global_seconds + profile["trial_seconds"]
+                > profile["additional_total_seconds"] + 1e-9
+            ):
+                raise BenchmarkError("continuation training-time allowance exhausted")
         if (
             _spent_by_cell(history, profile["trial_seconds"], arm, dataset, seed)
             + inherited_unimported_seconds
@@ -848,6 +941,7 @@ def perform_trial(
                 "seed": seed,
                 "candidate_sha256": c_hash,
                 "time_limit": profile["trial_seconds"],
+                **({"continuation_segment": True} if continuation else {}),
             },
         )
         train = work / "public" / dataset / "train.csv"
@@ -911,6 +1005,7 @@ def perform_trial(
             "dev_auroc": score,
             "metric_sha256": (file_digest(metric_path) if metric_path.exists() else None),
             "error": stderr,
+            **({"continuation_segment": continuation} if continuation else {}),
         }
         event(work, receipt)
         return {
@@ -1100,7 +1195,31 @@ def select(work: Path, arm: str, dataset: str, seed: int) -> dict[str, Any]:
             "dev_auroc": chosen["dev_auroc"],
         }
         path = work / "submissions" / f"{arm}__{dataset}__{seed}.json"
-        atomic_json(path, result)
+        replace_existing = False
+        if path.exists():
+            if meta["stage"] != "pilot_v2_continuation" or path.is_symlink():
+                raise BenchmarkError("refusing to replace a frozen submission")
+            previous = read_json(path)
+            previous_trial = next(
+                (row for row in outcomes if row["id"] == previous.get("run_id")), None
+            )
+            previous_candidate = work / "runs" / str(previous.get("run_id")) / "candidate.json"
+            previous_metric = work / "runs" / str(previous.get("run_id")) / "metric.json"
+            if (
+                set(previous)
+                != {"arm", "candidate_sha256", "dataset", "dev_auroc", "run_id", "seed"}
+                or (previous.get("arm"), previous.get("dataset"), previous.get("seed"))
+                != (arm, dataset, seed)
+                or previous_trial is None
+                or previous.get("dev_auroc") != previous_trial.get("dev_auroc")
+                or previous.get("candidate_sha256")
+                != started[previous_trial["id"]].get("candidate_sha256")
+                or file_digest(previous_candidate) != previous.get("candidate_sha256")
+                or file_digest(previous_metric) != previous_trial.get("metric_sha256")
+            ):
+                raise BenchmarkError("current continuation submission failed lineage validation")
+            replace_existing = True
+        atomic_json(path, result, replace_existing=replace_existing)
         return result
 
 
@@ -1123,6 +1242,10 @@ def status(work: Path) -> dict[str, Any]:
     prior_process_counts = recovery.get("prior_process_starts_by_cell", {})
     prior_calls = sum(int(value) for value in prior_call_counts.values())
     prior_processes = sum(int(value) for value in prior_process_counts.values())
+    continuation_calls = [e for e in model_calls if e.get("continuation_segment") is True]
+    continuation_finished = [e for e in call_finishes if e.get("continuation_segment") is True]
+    continuation_trials = [e for e in started if e.get("continuation_segment") is True]
+    continuation_trial_finishes = [e for e in finished if e.get("continuation_segment") is True]
     return {
         "stage": meta["stage"],
         "total_started": len(started),
@@ -1140,7 +1263,11 @@ def status(work: Path) -> dict[str, Any]:
         * len(meta["profile"]["arms"])
         * len(meta["profile"]["seeds"]),
         "model_call_attempts": prior_calls + len(model_calls),
-        "model_call_attempts_current_run": len(model_calls),
+        "model_call_attempts_current_run": (
+            len(continuation_calls)
+            if meta["stage"] == "pilot_v2_continuation"
+            else len(model_calls)
+        ),
         "model_calls_completed": prior_calls + len(call_finishes),
         "model_calls_open": len(model_calls) - len(completed_call_ids),
         "codex_process_starts": prior_processes + len(process_rows),
@@ -1167,6 +1294,13 @@ def status(work: Path) -> dict[str, Any]:
             else None
         ),
         "holdout_evaluated": (work / "final.started").exists(),
+        "continuation_model_call_attempts": len(continuation_calls),
+        "continuation_model_calls_completed": len(continuation_finished),
+        "continuation_training_attempts": len(continuation_trials),
+        "continuation_training_completed": len(continuation_trial_finishes),
+        "continuation_training_seconds": sum(
+            float(e.get("seconds", 0.0)) for e in continuation_trial_finishes
+        ),
     }
 
 
@@ -1188,6 +1322,11 @@ def record_cell_incident(
                 "seed": seed,
                 "category": category,
                 "reason": reason[:300],
+                **(
+                    {"continuation_segment": True}
+                    if meta["stage"] == "pilot_v2_continuation"
+                    else {}
+                ),
             },
         )
 
@@ -1198,6 +1337,16 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
     priv = read_json(vault / "meta.json")
     if priv["public_meta_sha256"] != file_digest(work / "meta.json"):
         raise BenchmarkError("evaluation vault is not paired to this frozen public task")
+    if meta["stage"] == "pilot_v2_continuation":
+        lineage = work.parent / "continuation_manifest.json"
+        if (
+            not lineage.is_file()
+            or lineage.is_symlink()
+            or meta.get("continuation_manifest_sha256") != file_digest(lineage)
+            or meta.get("parent_holdout_previously_evaluated") is not True
+            or meta.get("holdout_is_not_an_independent_validation") is not True
+        ):
+            raise BenchmarkError("continuation lineage freeze is missing or changed")
     profile = meta["profile"]
     wanted = [
         (a, d, s) for d in profile["datasets"] for s in profile["seeds"] for a in profile["arms"]
@@ -1225,7 +1374,7 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             )
         submissions = {}
         hist = ledger(work)
-        if meta["stage"] in {"pilot", "pilot_v2"}:
+        if meta["stage"] in {"pilot", "pilot_v2", "pilot_v2_continuation"}:
             terminals = [e for e in hist if e["kind"] == "cell_terminal"]
             terminal_by_cell = {
                 (e["arm"], e["dataset"], e["seed"]): e["outcome"] for e in terminals
@@ -1237,6 +1386,75 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 raise BenchmarkError(
                     "all Pilot cells must be terminal and submitted before holdout"
                 )
+        if meta["stage"] == "pilot_v2_continuation":
+            segment_terminals = [e for e in hist if e["kind"] == "continuation_cell_terminal"]
+            segment_by_cell = {
+                (e["arm"], e["dataset"], e["seed"]): e["outcome"] for e in segment_terminals
+            }
+            if set(segment_by_cell) != set(wanted) or set(segment_by_cell.values()) != {
+                "submitted"
+            }:
+                raise BenchmarkError(
+                    "all continuation cells must freeze a current submission before holdout"
+                )
+            local_calls = [
+                e
+                for e in hist
+                if e["kind"] == "agent_call_started" and e.get("continuation_segment") is True
+            ]
+            local_trials = [
+                e for e in hist if e["kind"] == "started" and e.get("continuation_segment") is True
+            ]
+            local_finished = {
+                e["id"]: e
+                for e in hist
+                if e["kind"] in {"finished", "aborted"} and e.get("continuation_segment") is True
+            }
+            if (
+                len(local_calls) > profile["additional_model_decision_calls_total"]
+                or len(local_trials) > profile["additional_trials_per_cell"] * meta["cell_count"]
+            ):
+                raise BenchmarkError("continuation global call or training cap was exceeded")
+            for arm, dataset, seed in wanted:
+                cell_calls = [
+                    e
+                    for e in local_calls
+                    if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+                ]
+                cell_trials = [
+                    e
+                    for e in local_trials
+                    if (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+                ]
+                cell_trial_ids = {e["id"] for e in cell_trials}
+                cell_seconds = sum(
+                    float(local_finished.get(run_id, {}).get("seconds", 0.0))
+                    for run_id in cell_trial_ids
+                )
+                if (
+                    len(cell_calls) > profile["additional_model_decision_calls_per_cell"]
+                    or len(cell_trials) > profile["additional_trials_per_cell"]
+                    or cell_seconds
+                    > profile["additional_trials_per_cell"] * profile["trial_seconds"] + 1e-9
+                ):
+                    raise BenchmarkError("continuation per-cell allowance was exceeded")
+                cell_hashes = [
+                    row["candidate_sha256"]
+                    for row in [
+                        e
+                        for e in hist
+                        if e["kind"] == "started"
+                        and (e["arm"], e["dataset"], e["seed"]) == (arm, dataset, seed)
+                    ]
+                ]
+                if len(cell_hashes) != len(set(cell_hashes)):
+                    raise BenchmarkError("a continuation cell trained a repeated candidate")
+            local_seconds = sum(
+                float(local_finished.get(run_id, {}).get("seconds", 0.0))
+                for run_id in {e["id"] for e in local_trials}
+            )
+            if local_seconds > profile["additional_total_seconds"] + 1e-9:
+                raise BenchmarkError("continuation global training-time ceiling was exceeded")
         agent_calls = [e for e in hist if e["kind"] == "agent_call_started"]
         finished_calls = {e["call_id"] for e in hist if e["kind"] == "agent_call_finished"}
         if any(e["call_id"] not in finished_calls for e in agent_calls):
@@ -1270,7 +1488,7 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 raise BenchmarkError("submitted candidate changed after development")
             submissions[key] = (selection, candidate)
         baseline_by_seed: dict[int, tuple[dict[str, Any], Path]] = {}
-        if meta["stage"] == "pilot_v2":
+        if meta["stage"] in {"pilot_v2", "pilot_v2_continuation"}:
             expected_baseline = normalize_candidate(profile["baseline_candidate"])
             expected_baseline_sha = digest(canonical(expected_baseline))
             baseline_events = [e for e in hist if e["kind"] == "common_baseline_validated"]
@@ -1370,7 +1588,7 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 "submission_hashes": {k: file_digest(v[1]) for k, v in submissions.items()},
                 "common_baseline_hashes_by_seed": (
                     {str(seed): file_digest(row[1]) for seed, row in baseline_by_seed.items()}
-                    if meta["stage"] == "pilot_v2"
+                    if meta["stage"] in {"pilot_v2", "pilot_v2_continuation"}
                     else {}
                 ),
                 "status": (
@@ -1468,7 +1686,7 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             evaluated[key] = outcome
             atomic_json(work / "final" / f"{key}.json", outcome)
         baseline_holdout: dict[str, float] = {}
-        if meta["stage"] == "pilot_v2":
+        if meta["stage"] in {"pilot_v2", "pilot_v2_continuation"}:
             for seed, (_receipt, candidate) in sorted(baseline_by_seed.items()):
                 dataset = "wdbc"
                 public = work / "public" / dataset
@@ -1547,15 +1765,20 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
             "holdout_auroc": {k: v["value"] for k, v in evaluated.items()},
             "qualification": "Offline reference evaluator; not verified Coding Agent performance",
         }
-        if meta["stage"] == "pilot_v2":
+        if meta["stage"] in {"pilot_v2", "pilot_v2_continuation"}:
             result["common_baseline_holdout_auroc"] = baseline_holdout
             result["common_baseline_candidate_sha256"] = digest(
                 canonical(normalize_candidate(profile["baseline_candidate"]))
             )
             result["qualification"] = (
-                "One protocol-v2 WDBC comparison. Eight cell submissions plus two shared-seed "
-                "common-baseline evaluations were scored after all research calls terminated. "
-                "This is not a long-horizon research advantage claim."
+                "Descriptive WDBC continuation on a split whose holdout was previously evaluated. "
+                "All continuation cells froze before this re-evaluation; no test feedback was used "
+                "for continuation decisions. This is not an independent blind test or a "
+                "long-horizon research advantage claim."
+                if meta["stage"] == "pilot_v2_continuation"
+                else "One protocol-v2 WDBC comparison. Eight cell submissions plus two "
+                "shared-seed common-baseline evaluations were scored after all research calls "
+                "terminated. This is not a long-horizon research advantage claim."
             )
         if meta["stage"] != "smoke":
             runs = []
@@ -1629,7 +1852,9 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 * len(profile["arms"])
                 * len(profile["seeds"]),
                 "baseline": (
-                    "common_fixed_logistic_c1" if meta["stage"] == "pilot_v2" else "agent_only"
+                    "common_fixed_logistic_c1"
+                    if meta["stage"] in {"pilot_v2", "pilot_v2_continuation"}
+                    else "agent_only"
                 ),
                 "policies": profile["arms"],
                 "cases": [
@@ -1639,14 +1864,18 @@ def finalize(work: Path, vault: Path, audit: Path | None = None) -> dict[str, An
                 ],
                 "runs": runs,
             }
-            if meta["stage"] == "pilot_v2":
+            if meta["stage"] in {"pilot_v2", "pilot_v2_continuation"}:
                 suite["common_baseline_holdout_auroc"] = baseline_holdout
                 suite["common_baseline_candidate_sha256"] = result[
                     "common_baseline_candidate_sha256"
                 ]
                 suite["qualification"] = (
-                    "Baseline training is included in each cell's two-trial allowance; one "
-                    "adaptive slot is available per cell. Holdout opened after all eight "
+                    "Descriptive continuation: the already evaluated v2 split is reused; "
+                    "two parent fits plus up to two new adaptive fits are counted per cell. "
+                    "This is not an independent blind test."
+                    if meta["stage"] == "pilot_v2_continuation"
+                    else "Baseline training is included in each cell's two-trial allowance; "
+                    "one adaptive slot is available per cell. Holdout opened after all eight "
                     "submissions froze. Seeds are paired estimator seeds on one split."
                 )
             atomic_json(work / "manifest.json", suite)

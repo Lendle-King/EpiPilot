@@ -18,6 +18,7 @@ added, no local GPU job is used, and no model call occurs without the explicit
 | `smoke` (default) | WDBC (built into scikit-learn) | `offline_baseline` | 42 | 2 | 12 s | 24 s | 30 s | 0 | 15 s |
 | `pilot` (explicit opt-in) | WDBC | Agent, Memory, EpiPilot heuristic, EpiPilot conditional | 42, 137 | 2 | 15 s | 30 s | 240 s | 4 (32 across eight cells) | 20 s |
 | `pilot_v2` (fixed-incumbent comparison) | WDBC | same four policies | 42, 137 | 2 total: 1 shared baseline + up to 1 adaptive fit | 15 s | 30 s | 240 s | 4 (32 across eight cells) | 20 s |
+| `pilot_v2_continuation` (same-cell continuation) | WDBC | same four policies | 42, 137 | 4 cumulative: 2 inherited + up to 2 new adaptive fits | 15 s | 60 s cumulative; 30 s new | 480 s cumulative; 240 s new | 8 cumulative; 4 new per cell (32 new total) | 20 s |
 | `full` (explicit opt-in) | Adult, Bank Marketing, MAGIC Gamma Telescope | same four policies | 42, 137, 271 | 2 | 20 s | 40 s | 900 s — underfunded | not authorized | 35 s |
 
 To avoid leaking information from the already inspected smoke holdout,
@@ -252,6 +253,40 @@ The completed run's per-cell outcomes and limitations are recorded in
 [`RESEARCHBENCH_T1_RUN_RESULTS.md`](RESEARCHBENCH_T1_RUN_RESULTS.md), with a
 portable sanitized receipt in
 [`RESEARCHBENCH_T1_PILOT_V2_RECEIPT.json`](RESEARCHBENCH_T1_PILOT_V2_RECEIPT.json).
+
+### Protocol v2 same-cell continuation
+
+`pilot_v2_continuation` is a separate, hash-linked follow-on to a completed
+protocol-v2 run. It starts a fresh controller/model session and carries forward
+each cell's own validated baseline, adaptive trial receipts, development scores,
+memory notes, and same-policy decision history. It does not transfer unused
+call or training allowance between cells. Each cell receives at most four new
+model-call attempts and two new adaptive fits (15 seconds each); failed calls,
+memory-note calls, repeated proposals, and failed fits remain charged to that
+cell. The new-segment ceiling is 32 calls and 240 worker seconds, with 95% whole
+Mac memory use as the resource guard. No baseline is retrained.
+
+Preparation validates and hashes the completed parent artifacts, its eight
+best-development submissions, and the fixed train/dev split. The continuation
+research prompts are built only from the current cell's inherited development
+history, verified memory, and that strategy's own decision records. Parent
+reports, summaries, test scores, and holdout rows are not included. Because the
+parent holdout was already evaluated, the continuation's final score is a
+descriptive re-evaluation on a previously accessed split, not an independent
+blind test. All continuation cells and model requests must terminate and their
+submission hashes must freeze before the evaluator opens it again.
+
+```bash
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_v2_continue_prepare --provider ccswitch_codex --model gpt-6-luna \
+  --parent-results /path/to/T1-Pilot-V2-Results \
+  --results /path/to/T1-Pilot-V2-Continuation-Results
+
+python experiments/researchbench_t1/mac_agent_runner.py \
+  --mode pilot_v2_continue --provider ccswitch_codex --model gpt-6-luna \
+  --confirm RUN_T1_PILOT_V2_CONTINUATION \
+  --results /path/to/T1-Pilot-V2-Continuation-Results
+```
 
 ### Bounded single-cell recovery
 

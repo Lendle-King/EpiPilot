@@ -403,12 +403,20 @@ def parse_model_json(raw: str) -> dict[str, Any]:
 
 
 def _build_research_state(
-    proposals: list[Proposal], prior_trials: list[dict[str, Any]]
+    proposals: list[Proposal],
+    prior_trials: list[dict[str, Any]],
+    *,
+    continuation: bool = False,
 ) -> ResearchState:
+    prior_cost = sum(float(row.get("seconds", 0.0)) for row in prior_trials)
     state = ResearchState(
         goal=ResearchGoal(
             statement=(
-                "Maximize WDBC development AUROC under two 15-second trials, with a reserved "
+                "Maximize WDBC development AUROC under two additional 15-second continuation "
+                "trials after the cell's frozen v2 history, with a reserved 20-second "
+                "final-evaluator ceiling."
+                if continuation
+                else "Maximize WDBC development AUROC under two 15-second trials, with a reserved "
                 "20-second final-evaluator ceiling."
             ),
             success_metrics=["development AUROC"],
@@ -416,7 +424,7 @@ def _build_research_state(
                 "Only the isolated train/dev split is available; final evaluation time is reserved "
                 "and unavailable to research decisions."
             ],
-            budget=50.0,
+            budget=50.0 + (prior_cost if continuation else 0.0),
         ),
         fixed_reserve=20.0,
         unknowns={
@@ -493,7 +501,11 @@ def _proposal(
 
 
 def choose_heuristic(
-    payload: dict[str, Any], prior_trials: list[dict[str, Any]], call_no: int
+    payload: dict[str, Any],
+    prior_trials: list[dict[str, Any]],
+    call_no: int,
+    *,
+    continuation: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if set(payload) != {"proposals"} or len(payload["proposals"]) != 2:
         raise ValueError("heuristic decision needs exactly two proposal paths")
@@ -507,7 +519,7 @@ def choose_heuristic(
         )
         proposals.extend((root, child))
         candidates[proposal_id] = candidate
-    state = _build_research_state(proposals, prior_trials)
+    state = _build_research_state(proposals, prior_trials, continuation=continuation)
     ranked = rank_proposals(state, limit=2)
     if not ranked:
         raise ValueError("EpiPilot rank_proposals found no feasible candidate")
@@ -654,7 +666,11 @@ def _rank_conditional_auroc(state: ResearchState, estimate: DecisionEstimate):
 
 
 def choose_conditional_v2(
-    payload: dict[str, Any], prior_trials: list[dict[str, Any]], call_no: int
+    payload: dict[str, Any],
+    prior_trials: list[dict[str, Any]],
+    call_no: int,
+    *,
+    continuation: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if set(payload) != {"decisions"} or len(payload["decisions"]) != 2:
         raise ValueError("conditional v2 needs exactly two candidate estimates")
@@ -672,7 +688,7 @@ def choose_conditional_v2(
     proposals: list[Proposal] = []
     candidate_by_id: dict[str, dict[str, Any]] = {}
     model_tables: list[dict[str, Any]] = []
-    state = _build_research_state([], prior_trials)
+    state = _build_research_state([], prior_trials, continuation=continuation)
     decisions = payload["decisions"]
     for index, raw in enumerate(decisions, 1):
         if set(raw) != {
@@ -841,7 +857,17 @@ def _call_prompt(
     notes: list[str],
     *,
     protocol_version: int = 1,
+    continuation_trials_remaining: int | None = None,
+    decision_history: list[dict[str, Any]] | None = None,
 ) -> str:
+    if continuation_trials_remaining is None:
+        trials_remaining = (
+            max(0, 1 - max(0, len(history) - 1))
+            if protocol_version == 2
+            else max(0, 2 - len(history))
+        )
+    else:
+        trials_remaining = max(0, continuation_trials_remaining)
     context = {
         "task": (
             "Select bounded hyperparameters to improve development AUROC on "
@@ -854,11 +880,7 @@ def _call_prompt(
             "feature_mode": ["all"] if protocol_version == 2 else ["all", "numeric_only"],
             "class_weight": ["none", "balanced"],
             "metric": "development AUROC",
-            "trials_remaining": (
-                max(0, 1 - max(0, len(history) - 1))
-                if protocol_version == 2
-                else max(0, 2 - len(history))
-            ),
+            "trials_remaining": trials_remaining,
         },
         "development_history": [
             {"run_id": row["run_id"], "dev_auroc": row["dev_auroc"], "candidate": row["candidate"]}
@@ -867,6 +889,13 @@ def _call_prompt(
         "memory_notes": notes if arm == "memory_only" else [],
         "strategy": arm,
     }
+    if decision_history and arm in {"epipilot_heuristic", "epipilot_conditional"}:
+        context["strategy_decision_history"] = decision_history
+    if continuation_trials_remaining is not None:
+        context["continuation"] = {
+            "new_adaptive_training_opportunities_remaining": trials_remaining,
+            "scope": "this cell's own v2 history only; continuation is a fresh model session",
+        }
     text = (
         "Make one controlled T1 research decision. You cannot run commands, inspect files, "
         "browse, or access the holdout. "
@@ -992,6 +1021,8 @@ def model_call(
     guarded_call: Callable[..., Any],
     max_timeout: int,
     protocol_version: int = 1,
+    continuation_trials_remaining: int | None = None,
+    decision_history: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     record_agent_call_started(
         work,
@@ -1016,6 +1047,8 @@ def model_call(
         history,
         notes,
         protocol_version=protocol_version,
+        continuation_trials_remaining=continuation_trials_remaining,
+        decision_history=decision_history,
     )
     argv = [
         codex,
@@ -1212,6 +1245,11 @@ def _record_strategy_decision(
                 "seed": seed,
                 "decision_call": call_no,
                 "decision": decision,
+                **(
+                    {"continuation_segment": True}
+                    if read_json(work / "meta.json").get("stage") == "pilot_v2_continuation"
+                    else {}
+                ),
             },
         )
 
@@ -3061,6 +3099,660 @@ def _pilot_v2_trial_row(
     return row
 
 
+def _parent_v2_snapshot(parent_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Validate a completed v2 parent and freeze hashes without importing its test scores."""
+    parent_root = parent_root.resolve()
+    if not parent_root.is_dir() or parent_root.is_symlink():
+        raise BenchmarkError("continuation requires the completed local v2 result directory")
+    parent_work = parent_root / "pilot_work"
+    parent_vault = parent_root / "pilot_vault"
+    if any(path.is_symlink() for path in parent_root.rglob("*")):
+        raise BenchmarkError("parent result tree contains a symlink; refusing ambiguous lineage")
+    try:
+        parent_meta = read_json(parent_work / "meta.json")
+        parent_summary = read_json(parent_root / "summary.json")
+    except (OSError, ValueError) as exc:
+        raise BenchmarkError("parent v2 result is incomplete") from exc
+    if (
+        parent_meta.get("stage") != "pilot_v2"
+        or parent_meta.get("profile") != STAGES["pilot_v2"]
+        or parent_summary.get("pilot_run_status") != "completed"
+        or parent_summary.get("holdout_evaluated") is not True
+        or not (parent_work / "final.started").is_file()
+        or not (parent_work / "final.completed").is_file()
+        or not (parent_vault / "wdbc" / "test.csv").is_file()
+    ):
+        raise BenchmarkError("parent v2 must be a completed run whose holdout was evaluated")
+    events = ledger(parent_work)
+    cells = {
+        (arm, "wdbc", seed)
+        for arm in STAGES["pilot_v2"]["arms"]
+        for seed in STAGES["pilot_v2"]["seeds"]
+    }
+    starts = [row for row in events if row["kind"] == "started"]
+    finishes = {row["id"]: row for row in events if row["kind"] == "finished"}
+    calls = [row for row in events if row["kind"] == "agent_call_started"]
+    call_finishes = {row["call_id"]: row for row in events if row["kind"] == "agent_call_finished"}
+    baselines = [row for row in events if row["kind"] == "common_baseline_validated"]
+    decisions = [row for row in events if row["kind"] == "strategy_decision"]
+    terminals = [row for row in events if row["kind"] == "cell_terminal"]
+    if (
+        len(starts) != 16
+        or len(finishes) != 16
+        or any(row.get("exit_code") != 0 for row in finishes.values())
+        or len(calls) != 10
+        or set(call_finishes) != {row["call_id"] for row in calls}
+        or any(row.get("outcome") != "success" for row in call_finishes.values())
+        or any(
+            row.get("model") != "gpt-6-luna" or row.get("model_reasoning_effort") != "max"
+            for row in calls
+        )
+        or len(baselines) != 8
+        or len(decisions) != 8
+        or len(terminals) != 8
+        or {(row["arm"], row["dataset"], row["seed"]) for row in terminals} != cells
+        or any(row.get("outcome") != "submitted" for row in terminals)
+    ):
+        raise BenchmarkError("parent v2 ledger does not match the frozen completed 8-cell run")
+    for arm, dataset, seed in cells:
+        cell_starts = [
+            row
+            for row in starts
+            if (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+        ]
+        cell_calls = [
+            row
+            for row in calls
+            if (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+        ]
+        if len(cell_starts) != 2 or not 1 <= len(cell_calls) <= 2:
+            raise BenchmarkError("parent v2 cell lacks its expected baseline/adaptive history")
+        for row in cell_starts:
+            run_dir = parent_work / "runs" / row["id"]
+            if file_digest(run_dir / "candidate.json") != row["candidate_sha256"] or file_digest(
+                run_dir / "metric.json"
+            ) != finishes[row["id"]].get("metric_sha256"):
+                raise BenchmarkError("parent trial artifacts do not match their event hashes")
+        key = f"{arm}__{dataset}__{seed}"
+        submission_path = parent_work / "submissions" / f"{key}.json"
+        if submission_path.is_symlink() or not submission_path.is_file():
+            raise BenchmarkError("parent v2 is missing a frozen cell submission")
+        submission = read_json(submission_path)
+        selected_id = submission.get("run_id")
+        selected_start = next((row for row in cell_starts if row["id"] == selected_id), None)
+        selected_finish = finishes.get(selected_id)
+        selected_candidate = parent_work / "runs" / str(selected_id) / "candidate.json"
+        selected_metric = parent_work / "runs" / str(selected_id) / "metric.json"
+        if (
+            set(submission) != {"arm", "candidate_sha256", "dataset", "dev_auroc", "run_id", "seed"}
+            or (submission.get("arm"), submission.get("dataset"), submission.get("seed"))
+            != (arm, dataset, seed)
+            or selected_start is None
+            or selected_finish is None
+            or selected_finish.get("exit_code") != 0
+            or submission.get("dev_auroc") != selected_finish.get("dev_auroc")
+            or submission.get("candidate_sha256") != selected_start.get("candidate_sha256")
+            or file_digest(selected_candidate) != submission.get("candidate_sha256")
+            or file_digest(selected_metric) != selected_finish.get("metric_sha256")
+            or submission.get("dev_auroc")
+            != max(
+                finishes[row["id"]]["dev_auroc"]
+                for row in cell_starts
+                if finishes[row["id"]].get("exit_code") == 0
+            )
+        ):
+            raise BenchmarkError("parent submission does not match its best validated dev trial")
+    parent_baseline = normalize_candidate(STAGES["pilot_v2"]["baseline_candidate"])
+    if any(row.get("baseline_spec") != parent_baseline for row in baselines):
+        raise BenchmarkError("parent baseline differs from the frozen v2 incumbent")
+
+    hashes: dict[str, str] = {}
+    for path in sorted(parent_root.rglob("*")):
+        if path.is_file():
+            hashes[path.relative_to(parent_root).as_posix()] = file_digest(path)
+    required = {
+        "pilot_work/meta.json",
+        "pilot_work/manifest.json",
+        "pilot_work/events.jsonl",
+        "pilot_work/final.started",
+        "pilot_work/final.completed",
+        "summary.json",
+    }
+    if not required.issubset(hashes):
+        raise BenchmarkError("parent v2 freeze is missing required audit files")
+
+    trials_by_cell: dict[str, list[dict[str, Any]]] = {}
+    baseline_ids = {(row["arm"], row["dataset"], row["seed"]): row["run_id"] for row in baselines}
+    for arm, dataset, seed in sorted(cells):
+        key = f"{arm}__{dataset}__{seed}"
+        own_trials = []
+        for row in starts:
+            if (row["arm"], row["dataset"], row["seed"]) != (arm, dataset, seed):
+                continue
+            finish = finishes[row["id"]]
+            candidate = read_json(parent_work / "runs" / row["id"] / "candidate.json")
+            own_trials.append(
+                {
+                    "run_id": row["id"],
+                    "role": (
+                        "common_baseline"
+                        if baseline_ids[(arm, dataset, seed)] == row["id"]
+                        else "adaptive_candidate"
+                    ),
+                    "candidate": candidate,
+                    "candidate_sha256": row["candidate_sha256"],
+                    "dev_auroc": finish["dev_auroc"],
+                    "seconds": finish["seconds"],
+                    "metric_sha256": finish["metric_sha256"],
+                }
+            )
+        trials_by_cell[key] = own_trials
+    parent_summary_safe = {
+        "model_call_attempts": len(calls),
+        "successful_model_call_attempts": sum(
+            row.get("outcome") == "success" for row in call_finishes.values()
+        ),
+        "training_attempts": len(starts),
+        "successful_training_attempts": len(finishes),
+        "holdout_previously_evaluated": True,
+    }
+    manifest = {
+        "schema_version": 1,
+        "protocol": "pilot_v2_continuation",
+        "fresh_model_session": True,
+        "parent_results_root": str(parent_root),
+        "parent_code_revision": parent_meta["code_revision"],
+        "parent_artifact_hashes": hashes,
+        "parent_public_split": {
+            "split_seed": parent_meta["datasets"]["wdbc"]["split_seed"],
+            "train_sha256": parent_meta["datasets"]["wdbc"]["files"]["train"]["sha256"],
+            "dev_sha256": parent_meta["datasets"]["wdbc"]["files"]["dev"]["sha256"],
+        },
+        "parent_summary_safe": parent_summary_safe,
+        "parent_cells": {
+            key: {
+                "prior_call_attempts": sum(
+                    row["kind"] == "agent_call_started"
+                    and f"{row['arm']}__{row['dataset']}__{row['seed']}" == key
+                    for row in events
+                ),
+                "prior_training_attempts": len(trials_by_cell[key]),
+                "trials": trials_by_cell[key],
+                "memory_notes": [
+                    {"run_id": row["id"], "note": row["note"], "dev_auroc": row["dev_auroc"]}
+                    for row in events
+                    if row["kind"] == "memory_note"
+                    and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                ],
+            }
+            for key in sorted(trials_by_cell)
+        },
+        "new_execution_order_seed": STAGES["pilot_v2_continuation"]["execution_order_seed"],
+        "execution_order": [
+            list(cell) for cell in _continuation_execution_order(STAGES["pilot_v2_continuation"])
+        ],
+        "budget": {
+            "new_calls_per_cell": 4,
+            "new_calls_total": 32,
+            "new_adaptive_training_slots_per_cell": 2,
+            "new_trial_seconds_each": 15,
+            "new_training_seconds_per_cell": 30,
+            "new_training_seconds_total_safety_cap": 240,
+            "cumulative_calls_per_cell_hard_cap": 8,
+            "cumulative_training_slots_per_cell_hard_cap": 4,
+            "cumulative_training_seconds_per_cell_hard_cap": 60,
+            "unused_parent_allowance_rollover": False,
+        },
+        "parent_holdout_policy": (
+            "Previously evaluated in the parent run; never imported into researcher context; "
+            "continuation scores are descriptive, not independent blind validation."
+        ),
+        "agent_context_policy": (
+            "Only the current cell's train/dev history, verified same-cell memory, and its own "
+            "strategy-specific structured decision history may be included."
+        ),
+        "memory_rehydration_policy": (
+            "For memory_only, each prior successful same-cell trial without an original note is "
+            "projected into a source-verified note containing only run id, candidate hash, dev "
+            "AUROC, and current-cell scope; no model call or interpretation is added."
+        ),
+    }
+    return manifest, events
+
+
+def _verify_parent_artifact_hashes(parent_root: Path, parent_hashes: dict[str, str]) -> None:
+    """Fail closed if any pinned parent result moved or changed after freeze."""
+    if parent_root.is_symlink() or not parent_root.is_dir() or not parent_hashes:
+        raise BenchmarkError("pinned parent result directory is unavailable")
+    for name, expected in parent_hashes.items():
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise BenchmarkError("parent manifest contains an unsafe relative file name")
+        path = parent_root / relative
+        if path.is_symlink() or not path.is_file() or file_digest(path) != expected:
+            raise BenchmarkError("parent result changed after continuation freeze")
+
+
+def _continuation_execution_order(profile: dict[str, Any]) -> list[tuple[str, str, int]]:
+    cells = [
+        (arm, dataset, seed)
+        for dataset in profile["datasets"]
+        for seed in profile["seeds"]
+        for arm in profile["arms"]
+    ]
+    random.Random(profile["execution_order_seed"]).shuffle(cells)
+    return cells
+
+
+def prepare_pilot_v2_continuation(
+    *, root: Path, parent_root: Path, t1_call: Callable[..., dict[str, Any]]
+) -> dict[str, Any]:
+    """Create a fresh linked continuation workspace; the parent remains read-only."""
+    if root.is_symlink() or parent_root.is_symlink():
+        raise BenchmarkError("continuation paths must not be symlinks")
+    root = root.resolve()
+    parent_root = parent_root.resolve()
+    if root == parent_root or root in parent_root.parents or parent_root in root.parents:
+        raise BenchmarkError("continuation workspace and parent results must be disjoint")
+    if root.exists() and any(root.iterdir()):
+        raise BenchmarkError("continuation results directory must be empty")
+    manifest, parent_events = _parent_v2_snapshot(parent_root)
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    prepared = t1_call(
+        "init",
+        "--stage",
+        "pilot_v2_continuation",
+        "--allow-agent-stage",
+        "--work",
+        str(work),
+        "--vault",
+        str(vault),
+        timeout=90,
+    )
+    child_meta = read_json(work / "meta.json")
+    parent_meta = read_json(parent_root / "pilot_work" / "meta.json")
+    if (
+        child_meta["datasets"]["wdbc"]["files"]["train"]["sha256"]
+        != manifest["parent_public_split"]["train_sha256"]
+        or child_meta["datasets"]["wdbc"]["files"]["dev"]["sha256"]
+        != manifest["parent_public_split"]["dev_sha256"]
+        or child_meta["datasets"]["wdbc"]["split_seed"]
+        != manifest["parent_public_split"]["split_seed"]
+    ):
+        raise BenchmarkError("new workspace split does not exactly match the parent v2 split")
+    expected_order = _continuation_execution_order(child_meta["profile"])
+    if [list(cell) for cell in expected_order] != manifest["execution_order"]:
+        raise BenchmarkError("frozen continuation order is inconsistent")
+    manifest_path = root / "continuation_manifest.json"
+    atomic_json(manifest_path, manifest)
+    child_meta["continuation_manifest_sha256"] = file_digest(manifest_path)
+    child_meta["parent_code_revision"] = parent_meta["code_revision"]
+    child_meta["parent_holdout_previously_evaluated"] = True
+    child_meta["holdout_is_not_an_independent_validation"] = True
+    atomic_json(work / "meta.continuation.tmp.json", child_meta)
+    (work / "meta.continuation.tmp.json").replace(work / "meta.json")
+    child_vault_meta = read_json(vault / "meta.json")
+    child_vault_meta["public_meta_sha256"] = file_digest(work / "meta.json")
+    atomic_json(vault / "meta.continuation.tmp.json", child_vault_meta)
+    (vault / "meta.continuation.tmp.json").replace(vault / "meta.json")
+
+    parent_work = parent_root / "pilot_work"
+    starts = {row["id"]: row for row in parent_events if row["kind"] == "started"}
+    finishes = {row["id"]: row for row in parent_events if row["kind"] == "finished"}
+    for run_id in sorted(starts, key=lambda item: int(item.split("-")[1])):
+        source_dir = parent_work / "runs" / run_id
+        destination_dir = work / "runs" / run_id
+        destination_dir.mkdir(parents=True, exist_ok=False)
+        for filename in ("candidate.json", "metric.json"):
+            (destination_dir / filename).write_bytes((source_dir / filename).read_bytes())
+        if (
+            file_digest(destination_dir / "candidate.json") != starts[run_id]["candidate_sha256"]
+            or file_digest(destination_dir / "metric.json") != finishes[run_id]["metric_sha256"]
+        ):
+            raise BenchmarkError("imported parent trial differs from its frozen artifact hash")
+
+    importable = {
+        "started",
+        "finished",
+        "agent_call_started",
+        "agent_call_finished",
+        "common_baseline_validated",
+        "strategy_decision",
+        "memory_note",
+        "cell_terminal",
+        "cell_incident",
+    }
+    for row in parent_events:
+        if row["kind"] not in importable:
+            raise BenchmarkError(
+                "parent ledger contains an event outside the v2 continuation schema"
+            )
+        imported = {
+            **row,
+            "continuation_segment": False,
+            "continuation_imported_from": parent_meta["code_revision"],
+        }
+        event(work, imported)
+    memory_cells = [("memory_only", "wdbc", seed) for seed in STAGES["pilot_v2"]["seeds"]]
+    for arm, dataset, seed in memory_cells:
+        existing_notes = {
+            row["id"]
+            for row in ledger(work)
+            if row["kind"] == "memory_note"
+            and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+        }
+        for trial in manifest["parent_cells"][f"{arm}__{dataset}__{seed}"]["trials"]:
+            if trial["run_id"] in existing_notes:
+                continue
+            note = (
+                f"On frozen split, run {trial['run_id']}, candidate sha256 "
+                f"{trial['candidate_sha256']}, development AUROC "
+                f"{trial['dev_auroc']:.6f}; scope=current cell only."
+            )
+            event(
+                work,
+                {
+                    "kind": "continuation_memory_imported",
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "id": trial["run_id"],
+                    "note": note,
+                    "dev_auroc": trial["dev_auroc"],
+                    "candidate_sha256": trial["candidate_sha256"],
+                    "source": "verified_parent_trial_receipt",
+                    "continuation_segment": True,
+                },
+            )
+    frozen = _load_frozen_pilot_v2_continuation(root, verify_parent=True)
+    return {
+        **prepared,
+        "protocol_version": 2,
+        "continuation": True,
+        "fresh_model_session": True,
+        "code_revision": frozen[0]["code_revision"],
+        "parent_code_revision": parent_meta["code_revision"],
+        "parent_hash_count": len(manifest["parent_artifact_hashes"]),
+        "execution_order_seed": child_meta["execution_order_seed"],
+        "execution_order": child_meta["execution_order"],
+        "parent_calls": manifest["parent_summary_safe"]["model_call_attempts"],
+        "new_call_cap_per_cell": child_meta["profile"]["additional_model_decision_calls_per_cell"],
+        "new_call_cap_total": child_meta["profile"]["additional_model_decision_calls_total"],
+        "new_training_slots_per_cell": child_meta["profile"]["additional_trials_per_cell"],
+        "per_cell_cumulative_training_cap": child_meta["profile"]["per_cell_trials"],
+        "per_cell_cumulative_training_seconds": child_meta["profile"]["per_cell_trials"]
+        * child_meta["profile"]["trial_seconds"],
+        "holdout_materialized": False,
+        "parent_holdout_previously_evaluated": True,
+        "imported_trials": len(starts),
+        "imported_calls": manifest["parent_summary_safe"]["model_call_attempts"],
+    }
+
+
+def _load_frozen_pilot_v2_continuation(
+    root: Path, *, verify_parent: bool
+) -> tuple[dict[str, Any], Path, Path, dict[str, Any]]:
+    work, vault = root / "pilot_work", root / "pilot_vault"
+    if work.is_symlink() or vault.is_symlink():
+        raise BenchmarkError("continuation work and vault directories must not be symlinks")
+    try:
+        meta = read_json(work / "meta.json")
+        manifest = read_json(root / "continuation_manifest.json")
+        vault_meta = read_json(vault / "meta.json")
+    except (OSError, ValueError) as exc:
+        raise BenchmarkError("prepare and freeze the v2 continuation before execution") from exc
+    profile = meta.get("profile")
+    if (
+        meta.get("stage") != "pilot_v2_continuation"
+        or profile != STAGES["pilot_v2_continuation"]
+        or meta.get("code_revision") != _code_revision()
+        or meta.get("continuation_manifest_sha256")
+        != file_digest(root / "continuation_manifest.json")
+        or meta.get("parent_holdout_previously_evaluated") is not True
+        or meta.get("holdout_is_not_an_independent_validation") is not True
+        or manifest.get("protocol") != "pilot_v2_continuation"
+        or manifest.get("parent_holdout_policy", "").find("Previously evaluated") != 0
+        or vault_meta.get("public_meta_sha256") != file_digest(work / "meta.json")
+        or (work / "final.started").exists()
+        or (work / "final.completed").exists()
+        or (vault / "wdbc" / "test.csv").exists()
+    ):
+        raise BenchmarkError("continuation manifest is altered, used, or already evaluated")
+    parent_root = Path(manifest.get("parent_results_root", ""))
+    if verify_parent:
+        parent_hashes = manifest.get("parent_artifact_hashes")
+        if not isinstance(parent_hashes, dict) or not parent_hashes:
+            raise BenchmarkError("continuation manifest lacks parent artifact hashes")
+        _verify_parent_artifact_hashes(parent_root, parent_hashes)
+    if manifest.get("execution_order") != [
+        list(cell) for cell in _continuation_execution_order(profile)
+    ]:
+        raise BenchmarkError("continuation execution order differs from its frozen seed")
+    parent_split = manifest.get("parent_public_split", {})
+    child_split = meta.get("datasets", {}).get("wdbc", {})
+    if (
+        child_split.get("split_seed") != parent_split.get("split_seed")
+        or child_split.get("files", {}).get("train", {}).get("sha256")
+        != parent_split.get("train_sha256")
+        or child_split.get("files", {}).get("dev", {}).get("sha256")
+        != parent_split.get("dev_sha256")
+    ):
+        raise BenchmarkError("continuation train/dev split differs from the parent run")
+    for split in ("train", "dev"):
+        path = work / "public" / "wdbc" / f"{split}.csv"
+        if path.is_symlink() or file_digest(path) != child_split["files"][split]["sha256"]:
+            raise BenchmarkError("continuation public split changed after freeze")
+    history = ledger(work)
+    imported_trials = [
+        row for row in history if row["kind"] == "started" and row.get("continuation_imported_from")
+    ]
+    imported_calls = [
+        row
+        for row in history
+        if row["kind"] == "agent_call_started" and row.get("continuation_imported_from")
+    ]
+    parent_summary = manifest["parent_summary_safe"]
+    if (
+        len(imported_trials) != parent_summary["training_attempts"]
+        or len(imported_calls) != parent_summary["model_call_attempts"]
+        or any(
+            row.get("continuation_segment") is not False for row in imported_trials + imported_calls
+        )
+    ):
+        raise BenchmarkError("continuation ledger does not inherit exact parent budgets")
+    call_finishes = {row["call_id"] for row in history if row["kind"] == "agent_call_finished"}
+    if any(
+        row["call_id"] not in call_finishes
+        for row in history
+        if row["kind"] == "agent_call_started"
+    ):
+        raise BenchmarkError("a continuation model request is unreconciled")
+    return meta, work, vault, manifest
+
+
+def _continuation_decision_context(
+    arm: str, decision: dict[str, Any], candidate_by_hash: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Project only this arm's structured dev predictions into its next prompt."""
+    if arm == "epipilot_heuristic":
+        ranked = [
+            {key: row[key] for key in ("proposal_id", "score", "phase") if key in row}
+            for row in decision.get("ranked_proposals", [])
+        ]
+        proposal = decision.get("planner_proposal") or {}
+        return {
+            "phase": decision.get("phase"),
+            "selected_proposal_id": decision.get("selected_proposal_id"),
+            "ranked_proposals": ranked,
+            "selected_proposal_candidate": candidate_by_hash.get(
+                decision.get("candidate_sha256", "")
+            ),
+            "selected_proposal_estimates": {
+                key: proposal[key]
+                for key in (
+                    "expected_improvement",
+                    "information_gain",
+                    "estimated_cost",
+                    "risk",
+                    "unlock_value",
+                )
+                if key in proposal
+            },
+            "qualification": (
+                "uncalibrated heuristic forecast; measured dev outcomes remain authoritative"
+            ),
+        }
+    if arm == "epipilot_conditional":
+        tables = []
+        for row in decision.get("model_forecast_tables", []):
+            tables.append(
+                {
+                    key: row[key]
+                    for key in (
+                        "proposal_id",
+                        "candidate_sha256",
+                        "baseline_auroc",
+                        "probabilities",
+                        "model_candidate_auroc_by_outcome",
+                        "effective_candidate_auroc_by_outcome",
+                        "outcome_order",
+                    )
+                    if key in row
+                }
+            )
+            if tables[-1].get("candidate_sha256") in candidate_by_hash:
+                tables[-1]["candidate"] = candidate_by_hash[tables[-1]["candidate_sha256"]]
+        scores = [
+            {
+                key: row[key]
+                for key in (
+                    "proposal_id",
+                    "probabilities",
+                    "value_of_information",
+                    "net_value",
+                    "normalized_cost",
+                    "risk_penalty",
+                    "calibration_samples",
+                )
+                if key in row
+            }
+            for row in decision.get("decision_scores", [])
+        ]
+        return {
+            "baseline_auroc": decision.get("baseline_auroc"),
+            "candidate_forecasts": tables,
+            "decision_scores": scores,
+            "utility_unit": decision.get("utility_unit"),
+            "cost_mode": decision.get("cost_mode"),
+            "stopping_threshold": decision.get("stopping_threshold"),
+            "stopped_for_nonpositive_value": decision.get("stopped_for_nonpositive_value"),
+            "qualification": (
+                "uncalibrated forecast; only this cell's measured dev outcomes are evidence"
+            ),
+        }
+    return {}
+
+
+def _continuation_cell_history(
+    work: Path, arm: str, dataset: str, seed: int
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+    events = ledger(work)
+    cell_starts = {
+        row["id"]: row
+        for row in events
+        if row["kind"] == "started"
+        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+    }
+    finished = {
+        row["id"]: row
+        for row in events
+        if row["kind"] == "finished"
+        and row.get("exit_code") == 0
+        and row.get("dev_auroc") is not None
+        and row["id"] in cell_starts
+    }
+    baseline_ids = {
+        row["run_id"]
+        for row in events
+        if row["kind"] == "common_baseline_validated"
+        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+    }
+    decision_events = [
+        row
+        for row in events
+        if row["kind"] == "strategy_decision"
+        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+    ]
+    candidates: dict[str, dict[str, Any]] = {}
+    history: list[dict[str, Any]] = []
+    for run_id, row in finished.items():
+        candidate_path = work / "runs" / run_id / "candidate.json"
+        candidate = read_json(candidate_path)
+        candidate_sha = file_digest(candidate_path)
+        candidates[candidate_sha] = candidate
+        history.append(
+            {
+                "run_id": run_id,
+                "seed": seed,
+                "candidate": candidate,
+                "candidate_sha256": candidate_sha,
+                "dev_auroc": float(row["dev_auroc"]),
+                "seconds": float(row["seconds"]),
+                "metric_sha256": row["metric_sha256"],
+                "role": "common_baseline" if run_id in baseline_ids else "adaptive_candidate",
+            }
+        )
+    decisions = []
+    unlinked_adaptive = [row for row in history if row["role"] == "adaptive_candidate"]
+    linked_adaptive: set[str] = set()
+    for row in decision_events:
+        decision = row["decision"]
+        raw_candidate_sha = decision.get("candidate_sha256")
+        candidate_sha: str | None = (
+            raw_candidate_sha if isinstance(raw_candidate_sha, str) else None
+        )
+        if candidate_sha is None and decision.get("model_forecast_tables"):
+            selected_id = decision.get("action", {}).get("decision_score", {}).get("proposal_id")
+            selected = next(
+                (
+                    forecast
+                    for forecast in decision["model_forecast_tables"]
+                    if forecast.get("proposal_id") == selected_id
+                ),
+                None,
+            )
+            if selected:
+                selected_candidate_sha = selected.get("candidate_sha256")
+                if isinstance(selected_candidate_sha, str):
+                    candidate_sha = selected_candidate_sha
+        if candidate_sha is None and arm == "epipilot_heuristic":
+            candidate_sha = next(
+                (
+                    trial["candidate_sha256"]
+                    for trial in unlinked_adaptive
+                    if trial["run_id"] not in linked_adaptive
+                ),
+                None,
+            )
+        if candidate_sha:
+            decision = {**decision, "candidate_sha256": candidate_sha}
+        decisions.append(_continuation_decision_context(arm, decision, candidates))
+        proposal = decision.get("planner_proposal")
+        if proposal:
+            for item in history:
+                if item["candidate_sha256"] == candidate_sha:
+                    item["planner_proposal"] = proposal
+                    linked_adaptive.add(item["run_id"])
+    notes = [
+        row["note"]
+        for row in events
+        if row["kind"] in {"memory_note", "continuation_memory_imported"}
+        and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+    ]
+    history.sort(key=lambda row: int(row["run_id"].split("-")[1]))
+    return history, notes, decisions
+
+
 def run_pilot_v2(
     *,
     root: Path,
@@ -3329,7 +4021,10 @@ def run_pilot_v2(
                         "rank_proposals ranks one runnable root and its hypothetical successor; "
                         "the controller trains only the selected root candidate under protocol v2"
                     )
-                    planner_proposal = decision["planner_proposal"]
+                    proposal_value = decision.get("planner_proposal")
+                    if not isinstance(proposal_value, dict):
+                        raise ValueError("heuristic decision omitted its selected proposal")
+                    planner_proposal = proposal_value
                 else:
                     candidate, decision = choose_conditional_v2(payload, history, call_number)
                     planner_proposal = decision.get("planner_proposal")
@@ -3620,6 +4315,600 @@ def run_pilot_v2(
             "One WDBC comparison under frozen protocol v2. Baseline is trained once in every "
             "cell and counts as one of two training slots; one adaptive fit is available. "
             "This does not establish a long-horizon research advantage."
+        ),
+    }
+
+
+def run_pilot_v2_continuation(
+    *,
+    root: Path,
+    codex: str,
+    confirm: str,
+    guarded_call: Callable[..., Any],
+    t1_call: Callable[..., dict[str, Any]],
+    inspect: Callable[[], Any],
+) -> dict[str, Any]:
+    """Continue a frozen v2 run with a fresh, cell-local model session and segment cap."""
+    if confirm != "RUN_T1_PILOT_V2_CONTINUATION":
+        raise BenchmarkError("v2 continuation requires RUN_T1_PILOT_V2_CONTINUATION")
+    meta, work, vault, manifest = _load_frozen_pilot_v2_continuation(root, verify_parent=True)
+    profile = meta["profile"]
+    order = [tuple(row) for row in meta["execution_order"]]
+    prior_terminals = {
+        (row["arm"], row["dataset"], row["seed"]): row
+        for row in ledger(work)
+        if row["kind"] == "continuation_cell_terminal"
+    }
+    stopped_for_resource = False
+    stopped_for_infrastructure = False
+
+    for arm, dataset, seed in order:
+        cell = (arm, dataset, seed)
+        if cell in prior_terminals:
+            continue
+        try:
+            inspect()
+        except ResourceRefusal:
+            stopped_for_resource = True
+            break
+        key = f"{arm}__{dataset}__{seed}"
+        history, notes, decisions = _continuation_cell_history(work, arm, dataset, seed)
+        if sum(row.get("role") == "common_baseline" for row in history) != 1:
+            raise BenchmarkError(f"{key}: expected one inherited baseline")
+        prior_calls = int(manifest["parent_cells"][key]["prior_call_attempts"])
+        cell_events = ledger(work)
+        call_number = sum(
+            row["kind"] == "agent_call_started"
+            and (row["arm"], row["dataset"], row["seed"]) == cell
+            for row in cell_events
+        )
+        local_fits = sum(
+            row["kind"] == "started"
+            and row.get("continuation_segment") is True
+            and (row["arm"], row["dataset"], row["seed"]) == cell
+            for row in cell_events
+        )
+        reason = "additional call or adaptive-training allowance exhausted"
+        stop_cell = False
+        while (
+            call_number - prior_calls < profile["additional_model_decision_calls_per_cell"]
+            and local_fits < profile["additional_trials_per_cell"]
+        ):
+            try:
+                inspect()
+                call_number += 1
+                call_id = f"continuation-{arm}-{dataset}-{seed}-call-{call_number}"
+                payload, _usage = model_call(
+                    work=work,
+                    codex=codex,
+                    arm=arm,
+                    dataset=dataset,
+                    seed=seed,
+                    call_id=call_id,
+                    call_no=call_number,
+                    purpose="decision",
+                    history=history,
+                    notes=notes,
+                    guarded_call=guarded_call,
+                    max_timeout=150,
+                    protocol_version=2,
+                    continuation_trials_remaining=profile["additional_trials_per_cell"]
+                    - local_fits,
+                    decision_history=decisions,
+                )
+            except ResourceRefusal as exc:
+                reason = "charged continuation call was refused or timed out"
+                if "timeout" in str(exc).lower():
+                    # This cell is sealed on a request timeout; other independent cells retain
+                    # their own frozen allowance and may continue.
+                    stop_cell = True
+                else:
+                    stopped_for_resource = True
+                    stop_cell = True
+                break
+            except ModelCallFailure as exc:
+                record_cell_incident(
+                    work,
+                    arm,
+                    dataset,
+                    seed,
+                    "invalid",
+                    f"continuation model call failed: {exc.classification}",
+                )
+                reason = f"charged continuation call failed: {exc.classification}"
+                stop_cell = True
+                stopped_for_infrastructure = exc.infrastructure
+                break
+
+            try:
+                planner_proposal: dict[str, Any] | None = None
+                if arm in {"agent_only", "memory_only"}:
+                    if set(payload) != {"candidate"}:
+                        raise ValueError("candidate reply has unexpected fields")
+                    candidate = normalize_candidate(payload["candidate"])
+                    if candidate["feature_mode"] != "all":
+                        raise ValueError("feature_mode is fixed to all in v2")
+                    decision = {
+                        "selection_policy": "ordinary-model-candidate",
+                        "protocol_version": 2,
+                        "continuation": True,
+                    }
+                elif arm == "epipilot_heuristic":
+                    candidate, decision = choose_heuristic(
+                        payload, history, call_number, continuation=True
+                    )
+                    candidate = normalize_candidate(candidate)
+                    if candidate["feature_mode"] != "all":
+                        raise ValueError("feature_mode is fixed to all in v2")
+                    planner_proposal = decision["planner_proposal"]
+                    decision.update(
+                        {
+                            "protocol_version": 2,
+                            "continuation": True,
+                            "adaptive_trial_limit": 2,
+                            "lookahead_execution_qualification": (
+                                "rank_proposals ranks a root and hypothetical successor; the "
+                                "controller executes only one selected candidate per fit"
+                            ),
+                        }
+                    )
+                else:
+                    candidate, decision = choose_conditional_v2(
+                        payload, history, call_number, continuation=True
+                    )
+                    candidate = normalize_candidate(candidate)
+                    if candidate["feature_mode"] != "all":
+                        raise ValueError("feature_mode is fixed to all in v2")
+                    decision["continuation"] = True
+                    proposal_value = decision.get("planner_proposal")
+                    planner_proposal = proposal_value if isinstance(proposal_value, dict) else None
+                candidate_sha = digest(canonical(candidate))
+                decision["candidate_sha256"] = candidate_sha
+            except (ValueError, TypeError, KeyError, BenchmarkError) as exc:
+                record_cell_incident(
+                    work, arm, dataset, seed, "invalid", "continuation decision failed validation"
+                )
+                reason = f"charged continuation output was invalid: {type(exc).__name__}"
+                stop_cell = True
+                break
+
+            _record_strategy_decision(work, arm, dataset, seed, call_number, decision)
+            candidates = {row["candidate_sha256"]: row["candidate"] for row in history}
+            candidates[candidate_sha] = candidate
+            decisions.append(_continuation_decision_context(arm, decision, candidates))
+            if arm == "epipilot_conditional" and decision.get("stopped_for_nonpositive_value"):
+                event(
+                    work,
+                    {
+                        "kind": "continuation_stop",
+                        "arm": arm,
+                        "dataset": dataset,
+                        "seed": seed,
+                        "call_id": call_id,
+                        "reason": (
+                            "nonpositive net AUROC value; the measured incumbent remains available"
+                        ),
+                        "candidate_sha256": candidate_sha,
+                        "utility_unit": decision.get("utility_unit"),
+                        "decision_scores": _continuation_decision_context(
+                            arm, decision, candidates
+                        ).get("decision_scores", []),
+                    },
+                )
+                reason = "Conditional stopped under the frozen nonpositive net-value rule"
+                break
+            attempted_hashes = {
+                row["candidate_sha256"]
+                for row in ledger(work)
+                if row["kind"] == "started" and (row["arm"], row["dataset"], row["seed"]) == cell
+            }
+            if candidate_sha in attempted_hashes:
+                record_cell_incident(
+                    work,
+                    arm,
+                    dataset,
+                    seed,
+                    "repeat",
+                    "same-cell candidate was proposed again; no duplicate training was run",
+                )
+                reason = "repeat proposal recorded and skipped without training"
+                continue
+
+            candidate_path = root / f"candidate-{arm}-{dataset}-{seed}-{call_number}.json"
+            candidate_path.write_bytes(canonical(candidate))
+            try:
+                inspect()
+                trial = t1_call(
+                    "trial",
+                    "--work",
+                    str(work),
+                    "--arm",
+                    arm,
+                    "--dataset",
+                    dataset,
+                    "--seed",
+                    str(seed),
+                    "--candidate",
+                    str(candidate_path),
+                    timeout=80,
+                )
+            except ResourceRefusal:
+                reason = "resource guard refused a continuation fit"
+                stopped_for_resource = True
+                stop_cell = True
+                break
+            except (BenchmarkError, OSError, subprocess.SubprocessError) as exc:
+                reason = f"continuation fit command failed: {type(exc).__name__}"
+                stopped_for_infrastructure = True
+                stop_cell = True
+                break
+            finally:
+                candidate_path.unlink(missing_ok=True)
+            local_fits += 1
+            if trial.get("exit_code") != 0:
+                best_so_far = max(float(row["dev_auroc"]) for row in history)
+                event(
+                    work,
+                    {
+                        "kind": "continuation_trial_result",
+                        "arm": arm,
+                        "dataset": dataset,
+                        "seed": seed,
+                        "continuation_training_attempt": local_fits,
+                        "cumulative_fit_count": 2 + local_fits,
+                        "candidate_sha256": candidate_sha,
+                        "status": "failed",
+                        "trial_dev_auroc": None,
+                        "best_dev_auroc": best_so_far,
+                        "training_seconds": trial.get("seconds"),
+                    },
+                )
+                record_cell_incident(
+                    work,
+                    arm,
+                    dataset,
+                    seed,
+                    "invalid",
+                    "continuation candidate training failed; incumbent retained",
+                )
+                reason = "candidate fit failed; the charged training attempt was retained"
+                continue
+            if planner_proposal is not None:
+                decision["candidate_sha256"] = candidate_sha
+            history, notes, _decisions = _continuation_cell_history(work, arm, dataset, seed)
+            selection = select(work, arm, dataset, seed)
+            event(
+                work,
+                {
+                    "kind": "continuation_trial_result",
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "continuation_training_attempt": local_fits,
+                    "cumulative_fit_count": 2 + local_fits,
+                    "candidate_sha256": candidate_sha,
+                    "status": "success",
+                    "trial_dev_auroc": trial["dev_auroc"],
+                    "best_dev_auroc": selection["dev_auroc"],
+                    "training_seconds": trial["seconds"],
+                },
+            )
+            event(
+                work,
+                {
+                    "kind": "continuation_checkpoint",
+                    "arm": arm,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "cumulative_training_attempts": sum(
+                        row["kind"] == "started"
+                        and (row["arm"], row["dataset"], row["seed"]) == cell
+                        for row in ledger(work)
+                    ),
+                    "cumulative_successful_training_attempts": len(history),
+                    "continuation_training_attempt": local_fits,
+                    "candidate_sha256": candidate_sha,
+                    "trial_dev_auroc": trial["dev_auroc"],
+                    "best_dev_auroc": selection["dev_auroc"],
+                    "training_seconds": trial["seconds"],
+                },
+            )
+            reason = "candidate fit completed; selection uses only measured dev AUROC"
+
+            if (
+                arm == "memory_only"
+                and local_fits < profile["additional_trials_per_cell"]
+                and call_number - prior_calls + 1
+                < profile["additional_model_decision_calls_per_cell"]
+            ):
+                try:
+                    inspect()
+                    latest = history[-1]
+                    expected_note = (
+                        f"On frozen split, run {latest['run_id']}, candidate sha256 "
+                        f"{latest['candidate_sha256']}, development AUROC "
+                        f"{latest['dev_auroc']:.6f}; scope=current cell only."
+                    )
+                    call_number += 1
+                    note_payload, _usage = model_call(
+                        work=work,
+                        codex=codex,
+                        arm=arm,
+                        dataset=dataset,
+                        seed=seed,
+                        call_id=f"continuation-{arm}-{dataset}-{seed}-call-{call_number}",
+                        call_no=call_number,
+                        purpose="memory_note",
+                        history=history,
+                        notes=notes,
+                        guarded_call=guarded_call,
+                        max_timeout=150,
+                        protocol_version=2,
+                        continuation_trials_remaining=profile["additional_trials_per_cell"]
+                        - local_fits,
+                    )
+                    if set(note_payload) != {"note"} or note_payload.get("note") != expected_note:
+                        record_cell_incident(
+                            work,
+                            arm,
+                            dataset,
+                            seed,
+                            "unsupported_claim",
+                            "continuation memory note failed exact source verification",
+                        )
+                    else:
+                        add_memory(work, arm, dataset, seed, latest["run_id"], expected_note)
+                        notes.append(expected_note)
+                except ResourceRefusal as exc:
+                    reason = "charged memory-note request was refused or timed out"
+                    stop_cell = True
+                    if "timeout" not in str(exc).lower():
+                        stopped_for_resource = True
+                    break
+                except ModelCallFailure as exc:
+                    record_cell_incident(
+                        work,
+                        arm,
+                        dataset,
+                        seed,
+                        "invalid",
+                        f"continuation memory-note call failed: {exc.classification}",
+                    )
+                    reason = f"charged memory-note call failed: {exc.classification}"
+                    stop_cell = True
+                    stopped_for_infrastructure = exc.infrastructure
+                    break
+
+        if stopped_for_resource or stopped_for_infrastructure:
+            break
+        # Invalid output or a timeout closes this cell without retrying the failed call.
+        # Its incumbent remains the best measured candidate from parent plus continuation.
+        selection = select(work, arm, dataset, seed)
+        terminal_row = {
+            "kind": "continuation_cell_terminal",
+            "arm": arm,
+            "dataset": dataset,
+            "seed": seed,
+            "outcome": "submitted",
+            "reason": reason[:300],
+            "selected_run_id": selection["run_id"],
+            "candidate_sha256": selection["candidate_sha256"],
+            "dev_auroc": selection["dev_auroc"],
+            "new_model_calls": sum(
+                row["kind"] == "agent_call_started"
+                and row.get("continuation_segment") is True
+                and (row["arm"], row["dataset"], row["seed"]) == cell
+                for row in ledger(work)
+            ),
+            "new_training_attempts": local_fits,
+        }
+        event(work, terminal_row)
+        if stop_cell and stopped_for_resource:
+            break
+
+    terminal_rows = [row for row in ledger(work) if row["kind"] == "continuation_cell_terminal"]
+    final_result = None
+    if (
+        len(terminal_rows) == len(order)
+        and not stopped_for_resource
+        and not stopped_for_infrastructure
+    ):
+        try:
+            inspect()
+        except ResourceRefusal:
+            stopped_for_resource = True
+        else:
+            events = ledger(work)
+            audit = {}
+            for arm, dataset, seed in order:
+                key = f"{arm}__{dataset}__{seed}"
+                incidents = [
+                    row
+                    for row in events
+                    if row["kind"] == "cell_incident"
+                    and (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+                ]
+                audit[key] = {
+                    "human_interventions": 0,
+                    "repeated_experiments": sum(row["category"] == "repeat" for row in incidents),
+                    "unsupported_claims": sum(
+                        row["category"] == "unsupported_claim" for row in incidents
+                    ),
+                }
+            audit_path = work / "continuation_audit.json"
+            atomic_json(audit_path, audit)
+            final_result = t1_call(
+                "finalize",
+                "--work",
+                str(work),
+                "--vault",
+                str(vault),
+                "--audit",
+                str(audit_path),
+                timeout=200,
+            )
+
+    final_events = ledger(work)
+    call_finishes = {
+        row["call_id"]: row
+        for row in final_events
+        if row["kind"] == "agent_call_finished" and row.get("continuation_segment") is True
+    }
+    summary = status(work)
+    cell_summaries = []
+    for arm, dataset, seed in order:
+        key = f"{arm}__{dataset}__{seed}"
+        own = [
+            row
+            for row in final_events
+            if (row.get("arm"), row.get("dataset"), row.get("seed")) == (arm, dataset, seed)
+        ]
+        calls = [
+            row
+            for row in own
+            if row["kind"] == "agent_call_started" and row.get("continuation_segment") is True
+        ]
+        fits = [
+            row
+            for row in own
+            if row["kind"] == "started" and row.get("continuation_segment") is True
+        ]
+        fit_finishes = {row["id"]: row for row in own if row["kind"] in {"finished", "aborted"}}
+        selection_path = work / "submissions" / f"{key}.json"
+        selected_submission = read_json(selection_path) if selection_path.is_file() else None
+        calls_finished = [
+            call_finishes[row["call_id"]] for row in calls if row["call_id"] in call_finishes
+        ]
+        checkpoints = [row for row in own if row["kind"] == "continuation_trial_result"]
+        cell_terminal = next(
+            (
+                row
+                for row in terminal_rows
+                if (row["arm"], row["dataset"], row["seed"]) == (arm, dataset, seed)
+            ),
+            None,
+        )
+        cell_summaries.append(
+            {
+                "arm": arm,
+                "dataset": dataset,
+                "seed": seed,
+                "parent_calls": manifest["parent_cells"][key]["prior_call_attempts"],
+                "new_calls": len(calls),
+                "parent_training_attempts": manifest["parent_cells"][key][
+                    "prior_training_attempts"
+                ],
+                "new_training_attempts": len(fits),
+                "new_successful_fits": sum(
+                    row.get("exit_code") == 0 and row.get("continuation_segment") is True
+                    for row in own
+                    if row["kind"] == "finished"
+                ),
+                "new_training_seconds": sum(
+                    float(fit_finishes[row["id"]].get("seconds", 0.0))
+                    for row in fits
+                    if row["id"] in fit_finishes
+                ),
+                "new_model_call_seconds": sum(
+                    float(row.get("elapsed_seconds", 0.0)) for row in calls_finished
+                ),
+                "new_usage": {
+                    "available_calls": sum(
+                        row.get("usage_available") is True for row in calls_finished
+                    ),
+                    "missing_calls": len(calls)
+                    - sum(row.get("usage_available") is True for row in calls_finished),
+                    "input_tokens": sum(row.get("input_tokens", 0) for row in calls_finished),
+                    "output_tokens": sum(row.get("output_tokens", 0) for row in calls_finished),
+                    "cached_input_tokens": sum(
+                        row.get("cached_input_tokens", 0) for row in calls_finished
+                    ),
+                },
+                "dev_curve": [
+                    {
+                        "cumulative_fit_count": 2 + index,
+                        "status": row["status"],
+                        "trial_dev_auroc": row["trial_dev_auroc"],
+                        "best_dev_auroc": row["best_dev_auroc"],
+                        "candidate_sha256": row["candidate_sha256"],
+                    }
+                    for index, row in enumerate(checkpoints, start=1)
+                ],
+                "best_dev_auroc": selected_submission["dev_auroc"] if selected_submission else None,
+                "selected_candidate_sha256": (
+                    selected_submission["candidate_sha256"] if selected_submission else None
+                ),
+                "terminal_reason": cell_terminal.get("reason")
+                if cell_terminal
+                else "not completed",
+                "repeat_events": sum(
+                    row.get("category") == "repeat" and row.get("continuation_segment") is True
+                    for row in own
+                    if row["kind"] == "cell_incident"
+                ),
+                "invalid_events": sum(
+                    row.get("category") == "invalid" and row.get("continuation_segment") is True
+                    for row in own
+                    if row["kind"] == "cell_incident"
+                ),
+                "unsupported_claim_events": sum(
+                    row.get("category") == "unsupported_claim"
+                    and row.get("continuation_segment") is True
+                    for row in own
+                    if row["kind"] == "cell_incident"
+                ),
+            }
+        )
+    return {
+        "protocol_version": 2,
+        "continuation": True,
+        "fresh_model_session": True,
+        "parent_code_revision": manifest["parent_code_revision"],
+        "code_revision": meta["code_revision"],
+        "work": str(work),
+        "vault": str(vault),
+        "execution_order_seed": meta["execution_order_seed"],
+        "execution_order": meta["execution_order"],
+        "cells": cell_summaries,
+        "completed_continuation_cells": len(terminal_rows),
+        "new_model_call_attempts": summary["continuation_model_call_attempts"],
+        "cumulative_model_call_attempts": summary["model_call_attempts"],
+        "new_training_attempts": summary["continuation_training_attempts"],
+        "new_completed_training_attempts": summary["continuation_training_completed"],
+        "cumulative_training_attempts": summary["total_started"],
+        "new_training_seconds": summary["continuation_training_seconds"],
+        "new_model_call_wall_seconds": sum(
+            float(row.get("elapsed_seconds", 0.0)) for row in call_finishes.values()
+        ),
+        "new_model_call_usage": {
+            "available_call_count": sum(
+                row.get("usage_available") is True for row in call_finishes.values()
+            ),
+            "missing_call_count": summary["continuation_model_call_attempts"]
+            - sum(row.get("usage_available") is True for row in call_finishes.values()),
+            "input_tokens": sum(row.get("input_tokens", 0) for row in call_finishes.values()),
+            "output_tokens": sum(row.get("output_tokens", 0) for row in call_finishes.values()),
+            "cached_input_tokens": sum(
+                row.get("cached_input_tokens", 0) for row in call_finishes.values()
+            ),
+        },
+        "budget": manifest["budget"],
+        "stopped_for_resource_guard": stopped_for_resource,
+        "paused_for_infrastructure": stopped_for_infrastructure,
+        "holdout_evaluated": (work / "final.started").exists(),
+        "holdout_qualification": (
+            "descriptive re-evaluation of a previously accessed holdout; continuation researchers "
+            "received no test rows or scores"
+        ),
+        "final_evaluation": final_result,
+        "pilot_run_status": (
+            "paused_for_infrastructure"
+            if stopped_for_infrastructure
+            else "paused_for_resource_guard"
+            if stopped_for_resource
+            else "incomplete_missing_cells"
+            if len(terminal_rows) != len(order)
+            else "completed"
         ),
     }
 

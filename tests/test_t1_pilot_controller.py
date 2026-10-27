@@ -77,7 +77,10 @@ def _conditional_response() -> dict[str, Any]:
 
 
 def _conditional_v2_response(
-    *, baseline: float = 0.8, candidate_auroc: float = 0.9
+    *,
+    baseline: float = 0.8,
+    candidate_auroc: float = 0.9,
+    candidates: tuple[float, float] = (0.5, 2.0),
 ) -> dict[str, Any]:
     return {
         "decisions": [
@@ -92,7 +95,7 @@ def _conditional_v2_response(
                     candidate_auroc,
                 ],
             }
-            for index, c in enumerate((0.5, 2.0), 1)
+            for index, c in enumerate(candidates, 1)
         ]
     }
 
@@ -133,6 +136,116 @@ def test_conditional_v2_uses_auroc_evsi_and_baseline_fallback() -> None:
     assert fallback == baseline
     assert stopped["fallback"] == "common_baseline"
     assert stopped["stopped_for_nonpositive_value"] is True
+
+
+def test_continuation_parent_hashes_are_pinned_and_mutation_is_rejected(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    artifact = parent / "events.jsonl"
+    artifact.write_text('{"kind":"started"}\n', encoding="utf-8")
+    expected = pilot_controller.file_digest(artifact)
+    pilot_controller._verify_parent_artifact_hashes(parent, {"events.jsonl": expected})
+    artifact.write_text('{"kind":"changed"}\n', encoding="utf-8")
+    with pytest.raises(t1_module.BenchmarkError, match="changed after continuation freeze"):
+        pilot_controller._verify_parent_artifact_hashes(parent, {"events.jsonl": expected})
+
+
+def test_continuation_context_is_cell_scoped_and_filters_test_payloads(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("sklearn")
+    pytest.importorskip("pandas")
+    work, vault = tmp_path / "pilot_work", tmp_path / "pilot_vault"
+    setup(work, vault, "pilot_v2_continuation", {}, True)
+    t1_module.event(
+        work,
+        {
+            "kind": "strategy_decision",
+            "arm": "epipilot_conditional",
+            "dataset": "wdbc",
+            "seed": 42,
+            "decision_call": 1,
+            "decision": {
+                "baseline_auroc": 0.9,
+                "utility_unit": "absolute development AUROC",
+                "model_forecast_tables": [
+                    {
+                        "proposal_id": "p1",
+                        "candidate_sha256": "a" * 64,
+                        "baseline_auroc": 0.9,
+                        "probabilities": [0.25, 0.25, 0.25, 0.25],
+                        "model_candidate_auroc_by_outcome": [0.92, 0.9, 0.9, 0.9],
+                        "effective_candidate_auroc_by_outcome": [0.92, 0.9, 0.9, 0.9],
+                        "outcome_order": [
+                            "improved",
+                            "no_gain",
+                            "inconclusive",
+                            "infrastructure_failure",
+                        ],
+                        "test_score": "PRIVATE_TEST_SENTINEL",
+                    }
+                ],
+                "decision_scores": [],
+                "test_report": "PRIVATE_REPORT_SENTINEL",
+            },
+        },
+    )
+    t1_module.event(
+        work,
+        {
+            "kind": "strategy_decision",
+            "arm": "epipilot_heuristic",
+            "dataset": "wdbc",
+            "seed": 42,
+            "decision_call": 1,
+            "decision": {
+                "phase": "mixed",
+                "selected_proposal_id": "root42",
+                "ranked_proposals": [{"proposal_id": "root42", "score": 0.2, "phase": "mixed"}],
+                "planner_proposal": {"id": "root42", "expected_improvement": 0.1},
+                "private_cross_arm_sentinel": "DO_NOT_SHARE",
+            },
+        },
+    )
+    _history, _notes, heuristic_decisions = pilot_controller._continuation_cell_history(
+        work, "epipilot_heuristic", "wdbc", 42
+    )
+    assert len(heuristic_decisions) == 1
+    assert heuristic_decisions[0]["selected_proposal_id"] == "root42"
+    heuristic_prompt = pilot_controller._call_prompt(
+        "epipilot_heuristic",
+        "decision",
+        "wdbc",
+        42,
+        [],
+        [],
+        protocol_version=2,
+        continuation_trials_remaining=2,
+        decision_history=heuristic_decisions,
+    )
+    assert "DO_NOT_SHARE" not in heuristic_prompt
+    assert "PRIVATE_TEST_SENTINEL" not in heuristic_prompt
+    assert "PRIVATE_REPORT_SENTINEL" not in heuristic_prompt
+
+    _history, _notes, conditional_decisions = pilot_controller._continuation_cell_history(
+        work, "epipilot_conditional", "wdbc", 42
+    )
+    conditional_prompt = pilot_controller._call_prompt(
+        "epipilot_conditional",
+        "decision",
+        "wdbc",
+        42,
+        [],
+        [],
+        protocol_version=2,
+        continuation_trials_remaining=2,
+        decision_history=conditional_decisions,
+    )
+    assert "PRIVATE_TEST_SENTINEL" not in conditional_prompt
+    assert "PRIVATE_REPORT_SENTINEL" not in conditional_prompt
+    assert "0.92" in conditional_prompt
 
 
 def test_formal_pilot_entry_runs_all_strategies_and_freezes_before_holdout(
@@ -366,6 +479,7 @@ def test_protocol_v2_trains_common_baseline_and_evaluates_only_after_all_freeze(
             prompt.split("Cell information (no train/dev rows or labels):\n", 1)[1]
         )
         arm, seed = context["strategy"], context["seed"]
+        continuation = context.get("continuation") is not None
         schema_path = Path(argv[argv.index("--output-schema") + 1])
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         if "note" in schema.get("properties", {}):
@@ -379,13 +493,25 @@ def test_protocol_v2_trains_common_baseline_and_evaluates_only_after_all_freeze(
             }
             call_purposes[(arm, seed)].append("memory_note")
         elif "candidate" in schema.get("properties", {}):
-            response = {"candidate": _candidate(0.5 if arm == "agent_only" else 1.5)}
+            if arm == "agent_only":
+                prior_steps = max(0, len(context["development_history"]) - 2)
+                candidate_c = 0.5 if not continuation else 2.5 + prior_steps
+            else:
+                prior_steps = max(0, len(context["memory_notes"]) - 2)
+                candidate_c = 1.5 if not continuation else 2.5 + prior_steps
+            response = {"candidate": _candidate(candidate_c)}
             call_purposes[(arm, seed)].append("decision")
         elif "proposals" in schema.get("properties", {}):
-            response = _heuristic_response(1)
+            response = _heuristic_response(len(context.get("strategy_decision_history", [])) + 1)
             call_purposes[(arm, seed)].append("decision")
         elif "decisions" in schema.get("properties", {}):
-            response = _conditional_v2_response(candidate_auroc=0.99)
+            prior_decisions = len(context.get("strategy_decision_history", []))
+            response = _conditional_v2_response(
+                candidate_auroc=0.99,
+                candidates=(0.5, 2.0)
+                if not continuation
+                else (0.4 - 0.1 * max(0, prior_decisions - 1), 2.5 + 0.5 * prior_decisions),
+            )
             call_purposes[(arm, seed)].append("decision")
         else:
             raise AssertionError("unknown protocol-v2 strict schema")
@@ -410,13 +536,23 @@ def test_protocol_v2_trains_common_baseline_and_evaluates_only_after_all_freeze(
     def fake_worker(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
         nonlocal development_workers, holdout_workers, holdout_visible
         eval_path = Path(argv[argv.index("--eval") + 1])
-        work = root / "pilot_work"
+        train_path = Path(argv[argv.index("--train") + 1])
+        work = (
+            train_path.parent
+            if train_path.name == ".eval_tmp.csv"
+            else train_path.parent.parent.parent
+        )
+        continuation = read_json(work / "meta.json")["stage"] == "pilot_v2_continuation"
         if eval_path.name == "test.csv":
             holdout_workers += 1
             assert model_active == 0
             events = ledger(work)
             assert len([row for row in events if row["kind"] == "cell_terminal"]) == 8
             assert len(list((work / "submissions").glob("*.json"))) == 8
+            if continuation:
+                assert (
+                    len([row for row in events if row["kind"] == "continuation_cell_terminal"]) == 8
+                )
             assert (work / "final.started").is_file()
             holdout_visible = any(
                 eval_path.name in str(item)
@@ -440,7 +576,7 @@ def test_protocol_v2_trains_common_baseline_and_evaluates_only_after_all_freeze(
             return setup(
                 Path(values[values.index("--work") + 1]),
                 Path(values[values.index("--vault") + 1]),
-                "pilot_v2",
+                values[values.index("--stage") + 1],
                 {},
                 True,
             )
@@ -518,6 +654,52 @@ def test_protocol_v2_trains_common_baseline_and_evaluates_only_after_all_freeze(
         recorded_purposes = call_purposes[(cell[0], cell[2])]
         assert recorded_purposes == expected, (cell, count, recorded_purposes)
         assert count == len(expected), (cell, count, expected)
+
+    (root / "summary.json").write_text(json.dumps(outcome), encoding="utf-8")
+    continuation_root = tmp_path / "pilot-v2-continuation-results"
+    continuation_root.mkdir(mode=0o700)
+    continuation_prepared = mac.run(
+        "pilot_v2_continue_prepare",
+        "ccswitch_codex",
+        "gpt-6-luna",
+        "",
+        continuation_root,
+        parent_results=root,
+    )
+    assert continuation_prepared["fresh_model_session"] is True
+    assert continuation_prepared["parent_holdout_previously_evaluated"] is True
+    assert continuation_prepared["holdout_materialized"] is False
+    assert continuation_prepared["imported_trials"] == 16
+    assert continuation_prepared["imported_calls"] == 10
+    frozen_manifest = read_json(continuation_root / "continuation_manifest.json")
+    assert frozen_manifest["budget"]["unused_parent_allowance_rollover"] is False
+    assert frozen_manifest["budget"]["new_calls_total"] == 32
+    assert len(frozen_manifest["parent_artifact_hashes"]) >= 16
+    assert not (continuation_root / "pilot_vault" / "wdbc" / "test.csv").exists()
+
+    continuation_outcome = mac.run(
+        "pilot_v2_continue",
+        "ccswitch_codex",
+        "gpt-6-luna",
+        "RUN_T1_PILOT_V2_CONTINUATION",
+        continuation_root,
+    )
+    assert continuation_outcome["pilot_run_status"] == "completed"
+    assert continuation_outcome["completed_continuation_cells"] == 8
+    assert continuation_outcome["new_training_attempts"] == 16
+    assert continuation_outcome["new_completed_training_attempts"] == 16
+    assert continuation_outcome["new_model_call_attempts"] <= 32
+    assert continuation_outcome["cumulative_model_call_attempts"] == (
+        continuation_outcome["new_model_call_attempts"] + 10
+    )
+    assert continuation_outcome["holdout_evaluated"] is True
+    assert continuation_outcome["holdout_qualification"].startswith("descriptive re-evaluation")
+    assert (continuation_root / "pilot_work" / "final.started").is_file()
+    assert holdout_workers == 20
+    assert all(
+        cell["new_calls"] <= 4 and cell["new_training_attempts"] <= 2
+        for cell in continuation_outcome["cells"]
+    )
 
 
 def test_protocol_v2_infrastructure_failure_submits_baseline_and_stops_next_cell(
