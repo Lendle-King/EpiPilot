@@ -20,8 +20,7 @@ def current_insight(state: ResearchState, insight: ProblemInsight) -> bool:
         if not reviewed.intersection(insight.evidence_ids):
             return False
     return all(
-        evidence_id in state.evidence
-        and state.evidence[evidence_id].measurement_validated
+        evidence_id in state.evidence and state.evidence[evidence_id].measurement_validated
         for evidence_id in insight.evidence_ids
     )
 
