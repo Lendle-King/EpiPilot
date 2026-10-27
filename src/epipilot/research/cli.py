@@ -15,6 +15,11 @@ from epipilot.core.models import utc_now
 from epipilot.research.benchmark import compare_suite
 from epipilot.research.decision_models import DecisionEstimate
 from epipilot.research.decision_value import rank_decision
+from epipilot.research.exploration import (
+    ensure_action_allowed,
+    readiness,
+    unseen_critical_reopenings,
+)
 from epipilot.research.models import (
     Claim,
     ClaimStatus,
@@ -22,8 +27,12 @@ from epipilot.research.models import (
     EvidenceRecord,
     Experiment,
     ExperimentContract,
+    ExplorationConfig,
+    ExplorationDimension,
+    ExplorationStage,
     MetricDirection,
     MetricRule,
+    ProblemInsight,
     Proposal,
     ProposalKind,
     ResearchGoal,
@@ -35,7 +44,9 @@ from epipilot.research.models import (
     research_id,
 )
 from epipilot.research.onboarding import inspect_repository
-from epipilot.research.planner import rank_proposals, research_phase
+from epipilot.research.planner import RankedProposal, rank_proposals, research_phase
+from epipilot.research.probe_templates import probe_templates
+from epipilot.research.problem_profile import problem_profile
 from epipilot.research.runner import execute_frozen_runner, recover_receipt
 from epipilot.research.scout_core import frontier_fingerprint, validate_source
 from epipilot.research.scout_models import (
@@ -77,6 +88,34 @@ def _parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--manifest", type=Path, required=True)
     benchmark.add_argument("--min-cases", type=int, default=2)
     sub.add_parser("doctor", help="replay the event stream and diagnose pending work")
+
+    explore = sub.add_parser("explore", help="opt-in problem characterization before optimization")
+    explore_sub = explore.add_subparsers(dest="action", required=True)
+    explore_enable = explore_sub.add_parser("enable", help="start the exploratory phase")
+    explore_enable.add_argument("--budget-share", type=float, default=0.2)
+    explore_enable.add_argument("--reason", default="User opted into problem exploration mode")
+    explore_sub.add_parser("status", help="show exploration budget and readiness gate")
+    explore_sub.add_parser("profile", help="show scoped claims and algorithm guidance")
+    explore_probes = explore_sub.add_parser("probes", help="suggest diagnostic experiment designs")
+    explore_probes.add_argument("--dimension", choices=[x.value for x in ExplorationDimension])
+    explore_probes.add_argument("--limit", type=int, default=5)
+    explore_guide = explore_sub.add_parser("guide", help="add evidence-linked algorithm guidance")
+    explore_guide.add_argument("--title", required=True)
+    explore_guide.add_argument(
+        "--dimension", choices=[x.value for x in ExplorationDimension], required=True
+    )
+    explore_guide.add_argument("--scope", required=True)
+    explore_guide.add_argument("--claim", action="append", required=True)
+    explore_guide.add_argument("--recommend", required=True)
+    explore_guide.add_argument("--avoid", default="")
+    explore_guide.add_argument("--reason", required=True)
+    explore_advance = explore_sub.add_parser("advance", help="enter optimization when ready")
+    explore_advance.add_argument("--reason", required=True)
+    explore_advance.add_argument("--override", action="store_true")
+    explore_reopen = explore_sub.add_parser("reopen", help="return to diagnosis after new evidence")
+    explore_reopen.add_argument("--reason", required=True)
+    explore_disable = explore_sub.add_parser("disable", help="return to original research mode")
+    explore_disable.add_argument("--reason", required=True)
 
     unknown = sub.add_parser("unknown", help="add or resolve a research unknown")
     unknown_sub = unknown.add_subparsers(dest="action", required=True)
@@ -238,6 +277,8 @@ def _status(state: ResearchState) -> dict[str, object]:
         "remaining": state.remaining,
         "overrun": state.overrun,
         "phase": research_phase(state),
+        "exploration": readiness(state),
+        "problem_guidance_count": len(state.problem_insights),
         "unknowns_open": sum(item.status == "open" for item in state.unknowns.values()),
         "claims": len(state.claims),
         "proposals": len(state.proposals),
@@ -272,6 +313,14 @@ def _plan(state: ResearchState, proposal_id: str) -> dict[str, object]:
         raise ValueError("proposal is not currently available")
     if proposal.estimated_cost > state.remaining:
         raise ValueError("proposal exceeds remaining budget")
+    ensure_action_allowed(state, proposal)
+    if (
+        state.exploration is not None
+        and state.exploration.enabled
+        and proposal.kind is ProposalKind.EXPLORE
+        and proposal.estimated_cost > state.exploration_remaining + 1e-9
+    ):
+        raise ValueError("proposal exceeds remaining exploration budget")
     if any(state.proposals[parent].status != "completed" for parent in proposal.depends_on):
         raise ValueError("proposal dependencies are not independently checked")
     return {
@@ -340,6 +389,23 @@ def _safe_verifier(parts: list[str]) -> list[str]:
     return argv
 
 
+def _rank_for_state(state: ResearchState, limit: int = 5) -> list[RankedProposal]:
+    config = state.exploration
+    if config is not None and config.enabled and config.stage is ExplorationStage.EXPLORATION:
+        return list(
+            rank_proposals(
+                state,
+                limit=limit,
+                kind=ProposalKind.EXPLORE,
+                max_cost=state.exploration_remaining,
+                phase_override="exploration",
+            )
+        )
+    if unseen_critical_reopenings(state):
+        return []
+    return rank_proposals(state, limit=limit)
+
+
 def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str, object]:
     """Prioritize existing work and use an explicitly selected research policy."""
     if policy not in {"heuristic", "conditional"}:
@@ -385,9 +451,69 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
                     "contract": item.model_dump(mode="json"),
                     "guidance": guidance,
                 }
+    blocked = [
+        item.id for item in state.contracts.values() if item.status is ContractStatus.BLOCKED
+    ]
+    if blocked:
+        return {
+            "status": "blocked",
+            "contracts": blocked,
+            "guidance": "Diagnose failure; epi retry --reason for changed validation strategy "
+            "or register a new scientifically different proposal.",
+        }
+    config = state.exploration
+    if config is not None and config.enabled:
+        if config.stage is ExplorationStage.EXPLORATION:
+            gate = readiness(state)
+            if gate["ready"]:
+                return {
+                    "status": "exploration_ready",
+                    "readiness": gate,
+                    "guidance": "Use epi explore advance --reason TEXT to enter optimization.",
+                }
+            if gate["status"] == "budget_limited":
+                return {
+                    "status": "exploration_budget_limited",
+                    "readiness": gate,
+                    "guidance": (
+                        "Budget exhaustion is NOT scientific readiness. Stop, or explicitly "
+                        "authorize optimization via epi explore advance --override --reason TEXT."
+                    ),
+                }
+            if gate["status"] == "frontier_required":
+                return {
+                    "status": "exploration_frontier_required",
+                    "readiness": gate,
+                    "guidance": (
+                        "Use epi onboard, epi scout prepare and epi explore probes; "
+                        "record decision-relevant Unknowns before experiments."
+                    ),
+                }
+        elif reopened := unseen_critical_reopenings(state):
+            return {
+                "status": "exploration_reconsideration_required",
+                "new_counterevidence_ids": reopened,
+                "guidance": (
+                    "Use epi explore reopen --reason TEXT to investigate, or explicitly "
+                    "acknowledge the changed evidence with epi explore advance --override "
+                    "--reason TEXT."
+                ),
+            }
     if policy == "conditional":
         scores = []
         for estimate in state.decision_estimates.values():
+            proposal = state.proposals.get(estimate.proposal_id)
+            if (
+                config is not None
+                and config.enabled
+                and config.stage is ExplorationStage.EXPLORATION
+                and (
+                    proposal is None
+                    or proposal.kind is not ProposalKind.EXPLORE
+                    or proposal.estimated_cost > state.exploration_remaining + 1e-9
+                )
+            ):
+                continue
             try:
                 scores.append(rank_decision(state, estimate))
             except ValueError:
@@ -422,7 +548,7 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
                 "improvement or an empirically trained policy."
             ),
         }
-    ranked = rank_proposals(state, limit=1)
+    ranked = _rank_for_state(state, limit=1)
     if ranked:
         return {
             "status": "ready_for_agent",
@@ -430,15 +556,15 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
             "task": _plan(state, ranked[0].proposal.id),
             "continuation": "Preregister before execution; update memory after verification.",
         }
-    blocked = [
-        item.id for item in state.contracts.values() if item.status is ContractStatus.BLOCKED
-    ]
-    if blocked:
+    if config is not None and config.enabled and config.stage is ExplorationStage.EXPLORATION:
         return {
-            "status": "blocked",
-            "contracts": blocked,
-            "guidance": "Diagnose failure; epi retry --reason for changed validation strategy "
-            "or register a new scientifically different proposal.",
+            "status": "exploration_design_required",
+            "readiness": readiness(state),
+            "probe_templates": probe_templates(state, limit=3),
+            "guidance": (
+                "No affordable exploratory Proposal is registered. Design a discriminative "
+                "study from the open Unknowns, or explicitly override the phase gate."
+            ),
         }
     return {
         "status": "no_runnable_proposal",
@@ -542,6 +668,61 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         }
     if command == "status":
         return _status(state)
+    if command == "explore":
+        if args.action == "status":
+            return readiness(state)
+        if args.action == "profile":
+            return problem_profile(state)
+        if args.action == "probes":
+            dimension = ExplorationDimension(args.dimension) if args.dimension is not None else None
+            return {
+                "templates": probe_templates(state, dimension=dimension, limit=args.limit),
+                "warning": "Templates require an actual Proposal and frozen experiment contract.",
+            }
+        if args.action == "enable":
+            config = ExplorationConfig(
+                budget_share=args.budget_share,
+                reason=args.reason,
+            )
+            store.add("exploration_enabled", config)
+        elif args.action == "disable":
+            store.append("exploration_disabled", {"reason": args.reason})
+        elif args.action == "advance":
+            store.append(
+                "exploration_advanced",
+                {"reason": args.reason, "override": args.override},
+            )
+        elif args.action == "reopen":
+            store.append("exploration_reopened", {"reason": args.reason})
+        elif args.action == "guide":
+            claim_ids = list(dict.fromkeys(args.claim))
+            if not claim_ids or len(claim_ids) != len(args.claim):
+                raise ValueError("guidance needs distinct claim references")
+            reviewed: set[str] = set()
+            statuses: dict[str, ClaimStatus] = {}
+            for claim_id in claim_ids:
+                claim = state.claims.get(claim_id)
+                if claim is None:
+                    raise ValueError("guidance references unknown claim")
+                statuses[claim_id] = claim.status
+                reviewed.update(claim.supporting_evidence_ids + claim.contradicting_evidence_ids)
+            insight = ProblemInsight(
+                id=research_id("INS"),
+                title=args.title,
+                dimension=ExplorationDimension(args.dimension),
+                scope=args.scope,
+                claim_statuses=statuses,
+                evidence_ids=sorted(reviewed),
+                recommendation=args.recommend,
+                avoidance=args.avoid,
+                rationale=args.reason,
+            )
+            store.add("problem_insight_recorded", insight)
+            return {
+                "insight": insight.model_dump(mode="json"),
+                "qualification": "Advisory scoped interpretation; not a scientific fact.",
+            }
+        return readiness(store.load()[0])
     if command == "benchmark":
         manifest = (root / args.manifest).resolve()
         if not manifest.is_relative_to(root):
@@ -573,7 +754,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             ][:20],
             "top_proposals": [
                 {"id": x.proposal.id, "score": x.score, "reason": x.rationale}
-                for x in rank_proposals(state, limit=5)
+                for x in _rank_for_state(state, limit=5)
             ],
         }
     if command == "unknown":
@@ -629,7 +810,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
                 "reason": item.rationale,
                 "cost": item.proposal.estimated_cost,
             }
-            for item in rank_proposals(state, limit=args.limit)
+            for item in _rank_for_state(state, limit=args.limit)
         ]
     if command == "plan":
         return _plan(state, args.id)

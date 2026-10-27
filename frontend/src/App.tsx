@@ -25,7 +25,7 @@ type Project = {
   created_at: string; candidates: Candidate[]; events: EventRecord[]; git: GitState;
 };
 type Summary = Pick<Project, 'id' | 'name' | 'goal' | 'mode'>;
-type View = 'overview' | 'evidence' | 'graph' | 'git' | 'activity' | 'semantic';
+type View = 'overview' | 'evidence' | 'graph' | 'git' | 'activity' | 'semantic' | 'explore';
 
 async function api<T>(path: string, method = 'GET', body?: object): Promise<T> {
   const response = await fetch('/api' + path, {
@@ -45,7 +45,8 @@ const nav: { view: View; name: string; icon: typeof Activity }[] = [
   { view: 'graph', name: 'Research graph', icon: GitBranch },
   { view: 'git', name: 'Git workspace', icon: FolderGit2 },
   { view: 'activity', name: 'Activity timeline', icon: Clock3 },
-  { view: 'semantic', name: 'Semantic onboarding', icon: BookOpen }
+  { view: 'semantic', name: 'Semantic onboarding', icon: BookOpen },
+  { view: 'explore', name: 'Problem exploration', icon: Search }
 ];
 
 function Badge({ children, tone = '' }: { children: ReactNode; tone?: string }) {
@@ -197,6 +198,110 @@ function Overview({ project }: { project: Project }) {
   </section></>;
 }
 
+
+type ExplorationReport = {
+  initialized: boolean;
+  readiness: {
+    enabled: boolean; status: string; stage?: string; ready?: boolean;
+    exploration_budget_limit?: number; exploration_spent?: number;
+    exploration_remaining?: number; important_open_unknown_ids?: string[];
+    qualified_exploration_evidence_ids?: string[]; reconsideration_evidence_ids?: string[];
+  };
+  profile: {
+    dimensions: { dimension: string; insights: {
+      id: string; title: string; scope: string; status: string;
+      recommendation: string; avoidance: string; evidence_ids: string[];
+    }[] }[];
+    scoped_claims: { id: string; statement: string; status: string; scope: string }[];
+    unknowns: { id: string; question: string; status: string; decision_importance: number }[];
+  };
+  probes: {
+    dimension: string; title: string; design: string; measure: string;
+    decision_impact: string; related_unknown_ids: string[];
+  }[];
+};
+
+function ProblemExploration({ projectId }: { projectId: string }) {
+  const [report, setReport] = useState<ExplorationReport | null>(null);
+  const [reason, setReason] = useState('Investigate decision-relevant problem properties');
+  const [budgetShare, setBudgetShare] = useState('0.20');
+  const [override, setOverride] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    setReport(null); setError('');
+    api<ExplorationReport>('/projects/' + projectId + '/exploration')
+      .then(value => { if (active) setReport(value); })
+      .catch(err => { if (active) setError(String(err)); });
+    return () => { active = false; };
+  }, [projectId]);
+  async function change(action: 'enable' | 'advance' | 'reopen' | 'disable') {
+    if (!report || pending) return;
+    setPending(true); setError('');
+    try {
+      setReport(await api<ExplorationReport>(
+        '/projects/' + projectId + '/exploration', 'POST',
+        { action, reason, budget_share: Number(budgetShare), override: action === 'advance' && override }
+      ));
+      setOverride(false);
+    } catch (err) { setError(String(err)); }
+    finally { setPending(false); }
+  }
+  const gate = report?.readiness;
+  const isExploring = gate?.enabled && gate.stage === 'exploration';
+  const isOptimizing = gate?.enabled && gate.stage === 'optimization';
+  const revisit = (gate?.reconsideration_evidence_ids?.length ?? 0) > 0;
+  const canWrite = !!report?.initialized && reason.trim().length >= 8 && !pending;
+  return <section className="panel">
+    <div className="panel-head"><div><span className="eyebrow">OPT-IN SCIENTIFIC DISCOVERY</span>
+      <h3>Problem exploration</h3></div><Badge tone={gate?.enabled ? 'green' : 'muted'}>{gate?.enabled ? gate.stage : 'Disabled'}</Badge></div>
+    <p className="helper">A controlled diagnostic phase using the canonical EpiPilot evidence log. Templates and algorithm recommendations are advisory, not independently proven facts.</p>
+    {error && <p className="error" role="alert"><CircleAlert size={16}/>{error}</p>}
+    {report && !report.initialized && <div className="notice caution"><CircleAlert size={17}/> Initialize this Git repository's canonical research goal and budget with <code>epi init</code> before enabling exploration. Workspace notes do not constitute scientific evidence.</div>}
+    {report && <><div className="git-stats">
+      <div><strong>{gate?.status ?? 'Unavailable'}</strong><span>Exploration readiness</span></div>
+      <div><strong>{(gate?.exploration_spent ?? 0).toFixed(2)} / {(gate?.exploration_budget_limit ?? 0).toFixed(2)}</strong><span>Exploratory budget used</span></div>
+      <div><strong>{gate?.qualified_exploration_evidence_ids?.length ?? 0}</strong><span>Reviewed exploratory measurements</span></div>
+    </div>
+    <div className="notice"><ShieldCheck size={17}/> Unresolved critical Unknowns: {gate?.important_open_unknown_ids?.join(', ') || 'None recorded'} · Remaining exploration allocation: {(gate?.exploration_remaining ?? 0).toFixed(2)} units.</div>
+    <label>Decision rationale <input value={reason} maxLength={800} onChange={e => setReason(e.target.value)} placeholder="Why change the research stage?"/></label>
+    {!gate?.enabled && <label>Exploration budget share
+      <select value={budgetShare} onChange={e => setBudgetShare(e.target.value)}>
+        <option value="0.10">10%</option><option value="0.20">20%</option><option value="0.30">30%</option><option value="0.50">50%</option>
+      </select></label>}
+    <div className="modal-actions">
+      {!gate?.enabled && <button className="btn primary" disabled={!canWrite} onClick={() => change('enable')}>Enable exploration</button>}
+      {isExploring && <>
+        {!gate?.ready && <label><input type="checkbox" checked={override} onChange={e => setOverride(e.target.checked)}/> I authorize optimization despite unresolved or insufficient evidence.</label>}
+        <button className="btn primary" disabled={!canWrite || (!gate?.ready && !override)} onClick={() => change('advance')}>Advance to optimization</button>
+      </>}
+      {isOptimizing && <button className="btn secondary" disabled={!canWrite} onClick={() => change('reopen')}>Reopen exploration</button>}
+      {isOptimizing && revisit && <button className="btn secondary" disabled={!canWrite || !override} onClick={() => change('advance')}>Acknowledge counterevidence</button>}
+      {gate?.enabled && <button className="btn quiet" disabled={!canWrite} onClick={() => change('disable')}>Disable mode</button>}
+    </div>
+    {isOptimizing && revisit && <label><input type="checkbox" checked={override} onChange={e => setOverride(e.target.checked)}/> I acknowledge the new contradictory evidence and elect to continue optimization.</label>}
+    <div className="panel-head"><div><h3>Problem profile</h3><p className="helper">{report.profile.scoped_claims.length} reviewed scientific Claims · {report.profile.unknowns.length} registered Unknowns</p></div></div>
+    {report.profile.dimensions.length ? report.profile.dimensions.map(d =>
+      <article className="signal" key={d.dimension}><div><strong>{d.dimension.replaceAll('_', ' ')}</strong>
+        {d.insights.map(insight => <div key={insight.id}>
+          <p><Badge tone={insight.status === 'stale' ? 'amber' : 'blue'}>{insight.status}</Badge> {insight.title} · {insight.scope}</p>
+          <p>{insight.recommendation}</p>
+          {insight.avoidance && <small>Avoid: {insight.avoidance}</small>}
+          <small>Evidence: {insight.evidence_ids.join(', ')}</small>
+        </div>)}</div></article>)
+      : <div className="notice">No qualified, evidence-linked algorithm recommendations yet. Verify experiments and use <code>epi explore guide</code> to add scoped guidance.</div>}
+    <div className="panel-head"><div><h3>Diagnostic probe catalog</h3><p className="helper">Suggestions only — register experiments through existing CLI contracts.</p></div></div>
+    {report.probes.map(probe => <article className="signal" key={probe.dimension}>
+      <div><strong>{probe.title}</strong><p>{probe.design}</p>
+        <small>Measure: {probe.measure}</small>
+        <p><small>Research decision: {probe.decision_impact}</small></p>
+      </div></article>)}
+    </>}
+    {!report && !error && <p className="helper">Reading the project's scientific evidence log…</p>}
+  </section>;
+}
+
 function Timeline({ project }: { project: Project }) {
   return <section className="panel"><div className="panel-head"><div><span className="eyebrow">AUDIT EVENTS</span><h3>Research workspace timeline</h3></div><Badge>{project.events.length} recent</Badge></div>
     <div className="timeline">{project.events.map(e => <div className="event" key={e.seq}><div className="event-dot"/><div><strong>{e.kind.replaceAll('_', ' ')}</strong>
@@ -336,6 +441,7 @@ export default function App() {
           {view === 'git' && <GitPanel project={project}/>}
           {view === 'activity' && <Timeline project={project}/>}
           {view === 'semantic' && <SemanticOnboarding projectId={project.id} projectName={project.name}/>}
+          {view === 'explore' && <ProblemExploration projectId={project.id}/>}
           <footer className="footer"><GitCommitHorizontal size={14}/> Local Git is read-only · Observations are unverified · No trading</footer>
         </> : <div className="welcome"><div className="welcome-icon"><Sparkles size={29}/></div><span className="eyebrow">WELCOME TO EPIPILOT</span>
           <h1>Your research, with a memory.</h1>
