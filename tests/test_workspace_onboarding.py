@@ -178,9 +178,12 @@ def test_exploration_workspace_api_reuses_canonical_store(
     uninitialized = client.get(url)
     assert uninitialized.status_code == 200
     assert not uninitialized.json()["initialized"]
-    assert client.post(
-        url, json={"action": "enable", "reason": "Assess the problem first"}
-    ).status_code == 400
+    assert (
+        client.post(
+            url, json={"action": "enable", "reason": "Assess the problem first"}
+        ).status_code
+        == 400
+    )
 
     scientific = ResearchStore(root / ".research")
     scientific.add("goal_set", ResearchGoal(statement="Controlled experiments", budget=10))
@@ -194,9 +197,10 @@ def test_exploration_workspace_api_reuses_canonical_store(
     assert scientific.load()[0].exploration is not None
     assert not scientific.load()[0].claims
 
-    assert client.post(
-        url, json={"action": "advance", "reason": "No diagnostics yet"}
-    ).status_code == 400
+    assert (
+        client.post(url, json={"action": "advance", "reason": "No diagnostics yet"}).status_code
+        == 400
+    )
     advanced = client.post(
         url,
         json={
@@ -207,12 +211,18 @@ def test_exploration_workspace_api_reuses_canonical_store(
     )
     assert advanced.status_code == 200
     assert advanced.json()["readiness"]["stage"] == "optimization"
-    assert client.post(
-        url, json={"action": "reopen", "reason": "Reconsider before optimizing"}
-    ).status_code == 200
-    assert client.post(
-        url, json={"action": "disable", "reason": "Stop exploratory gating"}
-    ).status_code == 200
+    assert (
+        client.post(
+            url, json={"action": "reopen", "reason": "Reconsider before optimizing"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            url, json={"action": "disable", "reason": "Stop exploratory gating"}
+        ).status_code
+        == 200
+    )
     assert not client.get(url).json()["readiness"]["enabled"]
 
     created_no_repo = client.post(
