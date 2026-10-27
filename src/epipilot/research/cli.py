@@ -101,7 +101,9 @@ def _parser() -> argparse.ArgumentParser:
     explore_probes.add_argument("--limit", type=int, default=5)
     explore_guide = explore_sub.add_parser("guide", help="add evidence-linked algorithm guidance")
     explore_guide.add_argument("--title", required=True)
-    explore_guide.add_argument("--dimension", choices=[x.value for x in ExplorationDimension], required=True)
+    explore_guide.add_argument(
+        "--dimension", choices=[x.value for x in ExplorationDimension], required=True
+    )
     explore_guide.add_argument("--scope", required=True)
     explore_guide.add_argument("--claim", action="append", required=True)
     explore_guide.add_argument("--recommend", required=True)
@@ -477,7 +479,7 @@ def _next_action(state: ResearchState, *, policy: str = "heuristic") -> dict[str
                         "record decision-relevant Unknowns before experiments."
                     ),
                 }
-        elif (reopened := unseen_critical_reopenings(state)):
+        elif reopened := unseen_critical_reopenings(state):
             return {
                 "status": "exploration_reconsideration_required",
                 "new_counterevidence_ids": reopened,
@@ -672,9 +674,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         if args.action == "profile":
             return problem_profile(state)
         if args.action == "probes":
-            dimension = (
-                ExplorationDimension(args.dimension) if args.dimension is not None else None
-            )
+            dimension = ExplorationDimension(args.dimension) if args.dimension is not None else None
             return {
                 "templates": probe_templates(state, dimension=dimension, limit=args.limit),
                 "warning": "Templates require an actual Proposal and frozen experiment contract.",
