@@ -38,3 +38,12 @@ proposal; those remain in the local sidecars.
 
 The reported T1 runs are pilot evidence only. They do not establish a general
 performance advantage for EpiPilot over AgentOnly.
+
+## Expired early Actions artifacts
+
+The original Remote-Control workflow artifacts `12600135962` (run
+`40195783939`) and `12601814858` (run `40201519820`) have expired from GitHub.
+A matching local byte-for-byte ZIP backup was not verified in the bounded local
+artifact review. The sanitized repository receipts and reports are useful
+summaries, but they are not copies of those original ZIPs. This missing source
+artifact provenance does not block publishing the reviewed code and reports.
