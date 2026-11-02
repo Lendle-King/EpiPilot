@@ -1,8 +1,8 @@
 # ResearchBench-R1: exploratory calibration and P0 status
 
 Status: **P0 NOT PASSED**. No R1 agent session, private evaluation, or paid model call
-has been run. The code under `experiments/researchbench_r1` is a public diagnostic
-prototype, not a frozen research task or a hidden evaluator.
+has been run. The code under `experiments/researchbench_r1` contains public diagnostic
+prototypes, not frozen research tasks or a hidden evaluator.
 
 ## Objective and comparison
 
@@ -52,6 +52,31 @@ timestamps, nonfinite values and scores outside [0, 1]. The caller is responsibl
 binding times to the moment the candidate was produced, not the later private scoring
 time; independently establishing score validity; and freezing baseline, reference,
 normalization and failure treatment. A score alone is not evidence of provenance.
+
+## Follow-up prototypes and exploratory difficulty check
+
+`tasks.py` adds a nonpreemptive, two-server queue with a shared accelerator, plus a
+trainable regularized logistic model on synthetic feature-shift populations. Candidate
+implementations and reference answers are visible in the same source file: neither is
+a sealed task package. On 30 public cases, scheduling EDF has mean weighted tardiness
+2.1930, versus 1.1710 for the reference; the reference wins 26/30, and the paired
+difference has standard deviation 1.1714. Classification baseline error is 0.3939,
+reference error 0.1560, and a development-selected three-draw random shrinkage search
+achieves 0.2509 error; 21/30 cases obtain at least half the reference gain. This is
+strong evidence that the current simplistic classification design needs a harder and
+better-controlled formulation, not evidence of research-agent capability. Neither
+population is the hidden test and the reference is not independently implemented.
+
+The exact exploratory procedure is `python -m experiments.researchbench_r1.explore_tasks`.
+One initial run was made without the required memory monitor and exclusive lock, so it
+is retained as an exploratory protocol deviation and cannot qualify P0. It was repeated
+with `resource_guard.single_runner_lock` and `guarded_run`: return code 0, elapsed
+0.706 seconds, peak sampled whole-Mac use 75.08%, minimum sampled availability
+5.98 GiB. The monitor samples rather than enforcing a kernel limit. The new guard is
+adapted from the T1 branch, uses the same cooperating-process lock and refuses launch
+when `psutil` is unavailable. Its guard must wrap all subsequent experiments; tests
+and ordinary engineering commands are not experiment cells. Same-process lock discipline
+cannot prevent unrelated jobs from using the machine.
 
 ## P0 gates still open
 
