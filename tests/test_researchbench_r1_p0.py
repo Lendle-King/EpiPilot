@@ -82,9 +82,7 @@ def _private_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "task_id": "frozen-01",
         "kind": "classification",
         "candidate_sha256": "a" * 64,
-        "rows": [
-            {"sample_id": item.id, "prediction": predictions[item.id]} for item in data
-        ],
+        "rows": [{"sample_id": item.id, "prediction": predictions[item.id]} for item in data],
     }
     private = {
         "schema_version": 1,
@@ -101,9 +99,7 @@ def _private_fixture(tmp_path: Path) -> tuple[Path, Path]:
 
 def test_private_scorer_uses_predictions_only_and_aggregates(tmp_path: Path) -> None:
     submission, private = _private_fixture(tmp_path)
-    result = private_score_file(
-        submission, private, task_id="frozen-01", kind="classification"
-    )
+    result = private_score_file(submission, private, task_id="frozen-01", kind="classification")
     assert result["candidate_sha256"] == "a" * 64
     assert len(result["submission_sha256"]) == 64
     assert result["scores"]["worst_group_error"] >= result["scores"]["error"]
@@ -127,18 +123,14 @@ def test_private_scorer_rejects_invalid_submission(tmp_path: Path, mutation: str
         contents["rows"][0]["prediction"] = True
     submission.write_text(json.dumps(contents), encoding="utf-8")
     with pytest.raises(ValueError):
-        private_score_file(
-            submission, private, task_id="frozen-01", kind="classification"
-        )
+        private_score_file(submission, private, task_id="frozen-01", kind="classification")
 
 
 def test_private_scorer_rejects_duplicate_keys_and_oversized_file(tmp_path: Path) -> None:
     submission, private = _private_fixture(tmp_path)
     submission.write_text('{"task_id":"frozen-01","task_id":"other"}', encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate JSON key"):
-        private_score_file(
-            submission, private, task_id="frozen-01", kind="classification"
-        )
+        private_score_file(submission, private, task_id="frozen-01", kind="classification")
 
 
 def test_private_queue_scorer_never_evaluates_candidate_source() -> None:
@@ -152,9 +144,7 @@ def test_private_queue_scorer_never_evaluates_candidate_source() -> None:
         "rows": [asdict(item) for item in plan],
     }
     report = score_private_queue(submit, task_id="sched-01", private_jobs=jobs)
-    assert report["scores"]["mean_weighted_tardiness"] == pytest.approx(
-        score_queue(jobs, plan)
-    )
+    assert report["scores"]["mean_weighted_tardiness"] == pytest.approx(score_queue(jobs, plan))
     submit["rows"][0]["server"] = 9
     with pytest.raises(ValueError):
         score_private_queue(submit, task_id="sched-01", private_jobs=jobs)
@@ -171,9 +161,7 @@ def test_private_classification_rejects_leaked_label_field() -> None:
     }
     submit["rows"][0]["label"] = 1
     with pytest.raises(ValueError, match="unexpected or missing"):
-        score_private_classification(
-            submit, task_id="frozen-02", private_rows=samples
-        )
+        score_private_classification(submit, task_id="frozen-02", private_rows=samples)
 
 
 def test_public_p0_stays_blocked_even_when_baselines_execute() -> None:
