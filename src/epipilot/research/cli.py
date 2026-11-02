@@ -696,7 +696,7 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
             data = load_candidate(root, args.file)
             return {
                 "fingerprint": candidate_fingerprint(data),
-                "qualification": "Structural numeric canonicalization only; not scientific equality.",
+                "qualification": "Structural identity only; not scientific proof.",
             }
         if args.action == "screen":
             return screen_candidate(root, args.file, args.history)
