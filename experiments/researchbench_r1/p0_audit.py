@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from pathlib import Path
 from statistics import mean, stdev
 from typing import Any
@@ -53,9 +52,7 @@ def calibrate(cases_per_regime: int = 4) -> dict[str, Any]:
             "edf_loss": mean(r["edf"] for r in records),
             "wspt_loss": mean(r["wspt"] for r in records),
             "heuristic_wins": {
-                name: sum(
-                    r[name] <= min(r.values()) + 1e-9 for r in records
-                )
+                name: sum(r[name] <= min(r.values()) + 1e-9 for r in records)
                 for name in ("edf", "wspt", "hybrid")
             },
             "case_count": cases_per_regime,
@@ -78,20 +75,17 @@ def calibrate(cases_per_regime: int = 4) -> dict[str, Any]:
                 dev_score = classifier_score(dev, classifier_predictions(modified, dev))
                 candidates.append((dev_score["worst_group_error"], modified))
             selected = min(candidates, key=lambda row: row[0])[1]
-            selected_shift = classifier_score(
-                shift, classifier_predictions(selected, shift)
+            selected_shift = classifier_score(shift, classifier_predictions(selected, shift))
+            records.append(
+                {
+                    "baseline_dev_error": baseline_dev["error"],
+                    "baseline_shift_error": baseline_shift["error"],
+                    "baseline_worst_group_error": baseline_shift["worst_group_error"],
+                    "three_try_shift_error": selected_shift["error"],
+                    "three_try_worst_group_error": selected_shift["worst_group_error"],
+                }
             )
-            records.append({
-                "baseline_dev_error": baseline_dev["error"],
-                "baseline_shift_error": baseline_shift["error"],
-                "baseline_worst_group_error": baseline_shift["worst_group_error"],
-                "three_try_shift_error": selected_shift["error"],
-                "three_try_worst_group_error": selected_shift["worst_group_error"],
-            })
-        classification[regime] = {
-            name: mean(row[name] for row in records)
-            for name in records[0]
-        }
+        classification[regime] = {name: mean(row[name] for row in records) for name in records[0]}
         classification[regime]["case_count"] = cases_per_regime
 
     return {
