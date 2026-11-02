@@ -7,7 +7,6 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
-
 from experiments.researchbench_r1.p0_audit import calibrate
 from experiments.researchbench_r1.p0_tasks import (
     Placement,
@@ -44,13 +43,13 @@ def test_queue_catches_resource_conflicts_and_missing_jobs() -> None:
     baseline = queue_baseline(jobs)
     with pytest.raises(ValueError, match="every job"):
         score_queue(jobs, baseline[:-1])
-    duplicated = baseline[:-1] + (baseline[0],)
+    duplicated = (*baseline[:-1], baseline[0])
     with pytest.raises(ValueError, match="duplicate or missing"):
         score_queue(jobs, duplicated)
-    early = (Placement(baseline[0].job_id, 0, -1.0),) + baseline[1:]
+    early = (Placement(baseline[0].job_id, 0, -1.0), *baseline[1:])
     with pytest.raises(ValueError, match="early start"):
         score_queue(jobs, early)
-    wrong_server = (Placement(baseline[0].job_id, 7, baseline[0].start),) + baseline[1:]
+    wrong_server = (Placement(baseline[0].job_id, 7, baseline[0].start), *baseline[1:])
     with pytest.raises(ValueError, match="invalid server"):
         score_queue(jobs, wrong_server)
     assert jobs[0].duration > 0
@@ -186,6 +185,5 @@ def test_same_user_lock_does_not_depend_on_runner_temp(
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path / "runner-one"))
     with single_runner_lock():
         monkeypatch.setenv("RUNNER_TEMP", str(tmp_path / "runner-two"))
-        with pytest.raises(ResourceRefusal, match="already owns"):
-            with single_runner_lock():
-                pass
+        with pytest.raises(ResourceRefusal, match="already owns"), single_runner_lock():
+            pass
