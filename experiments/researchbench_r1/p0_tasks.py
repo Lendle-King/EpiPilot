@@ -189,13 +189,13 @@ def logistic_baseline(
                 row.stable_a * row.stable_b,
                 row.group * row.stable_a,
             )
-            z = max(-30.0, min(30.0, sum(w * x for w, x in zip(weights, features))))
+            z = max(-30.0, min(30.0, sum(w * x for w, x in zip(weights, features, strict=True))))
             p = 1.0 / (1.0 + math.exp(-z))
             for index, x in enumerate(features):
                 grad[index] += (p - row.label) * x
         weights = [
             w - 0.23 * (g / len(train) + (0.0 if i == 0 else regularization * w))
-            for i, (w, g) in enumerate(zip(weights, grad))
+            for i, (w, g) in enumerate(zip(weights, grad, strict=True))
         ]
     return tuple(weights)
 
@@ -215,7 +215,7 @@ def classifier_predictions(
             row.stable_a * row.stable_b,
             row.group * row.stable_a,
         )
-        result[row.id] = int(sum(w * x for w, x in zip(weights, features)) >= 0)
+        result[row.id] = int(sum(w * x for w, x in zip(weights, features, strict=True)) >= 0)
     return result
 
 
