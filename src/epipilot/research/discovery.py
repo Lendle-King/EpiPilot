@@ -122,8 +122,7 @@ def discovery_frontier(state: ResearchState) -> dict[str, object]:
         qualified_ids = [
             evidence_id
             for evidence_id in cited_ids
-            if evidence_id in state.evidence
-            and state.evidence[evidence_id].measurement_validated
+            if evidence_id in state.evidence and state.evidence[evidence_id].measurement_validated
         ]
         claims.append(
             {
@@ -160,9 +159,7 @@ def discovery_frontier(state: ResearchState) -> dict[str, object]:
     }
 
 
-def rank_diagnostic_probes(
-    state: ResearchState, matrix: HypothesisMatrix
-) -> dict[str, object]:
+def rank_diagnostic_probes(state: ResearchState, matrix: HypothesisMatrix) -> dict[str, object]:
     """Prioritize qualitative discrimination, never invent probability or information gain."""
     if state.goal is None:
         raise ValueError("diagnostic design requires an approved research goal")
@@ -192,10 +189,7 @@ def rank_diagnostic_probes(
     pairs = list(combinations(matrix.hypothesis_ids, 2))
     ranked: list[RankedDiagnostic] = []
     for probe in matrix.probes:
-        distinct = sum(
-            probe.predictions[left] != probe.predictions[right]
-            for left, right in pairs
-        )
+        distinct = sum(probe.predictions[left] != probe.predictions[right] for left, right in pairs)
         feasible = probe.estimated_cost <= available + 1e-9
         reason = "within_budget" if feasible else "over_budget"
         ranked.append(
