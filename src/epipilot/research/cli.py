@@ -13,6 +13,11 @@ from pydantic import ValidationError
 
 from epipilot.core.models import utc_now
 from epipilot.research.benchmark import compare_suite
+from epipilot.research.candidate_identity import (
+    candidate_fingerprint,
+    load_candidate,
+    screen_candidate,
+)
 from epipilot.research.decision_models import DecisionEstimate
 from epipilot.research.decision_value import rank_decision
 from epipilot.research.discovery import (
@@ -93,6 +98,14 @@ def _parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--manifest", type=Path, required=True)
     benchmark.add_argument("--min-cases", type=int, default=2)
     sub.add_parser("doctor", help="replay the event stream and diagnose pending work")
+
+    candidate = sub.add_parser("candidate", help="check exact JSON candidate identity")
+    candidate_sub = candidate.add_subparsers(dest="action", required=True)
+    fingerprint = candidate_sub.add_parser("fingerprint", help="canonical candidate SHA-256")
+    fingerprint.add_argument("--file", type=Path, required=True)
+    screen = candidate_sub.add_parser("screen", help="detect repeats in a local candidate history")
+    screen.add_argument("--file", type=Path, required=True)
+    screen.add_argument("--history", type=Path, required=True)
 
     explore = sub.add_parser("explore", help="opt-in problem characterization before optimization")
     explore_sub = explore.add_subparsers(dest="action", required=True)
@@ -678,6 +691,16 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         }
     if command == "status":
         return _status(state)
+    if command == "candidate":
+        if args.action == "fingerprint":
+            data = load_candidate(root, args.file)
+            return {
+                "fingerprint": candidate_fingerprint(data),
+                "qualification": "Structural numeric canonicalization only; not scientific equality.",
+            }
+        if args.action == "screen":
+            return screen_candidate(root, args.file, args.history)
+        raise ValueError(f"unknown candidate action: {args.action}")
     if command == "explore":
         if args.action == "status":
             return readiness(state)
