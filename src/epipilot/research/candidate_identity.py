@@ -78,9 +78,7 @@ def load_candidate(root: Path, path: Path) -> dict[str, Any]:
     return data
 
 
-def screen_candidate(
-    root: Path, candidate_path: Path, history_path: Path
-) -> dict[str, object]:
+def screen_candidate(root: Path, candidate_path: Path, history_path: Path) -> dict[str, object]:
     """Determine whether candidate is already present in a local configuration history."""
     current = load_candidate(root, candidate_path)
     history = _read_candidate_json(root, history_path, 2 * 1024 * 1024)
@@ -90,9 +88,7 @@ def screen_candidate(
         raise ValueError("candidate history entries must be JSON objects")
     current_key = candidate_fingerprint(current)
     duplicate_indices = [
-        index
-        for index, item in enumerate(history)
-        if candidate_fingerprint(item) == current_key
+        index for index, item in enumerate(history) if candidate_fingerprint(item) == current_key
     ]
     return {
         "fingerprint": current_key,
