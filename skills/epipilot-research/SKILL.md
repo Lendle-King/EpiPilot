@@ -54,6 +54,12 @@ spawn another coding agent or pretend that the CLI runs experiments autonomously
 5. Use `epi propose` to add useful discriminative experiments (including controls,
    risk, estimated cost, information gain and likely follow-on value). Estimates
    are heuristics, not calibrated probabilities.
+5a. Before training a newly selected algorithm configuration, normalize and
+   screen it against the project's already measured candidate JSON history
+   using `epi candidate screen --file CANDIDATE --history HISTORY`. If the
+   tool identifies a repeat, check the existing verified result instead of
+   fitting it again. This only catches structural numeric equivalence; the
+   agent must separately reason about task-specific semantic equivalence.
 6. Run `epi iterate`. If status is running, start, verify or blocked, handle that
    existing work first instead of spawning a duplicate. Otherwise select a
    proposal and implement necessary source changes before experiment registration.
