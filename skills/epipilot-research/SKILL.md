@@ -34,6 +34,13 @@ spawn another coding agent or pretend that the CLI runs experiments autonomously
    and `epi explore probes` before algorithm optimization. Diagnose
    decision-relevant properties via competing explanations and preregistered
    `--kind explore` experiments; do not treat probe templates as results.
+   Run `epi explore frontier` to inspect which canonical Unknowns, scoped
+   Claims and evidence actually exist. For two or more competing explanations,
+   draft a local hypothesis matrix as described in docs/RESEARCH_DISCOVERY_CORE.md,
+   then run `epi explore discriminate --file PATH` to compare observable
+   predictions and available diagnostic budgets. Prefer designs that distinguish
+   explanations; do not mistake categorical disagreement for a calibrated EVSI
+   or execute a draft without `epi propose` and a frozen research contract.
    After substantive verification and linked Claim review, optionally record
    a scoped recommendation with `epi explore guide`, then inspect
    `epi explore profile`. Only use `epi explore advance --reason ...`
@@ -47,6 +54,12 @@ spawn another coding agent or pretend that the CLI runs experiments autonomously
 5. Use `epi propose` to add useful discriminative experiments (including controls,
    risk, estimated cost, information gain and likely follow-on value). Estimates
    are heuristics, not calibrated probabilities.
+5a. Before training a newly selected algorithm configuration, normalize and
+   screen it against the project's already measured candidate JSON history
+   using `epi candidate screen --file CANDIDATE --history HISTORY`. If the
+   tool identifies a repeat, check the existing verified result instead of
+   fitting it again. This only catches structural numeric equivalence; the
+   agent must separately reason about task-specific semantic equivalence.
 6. Run `epi iterate`. If status is running, start, verify or blocked, handle that
    existing work first instead of spawning a duplicate. Otherwise select a
    proposal and implement necessary source changes before experiment registration.

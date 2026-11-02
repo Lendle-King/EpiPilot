@@ -13,8 +13,18 @@ from pydantic import ValidationError
 
 from epipilot.core.models import utc_now
 from epipilot.research.benchmark import compare_suite
+from epipilot.research.candidate_identity import (
+    candidate_fingerprint,
+    load_candidate,
+    screen_candidate,
+)
 from epipilot.research.decision_models import DecisionEstimate
 from epipilot.research.decision_value import rank_decision
+from epipilot.research.discovery import (
+    discovery_frontier,
+    load_hypothesis_matrix,
+    rank_diagnostic_probes,
+)
 from epipilot.research.exploration import (
     ensure_action_allowed,
     readiness,
@@ -89,6 +99,14 @@ def _parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--min-cases", type=int, default=2)
     sub.add_parser("doctor", help="replay the event stream and diagnose pending work")
 
+    candidate = sub.add_parser("candidate", help="check exact JSON candidate identity")
+    candidate_sub = candidate.add_subparsers(dest="action", required=True)
+    fingerprint = candidate_sub.add_parser("fingerprint", help="canonical candidate SHA-256")
+    fingerprint.add_argument("--file", type=Path, required=True)
+    screen = candidate_sub.add_parser("screen", help="detect repeats in a local candidate history")
+    screen.add_argument("--file", type=Path, required=True)
+    screen.add_argument("--history", type=Path, required=True)
+
     explore = sub.add_parser("explore", help="opt-in problem characterization before optimization")
     explore_sub = explore.add_subparsers(dest="action", required=True)
     explore_enable = explore_sub.add_parser("enable", help="start the exploratory phase")
@@ -96,6 +114,11 @@ def _parser() -> argparse.ArgumentParser:
     explore_enable.add_argument("--reason", default="User opted into problem exploration mode")
     explore_sub.add_parser("status", help="show exploration budget and readiness gate")
     explore_sub.add_parser("profile", help="show scoped claims and algorithm guidance")
+    explore_sub.add_parser("frontier", help="project the evidence-linked research frontier")
+    discriminate = explore_sub.add_parser(
+        "discriminate", help="rank scoped, competing-hypothesis diagnostic drafts"
+    )
+    discriminate.add_argument("--file", type=Path, required=True)
     explore_probes = explore_sub.add_parser("probes", help="suggest diagnostic experiment designs")
     explore_probes.add_argument("--dimension", choices=[x.value for x in ExplorationDimension])
     explore_probes.add_argument("--limit", type=int, default=5)
@@ -668,11 +691,26 @@ def _dispatch(args: argparse.Namespace, store: ResearchStore, root: Path) -> obj
         }
     if command == "status":
         return _status(state)
+    if command == "candidate":
+        if args.action == "fingerprint":
+            data = load_candidate(root, args.file)
+            return {
+                "fingerprint": candidate_fingerprint(data),
+                "qualification": "Structural identity only; not scientific proof.",
+            }
+        if args.action == "screen":
+            return screen_candidate(root, args.file, args.history)
+        raise ValueError(f"unknown candidate action: {args.action}")
     if command == "explore":
         if args.action == "status":
             return readiness(state)
         if args.action == "profile":
             return problem_profile(state)
+        if args.action == "frontier":
+            return discovery_frontier(state)
+        if args.action == "discriminate":
+            matrix = load_hypothesis_matrix(root, args.file)
+            return rank_diagnostic_probes(state, matrix)
         if args.action == "probes":
             dimension = ExplorationDimension(args.dimension) if args.dimension is not None else None
             return {

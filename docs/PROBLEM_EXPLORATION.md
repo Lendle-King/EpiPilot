@@ -23,6 +23,12 @@ epi iterate
 epi explore profile
 ~~~
 
+For explicit competing scientific explanations, use `epi explore frontier`
+first, then a locally authored hypothesis matrix via
+`epi explore discriminate --file diagnostic-matrix.json`. This is an advisory
+read-only ranking of categorical predicted observations, **not** measured
+information gain or permission to spend. See [Scientific Discovery Core](RESEARCH_DISCOVERY_CORE.md).
+
 The catalog has eight kinds of suggested probes: evaluator repeatability,
 bottleneck ablations, solution-space perturbation, matched conditionals,
 interaction tests, oracle/upper bounds, robustness and cost-response frontiers.

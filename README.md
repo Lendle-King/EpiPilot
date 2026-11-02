@@ -43,6 +43,7 @@ The research skill/CLI currently provides:
 - **Persistent research memory:** goals, constraints, unknowns, scoped claims, proposals, experiments, and linked evidence in a replay-validated append-only log.
 - **Cost-aware prioritization:** explicit information-gain, expected-improvement, cost, risk, novelty, and dependency signals; a deterministic two-step heuristic with a discounted follow-on value.
 - **Exploration-to-optimization balance:** heuristic phase selection based on remaining uncertainty and independently checked evidence, not a fixed number of iterations.
+- **Evidence-linked diagnostic design (experimental):** `epi explore frontier` projects canonical scoped hypotheses; `epi explore discriminate --file ...` ranks controlled, qualitative hypothesis-separating probes without executing or claiming measured information gain. See [Discovery Core](docs/RESEARCH_DISCOVERY_CORE.md).
 - **Frozen experimental protocols:** preregister metrics, thresholds, controls, Git revision, config/data fingerprints, cost ceiling and verifier argv before execution. Reserve budget at start; record actual costs even after overruns.
 - **Layered evidence gates:** confirm reproducible artifacts, independently parse measured metrics and run the frozen checker; the linked, conclusive result may then support a provisional claim. Syntax checks alone are not scientific proof.
 - **Failure recovery:** surface blocked, running and awaiting-verification studies, require a recorded corrective strategy for retries, and limit repeated failures.
