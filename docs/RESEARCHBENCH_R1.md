@@ -1,6 +1,22 @@
 # ResearchBench-R1: exploratory calibration and P0 status
 
-Status: **P0 NOT PASSED**. No R1 agent session, private evaluation, or paid model call
+Status: **P0 NOT PASSED**.
+
+## P0 hardening checkpoint (2026-11-02)
+
+The new zero-model, reference-free calibration and prediction-only evaluator
+contract live in [RESEARCHBENCH_R1_P0_HARDENING.md](RESEARCHBENCH_R1_P0_HARDENING.md).
+They introduce multi-regime schedule legality checks, trainable shift baselines,
+a development-only fixed small-search comparator, strict per-row private
+scoring, a guarded P0 diagnostic launcher and fail-closed readiness report.
+The old exploratory numbers below remain immutable historical observations.
+
+These additions **do not** constitute an independent reference implementation
+or a security-isolated private evaluator. Run the adversarial scorer isolation
+audit and private task calibration before an operator can mark P0 passed.
+The official private P1 controller and research-policy comparisons have not run.
+
+ No R1 agent session, private evaluation, or paid model call
 has been run. The code under `experiments/researchbench_r1` contains public diagnostic
 prototypes, not frozen research tasks or a hidden evaluator.
 
