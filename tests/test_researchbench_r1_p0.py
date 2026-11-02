@@ -187,3 +187,18 @@ def test_same_user_lock_does_not_depend_on_runner_temp(
         monkeypatch.setenv("RUNNER_TEMP", str(tmp_path / "runner-two"))
         with pytest.raises(ResourceRefusal, match="already owns"), single_runner_lock():
             pass
+
+
+@pytest.mark.parametrize("strategy", ["edf", "wspt", "hybrid"])
+def test_queue_baseline_does_not_delay_available_jobs_for_future_jobs(strategy: str) -> None:
+    from experiments.researchbench_r1.p0_tasks import Job
+
+    jobs = (
+        Job("available-a", 0.0, 2.0, 10.0, 1.0, False),
+        Job("available-b", 0.0, 2.0, 10.0, 1.0, False),
+        Job("future-high-priority", 100.0, 0.5, 101.0, 1000.0, False),
+    )
+    placements = {p.job_id: p for p in queue_baseline(jobs, strategy)}
+    assert placements["available-a"].start == 0
+    assert placements["available-b"].start == 0
+    assert score_queue(jobs, tuple(placements.values())) == 0

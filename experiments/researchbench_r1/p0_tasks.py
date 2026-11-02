@@ -7,6 +7,7 @@ candidate interface, never private test labels or evaluation seeds.
 
 from __future__ import annotations
 
+import heapq
 import math
 import random
 from dataclasses import dataclass
@@ -124,20 +125,36 @@ def queue_baseline(
         slack = max(0.1, job.deadline - job.release - job.duration)
         return job.duration / job.weight + 0.2 * slack, job.id
 
-    available = [0.0, 0.0]
-    accelerator_free = 0.0
+    # Dispatch only released jobs onto currently idle servers. Future jobs must
+    # never reserve a server or accelerator before they arrive.
+    arrivals = sorted(jobs, key=lambda job: (job.release, job.id))
+    waiting: list[Job] = []
+    running: list[tuple[float, int, bool]] = []
     plan: list[Placement] = []
-    for job in sorted(jobs, key=priority):
-        candidates = [
-            (max(job.release, free, accelerator_free if job.accelerator else 0.0), server)
-            for server, free in enumerate(available)
-        ]
-        start, server = min(candidates)
-        finish = start + job.duration
-        available[server] = finish
-        if job.accelerator:
-            accelerator_free = finish
-        plan.append(Placement(job.id, server, start))
+    cursor = 0
+    clock = 0.0
+    while cursor < len(arrivals) or waiting or running:
+        while running and running[0][0] <= clock:
+            heapq.heappop(running)
+        while cursor < len(arrivals) and arrivals[cursor].release <= clock:
+            waiting.append(arrivals[cursor])
+            cursor += 1
+        while len(running) < 2:
+            accelerator_busy = any(accelerator for _, _, accelerator in running)
+            eligible = [job for job in waiting if not (job.accelerator and accelerator_busy)]
+            if not eligible:
+                break
+            job = min(eligible, key=priority)
+            waiting.remove(job)
+            busy_servers = {server for _, server, _ in running}
+            server = min({0, 1} - busy_servers)
+            plan.append(Placement(job.id, server, clock))
+            heapq.heappush(running, (clock + job.duration, server, job.accelerator))
+        future = [arrivals[cursor].release] if cursor < len(arrivals) else []
+        if running:
+            future.append(running[0][0])
+        if future:
+            clock = min(future)
     return tuple(plan)
 
 

@@ -191,3 +191,47 @@ mypy src
 pytest -q tests/test_researchbench_r1.py tests/test_researchbench_r1_p0.py
 pytest
 ~~~
+
+## Public Mac calibration, 2026-11-02
+
+The first four-cases-per-regime guarded run used revision
+`1dbe23437952c7d74af990dc9cbf182e3d917e85` and saved
+`/private/tmp/r1-p0-first.json` (SHA-256
+`53c46ed4131e04e28a2b6931e564a80106dd17a2b50d530fa88d65ba9151fe6b`).
+The process returned the expected 2, with 0.713 seconds and peak sampled memory
+75.19%. All 12 queue cases ranked EDF first. This scheduling comparison is
+**invalidated as a comparison of online policies**: the original implementation
+sorted all jobs by priority even before release, causing future jobs to reserve
+resources and unnecessarily delaying available work. The receipt is retained,
+not rewritten.
+
+The corrected implementation chooses among released, resource-eligible jobs at
+each arrival or completion. The regression tests demonstrate the former defect.
+A second guarded run on the same public seeds produced
+`/private/tmp/r1-p0-online-formatted.json` (SHA-256
+`db9f9154cd7a5d0847d4776240eb7e2a4d44cd3bbde2b5c404178361c967bc77`);
+the exact `p0_tasks.py` SHA-256 at measurement time was
+`9b4e1b66fdafcc92fb22bfe1efc2c39b07260f541b31b91680aff9dc8bfc6497`.
+Its expected exit code was 2, elapsed time 0.712 seconds, and peak sampled
+whole-host usage 75.15%. The intermediate pre-format run has identical JSON.
+Both outputs remain local; source hashes and metrics here provide a compact
+index rather than a hidden or independent evaluation.
+
+| Public regime | EDF loss | WSPT loss | Hybrid loss | Wins EDF/WSPT/Hybrid |
+| --- | ---: | ---: | ---: | ---: |
+| tight | 16.881 | 5.829 | 5.874 | 0/4/0 |
+| contention | 9.729 | 4.412 | 4.491 | 0/3/1 |
+| weighted | 4.033 | 1.465 | 1.469 | 2/2/0 |
+
+The four-case samples are too small to establish stable regime reversals or
+reference quality. In classification, baseline versus three-candidate control
+worst-group error was 0.572 versus 0.183 (spurious), 0.410 versus 0.179
+(interaction), and 0.601 versus 0.193 (mixed). No independent reference gap is
+available, so the fraction of a reference gap captured cannot be computed.
+The cheap control's large gains justify further difficulty investigation; they
+do not establish an R1 result. No model calls, private labels, private scoring,
+or paid pilot ran. P0 remains blocked on the gates above.
+
+After this measurement, the equivalent expression `set((0, 1))` was changed
+to `{0, 1}` to satisfy lint. The measurement's source digest above remains the
+actual measured bytes, not the post-lint source digest.
