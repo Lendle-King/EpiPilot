@@ -34,8 +34,12 @@ def _state() -> ResearchState:
             "U": Unknown(id="U", question="Why does the benchmark saturate?", importance=0.9)
         },
         claims={
-            "A": Claim(id="A", scope="fixed development split", statement="No useful algorithm gap"),
-            "B": Claim(id="B", scope="fixed development split", statement="Gap appears on hard cases"),
+            "A": Claim(
+                id="A", scope="fixed development split", statement="No useful algorithm gap"
+            ),
+            "B": Claim(
+                id="B", scope="fixed development split", statement="Gap appears on hard cases"
+            ),
             "C": Claim(id="C", scope="fixed development split", statement="Noise masks the gap"),
         },
     )
@@ -165,8 +169,7 @@ def test_cli_diagnostic_preview_does_not_write_state(
     assert main(["--root", str(tmp_path), "explore", "frontier"]) == 0
     assert "scoped_claims" in capsys.readouterr().out
     assert (
-        main(["--root", str(tmp_path), "explore", "discriminate", "--file", "hypothesis.json"])
-        == 0
+        main(["--root", str(tmp_path), "explore", "discriminate", "--file", "hypothesis.json"]) == 0
     )
     result = json.loads(capsys.readouterr().out)
     assert result["ranked_probes"][0]["id"] == "strong"
