@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 from math import isfinite
+from pathlib import Path
 from typing import Any
 
 
