@@ -107,8 +107,9 @@ def inspect_host(policy: GuardPolicy = POLICY) -> ResourceSnapshot:
 @contextlib.contextmanager
 def single_runner_lock() -> Iterator[None]:
     """Only one cooperating T1 or R1 controller may use the Mac at a time."""
-    base = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir())
-    base.mkdir(parents=True, exist_ok=True)
+    # A stable per-user lock must not change with RUNNER_TEMP per workflow/job.
+    base = Path.home() / ".epipilot" / "locks"
+    base.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = base / "epipilot_t1_agent_exclusive.lock"
     with lock.open("a+b") as stream:
         try:
