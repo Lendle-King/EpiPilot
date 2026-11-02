@@ -187,3 +187,50 @@ def test_cli_rejects_outside_file_and_duplicate_keys(
     data.write_text('{"unknown_id":"U","unknown_id":"U"}', encoding="utf-8")
     assert main(["--root", str(tmp_path), "explore", "discriminate", "--file", "bad.json"]) == 2
     assert "duplicate diagnostic JSON property" in capsys.readouterr().err
+
+
+def test_candidate_screen_cli_prevents_structural_repeat(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    current = tmp_path / "candidate.json"
+    history = tmp_path / "history.json"
+    current.write_text('{"model":"logistic","C":1.0}', encoding="utf-8")
+    history.write_text(
+        '[{"C":1,"model":"logistic"},{"C":0.7,"model":"logistic"}]',
+        encoding="utf-8",
+    )
+    assert (
+        main(
+            [
+                "--root",
+                str(tmp_path),
+                "candidate",
+                "screen",
+                "--file",
+                "candidate.json",
+                "--history",
+                "history.json",
+            ]
+        )
+        == 0
+    )
+    report = json.loads(capsys.readouterr().out)
+    assert report["duplicate"] is True
+    assert report["duplicate_indices"] == [0]
+    assert report["history_count"] == 2
+
+    assert (
+        main(
+            [
+                "--root",
+                str(tmp_path),
+                "candidate",
+                "fingerprint",
+                "--file",
+                "candidate.json",
+            ]
+        )
+        == 0
+    )
+    key_report = json.loads(capsys.readouterr().out)
+    assert report["fingerprint"] == key_report["fingerprint"]
