@@ -64,8 +64,10 @@ def _identity(submission: dict[str, Any], *, task_id: str, kind: str) -> None:
     if submission["task_id"] != task_id or submission["kind"] != kind:
         raise ValueError("submission targets a different frozen task")
     fingerprint = submission["candidate_sha256"]
-    if not isinstance(fingerprint, str) or len(fingerprint) != 64 or any(
-        char not in "0123456789abcdef" for char in fingerprint
+    if (
+        not isinstance(fingerprint, str)
+        or len(fingerprint) != 64
+        or any(char not in "0123456789abcdef" for char in fingerprint)
     ):
         raise ValueError("missing candidate SHA-256 provenance")
     rows = submission["rows"]
@@ -106,17 +108,17 @@ def score_private_queue(
             raise ValueError("placement row is not an object")
         _strict_keys(row, {"job_id", "server", "start"})
         job_id, server, start = row["job_id"], row["server"], row["start"]
-        if not isinstance(job_id, str) or type(server) is not int or (
-            isinstance(start, bool) or not isinstance(start, (int, float))
+        if (
+            not isinstance(job_id, str)
+            or type(server) is not int
+            or (isinstance(start, bool) or not isinstance(start, (int, float)))
         ):
             raise ValueError("invalid placement values")
         if not math.isfinite(start):
             raise ValueError("nonfinite placement time")
         placements.append(Placement(job_id, server, float(start)))
     value = score_queue(private_jobs, tuple(placements))
-    return {"task_id": task_id, "kind": "scheduling", "scores": {
-        "mean_weighted_tardiness": value
-    }}
+    return {"task_id": task_id, "kind": "scheduling", "scores": {"mean_weighted_tardiness": value}}
 
 
 def private_score_file(
@@ -171,9 +173,7 @@ def private_score_file(
                 if not math.isfinite(row[key]):
                     raise ValueError("nonfinite job field")
             jobs.append(Job(**row))
-        result = score_private_queue(
-            submission, task_id=task_id, private_jobs=tuple(jobs)
-        )
+        result = score_private_queue(submission, task_id=task_id, private_jobs=tuple(jobs))
     else:
         raise ValueError("unsupported task type")
     return {
