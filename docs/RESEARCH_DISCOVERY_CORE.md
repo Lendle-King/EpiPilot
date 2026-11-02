@@ -86,6 +86,23 @@ baseline/verifier details in a preregistration, reserve resources, run the
 study, independently verify measurements, then explicitly update Claim and
 Unknown state. Failed and inconclusive studies are retained.
 
+## Avoid numeric-equivalent retraining
+
+Before paying for a full experiment, the existing coding agent can check
+candidate identity against its own **local JSON configuration history**:
+
+~~~bash
+epi candidate fingerprint --file candidate.json
+epi candidate screen --file candidate.json --history candidate-history.json
+~~~
+
+The history file contains a JSON array of complete candidate configurations,
+not fabricated research outcomes. The command catches structural equivalence
+including numerical 1 vs 1.0, reports matching indices and does **not** run
+training or modify experiment artifacts. Domain-specific aliases and run
+fingerprints still require an explicit check, and the existing budget/experiment
+gate remains authoritative.
+
 ## Integrity boundaries
 
 - The comparison JSON is loaded from a bounded, local path inside the
