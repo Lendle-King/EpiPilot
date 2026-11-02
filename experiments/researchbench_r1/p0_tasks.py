@@ -54,8 +54,10 @@ def generate_queue(seed: int, regime: QueueRegime, count: int = 80) -> tuple[Job
         clock += rng.expovariate(1.0 / (0.38 if regime == "tight" else 0.57))
         duration = rng.uniform(0.35, 2.0)
         slack = rng.uniform(0.15, 1.3) if regime == "tight" else rng.uniform(1.0, 4.3)
-        weight = rng.choice((1.0, 2.0, 9.0)) if regime == "weighted" else (
-            7.0 if rng.random() < 0.2 else 1.0
+        weight = (
+            rng.choice((1.0, 2.0, 9.0))
+            if regime == "weighted"
+            else (7.0 if rng.random() < 0.2 else 1.0)
         )
         jobs.append(
             Job(
@@ -84,8 +86,12 @@ def score_queue(jobs: tuple[Job, ...], plan: tuple[Placement, ...]) -> float:
         if item.server not in servers or not math.isfinite(item.start):
             raise ValueError("invalid server or start time")
         job = indexed[item.job_id]
-        if not (math.isfinite(job.release) and math.isfinite(job.duration)
-                and math.isfinite(job.deadline) and math.isfinite(job.weight)):
+        if not (
+            math.isfinite(job.release)
+            and math.isfinite(job.duration)
+            and math.isfinite(job.deadline)
+            and math.isfinite(job.weight)
+        ):
             raise ValueError("nonfinite job")
         if job.duration <= 0 or job.weight <= 0 or item.start + 1e-8 < job.release:
             raise ValueError("invalid duration, weight or early start")
@@ -139,9 +145,11 @@ def generate_shift(
     seed: int, regime: ShiftRegime, split: Literal["train", "dev", "shift"], count: int
 ) -> tuple[Observation, ...]:
     """Public calibration generator; exclude its code and parameterization from agent bundle."""
-    if regime not in ("spurious", "interaction", "mixed") or split not in (
-        "train", "dev", "shift"
-    ) or not 40 <= count <= 5000:
+    if (
+        regime not in ("spurious", "interaction", "mixed")
+        or split not in ("train", "dev", "shift")
+        or not 40 <= count <= 5000
+    ):
         raise ValueError("invalid classification population")
     rng = random.Random(seed)
     samples: list[Observation] = []
@@ -173,8 +181,14 @@ def logistic_baseline(
     for _ in range(125):
         grad = [0.0] * len(weights)
         for row in train:
-            features = (1.0, row.stable_a, row.stable_b, row.nuisance,
-                        row.stable_a * row.stable_b, row.group * row.stable_a)
+            features = (
+                1.0,
+                row.stable_a,
+                row.stable_b,
+                row.nuisance,
+                row.stable_a * row.stable_b,
+                row.group * row.stable_a,
+            )
             z = max(-30.0, min(30.0, sum(w * x for w, x in zip(weights, features))))
             p = 1.0 / (1.0 + math.exp(-z))
             for index, x in enumerate(features):
@@ -193,8 +207,14 @@ def classifier_predictions(
         raise ValueError("invalid classifier")
     result: dict[str, int] = {}
     for row in rows:
-        features = (1.0, row.stable_a, row.stable_b, row.nuisance,
-                    row.stable_a * row.stable_b, row.group * row.stable_a)
+        features = (
+            1.0,
+            row.stable_a,
+            row.stable_b,
+            row.nuisance,
+            row.stable_a * row.stable_b,
+            row.group * row.stable_a,
+        )
         result[row.id] = int(sum(w * x for w, x in zip(weights, features)) >= 0)
     return result
 
@@ -210,9 +230,7 @@ def classifier_score(
         raise ValueError("missing, extra or invalid predictions")
     errors = [float(predictions[row.id] != row.label) for row in rows]
     by_group = {
-        group: [
-            float(predictions[row.id] != row.label) for row in rows if row.group == group
-        ]
+        group: [float(predictions[row.id] != row.label) for row in rows if row.group == group]
         for group in (0, 1)
     }
     if not all(by_group.values()):
