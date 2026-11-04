@@ -1,0 +1,31 @@
+{
+  "benchmark_provider_calls": 0,
+  "provider_billed_usd": 0,
+  "provider_tokens": 0,
+  "interactive_coding_session_tokens_and_cost": null,
+  "host_electricity_and_installation_cost": null,
+  "real_training_experiments": 0,
+  "gpu_seconds": 0,
+  "engineering_cells_total": 21,
+  "failed_engineering_cells": 6,
+  "native_cpu_seconds_observed": 22.169552,
+  "process_wall_seconds_observed": 38.798922955524176,
+  "build_cpu_and_wall_seconds": null,
+  "final_normal_and_crash": {
+    "cells": 8,
+    "mock_attempts": 28,
+    "synthetic_dev_trials": 16,
+    "intentional_trial_failures": 4,
+    "native_cpu_seconds": 8.819994,
+    "per_cell_prediction_export_executions": 1,
+    "real_duplicate_experiments": 0,
+    "scientific_hidden_quality": null,
+    "AURP": null
+  },
+  "negative_security_probes": {
+    "boundary_exit": 0,
+    "timeout_exit": 124,
+    "oom_exit": 137
+  },
+  "note": "Synthetic plumbing only; missing resource/billing fields are not zero-cost claims."
+}

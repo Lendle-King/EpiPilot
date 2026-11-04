@@ -1,6 +1,9 @@
 # Benchmark-First: evaluate mature research agents before evolving EpiPilot
 
-**Status:** S0 infrastructure only; **no models or third-party agent scripts have been run**.
+**Status:** S0 engineering adapters and controlled offline native smoke are now available;
+**zero benchmark provider calls**. The overall S0 gate remains FAIL. See
+[the S0 gate report](benchmark_first/S0_GATE_REPORT.md) for pinned sources,
+actual receipts, known gaps and the unstarted S1 design.
 This branch does not select a winning agent, supersede the existing research plugin,
 prove an isolated evaluator, or retrospectively modify the ResearchBench-T1/R1 data.
 
@@ -63,10 +66,11 @@ Source/adapter qualification --> task-scoped agent worktrees
 ```
 
 Existing `epi benchmark` remains a descriptive scalar results comparator.
-New `epi-benchmark` is a provider-neutral S0 schema/source checker and
-offline S1-style **receipt analysis**. It does not execute candidate agents,
-start experimental training, authenticate GitHub, or meter actual provider
-calls. That runner is the server-agent implementation step specified in
+The `validate`, `preflight` and `compare` commands remain provider-neutral schema/source
+checks and descriptive receipt analysis. New `s0-run` executes pinned native cores
+with scripted model responses in offline Docker; `s0-reconcile` settles interruptions
+without retrying. Neither starts real training, authenticates a provider, meters paid
+requests or authorizes S1. See the implementation checklist in
 [SERVER_CODING_AGENT_BENCHMARK_FIRST.md](SERVER_CODING_AGENT_BENCHMARK_FIRST.md).
 
 ### CLI
