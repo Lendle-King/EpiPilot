@@ -32,12 +32,27 @@ def parser() -> argparse.ArgumentParser:
     compare = sub.add_parser("compare", help="descriptive, complete-paired result audit")
     compare.add_argument("--manifest", type=Path, required=True)
     compare.add_argument("--ledger", type=Path, required=True)
+    offline = sub.add_parser("s0-run", help="run synthetic native smoke in offline Docker")
+    offline.add_argument("--config", type=Path, required=True)
+    offline.add_argument("--workspace", type=Path, required=True)
+    offline.add_argument("--output", type=Path, required=True)
+    recover = sub.add_parser("s0-reconcile", help="settle interrupted offline cells without retry")
+    recover.add_argument("--workspace", type=Path, required=True)
+    recover.add_argument("--output", type=Path, required=True)
     return app
 
 
 def dispatch(args: argparse.Namespace) -> object:
     if args.action == "catalog":
         return {"frameworks": catalog(), "external_calls": 0}
+    if args.action == "s0-run":
+        from epipilot.benchfirst.s0 import run_s0
+
+        return {"summary": str(run_s0(args.config, args.workspace, args.output))}
+    if args.action == "s0-reconcile":
+        from epipilot.benchfirst.s0 import reconcile_s0
+
+        return {"reconciliation": str(reconcile_s0(args.workspace, args.output))}
     plan = read_plan(args.manifest)
     if args.action == "validate":
         return {

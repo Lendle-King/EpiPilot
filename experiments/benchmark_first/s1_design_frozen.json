@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "frozen_design_proposal_NOT_executable_BenchmarkPlan",
+  "protocol_revision": "s1-proposal-v1",
+  "frozen_date": "2026-11-04",
+  "launch_enabled": false,
+  "approval_status": "not_authorized",
+  "approved_model_calls": 0,
+  "approved_usd": 0,
+  "prerequisite_s0_gate": "FAIL",
+  "arms": [
+    "agent_only",
+    "aide_ml",
+    "aira_dojo",
+    "epipilot_current"
+  ],
+  "tasks": [
+    {
+      "id": "mle-spooky-author-identification",
+      "family": "text-classification",
+      "source_url": "https://github.com/openai/mle-bench",
+      "source_sha": "507f92e1138bb6e40dac5c6ee7a6758e6424bf97",
+      "direction": "minimize",
+      "metric": "log_loss",
+      "candidate_baseline": "TF-IDF + calibrated linear classifier; transformer reference on calibration data",
+      "dataset_sha256": null,
+      "evaluator_sha256": null,
+      "baseline_score": null,
+      "reference_score": null,
+      "eligibility": "pending-license-split-and-independent-calibration"
+    },
+    {
+      "id": "mle-tabular-playground-series-dec-2021",
+      "family": "tabular-classification",
+      "source_url": "https://github.com/openai/mle-bench",
+      "source_sha": "507f92e1138bb6e40dac5c6ee7a6758e6424bf97",
+      "direction": "maximize",
+      "metric": "accuracy",
+      "candidate_baseline": "Strong CPU gradient boosting reference and simple heuristic hyperparameter search",
+      "dataset_sha256": null,
+      "evaluator_sha256": null,
+      "baseline_score": null,
+      "reference_score": null,
+      "eligibility": "pending-license-split-and-independent-calibration"
+    },
+    {
+      "id": "airs-GraphRegressionZincMae",
+      "family": "molecular-graph-regression",
+      "source_url": "https://github.com/facebookresearch/airs-bench",
+      "source_sha": "18e4f1d501069cf7d7e2740d81c2ca748c56a6a1",
+      "direction": "minimize",
+      "metric": "MAE",
+      "candidate_baseline": "Published task reference plus independently reproduced message-passing baseline",
+      "dataset_sha256": null,
+      "evaluator_sha256": null,
+      "baseline_score": null,
+      "reference_score": null,
+      "eligibility": "pending-license-hardware-and-independent-calibration"
+    }
+  ],
+  "tracks": [
+    {
+      "name": "matched",
+      "cells": 12,
+      "replicates": 1,
+      "seed": 17,
+      "model": null,
+      "transport": null,
+      "entry_gate": "independently verified exact common model/provider/version/reasoning/tool/baseline parity",
+      "rank_with": "matched only"
+    },
+    {
+      "name": "native",
+      "cells": 12,
+      "replicates": 1,
+      "seed": 17,
+      "models_by_arm": null,
+      "entry_gate": "freeze original native code/feedback clients and configuration per arm; no silent fallback",
+      "rank_with": "native only; no architecture attribution"
+    }
+  ],
+  "proposed_per_cell": {
+    "model_attempts_including_failures_and_internal_retries": 4,
+    "max_dev_trials": 3,
+    "wall_seconds": 1800,
+    "training_wall_seconds": 600,
+    "input_tokens_per_attempt": 8192,
+    "output_and_reasoning_tokens_per_attempt": 2048,
+    "cpu_cores": 2,
+    "ram_gib": 4,
+    "gpu_seconds": 0
+  },
+  "exposure_per_track": {
+    "cells": 12,
+    "max_model_attempts": 48,
+    "max_dev_trials": 36,
+    "max_training_wall_seconds": 7200,
+    "max_cell_wall_seconds_total": 21600,
+    "max_input_tokens": 393216,
+    "max_output_and_reasoning_tokens": 98304,
+    "estimated_usd": null,
+    "hard_usd_exposure_authorized": 0,
+    "price_formula": "0.393216 * input_USD_per_million + 0.098304 * output_USD_per_million; include native heterogeneous clients, tools and compute separately"
+  },
+  "combined_if_both_separately_approved": {
+    "cells": 24,
+    "max_model_attempts": 96,
+    "max_dev_trials": 72,
+    "max_training_wall_seconds": 14400,
+    "max_cell_wall_seconds_total": 43200,
+    "estimated_usd": null
+  },
+  "monitoring": "exclusive global job lock; cgroup CPU/RAM/PID; wall/training watchdogs; sampled host RAM <95%; append-only per-request reservations/settlement; failed attempts retained; no slot refills",
+  "independent_evaluation": "freeze all sessions/candidates/checkpoints before hidden scoring; separate untrusted inference and trusted numeric scorer identities; bind evaluator/data/code/row IDs; report final hidden quality and best-so-far AURP with failures carried forward",
+  "required_before_launch": [
+    "S0 selected arms pass",
+    "dataset license and access review",
+    "task-specific immutable splits/hashes and strong baseline/reference calibration",
+    "exact live model parity or documented native model limits",
+    "audited per-request quota proxy or provider hard cap with retry/token accounting",
+    "independent sealed-scoring deployment and signed receipts",
+    "actual price quote and total USD exposure",
+    "explicit operator approval of a revised executable manifest"
+  ],
+  "selection": "S1 is feasibility screening only. B0 selection requires development-only S2; B1/B2/B3 require individual ablations and equal-overhead controls; S4 uses unseen task families. No winner selected."
+}

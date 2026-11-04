@@ -1,0 +1,37 @@
+{
+  "observed_boundary": {
+    "credentials_absent": true,
+    "sealed_host_file_inaccessible": true,
+    "network_denied": true,
+    "source_readonly": true,
+    "docker_socket_absent": true,
+    "cgroup": {
+      "memory.max": "2147483648",
+      "cpu.max": "200000 100000",
+      "pids.max": "64"
+    }
+  },
+  "processes": [
+    {
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_seconds": 0.2597069996409118,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stop_reason": ""
+    },
+    {
+      "exit_code": 124,
+      "timed_out": true,
+      "wall_seconds": 1.0894237500615418,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stop_reason": "wall_limit"
+    },
+    {
+      "exit_code": 137,
+      "timed_out": false,
+      "wall_seconds": 0.1983106671832502,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stop_reason": ""
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "arms": [
+    {
+      "adapter": "agent_only",
+      "source_sha": "d20c891a00e4904ff9a262b1eeadc3328cd7f776",
+      "adapter_bundle_sha256": "ac8dcef710b9c90a9f63ec80c1121a748114f254960a03f6b37bbfff9d32bdc7",
+      "timestamp": "2026-11-04T05:16:32.904194+00:00",
+      "task_id": "synthetic-linear",
+      "seed": 17,
+      "status": "offline_pass",
+      "error_class": null,
+      "receipt": "S0_OFFLINE_RUN_RECEIPTS.jsonl#s0-final-normal/agent_only",
+      "real_model_calls": 0,
+      "provider_billed_usd": 0,
+      "host_billed_usd": null,
+      "matched_model_verified": false,
+      "scientific_ranking": null
+    },
+    {
+      "adapter": "aide_ml",
+      "source_sha": "ad73d227af481bea3de06f884f41b2993dd6453a",
+      "adapter_bundle_sha256": "ac8dcef710b9c90a9f63ec80c1121a748114f254960a03f6b37bbfff9d32bdc7",
+      "timestamp": "2026-11-04T05:16:35.774100+00:00",
+      "task_id": "synthetic-linear",
+      "seed": 17,
+      "status": "offline_pass",
+      "error_class": null,
+      "receipt": "S0_OFFLINE_RUN_RECEIPTS.jsonl#s0-final-normal/aide_ml",
+      "real_model_calls": 0,
+      "provider_billed_usd": 0,
+      "host_billed_usd": null,
+      "matched_model_verified": false,
+      "scientific_ranking": null
+    },
+    {
+      "adapter": "aira_dojo",
+      "source_sha": "c795d8649d30b77fa9b8c011b978bba7127507ad",
+      "adapter_bundle_sha256": "ac8dcef710b9c90a9f63ec80c1121a748114f254960a03f6b37bbfff9d32bdc7",
+      "timestamp": "2026-11-04T05:16:38.841033+00:00",
+      "task_id": "synthetic-linear",
+      "seed": 17,
+      "status": "NOT_QUALIFIED",
+      "error_class": "ValueError",
+      "receipt": "S0_OFFLINE_RUN_RECEIPTS.jsonl#s0-final-normal/aira_dojo",
+      "real_model_calls": 0,
+      "provider_billed_usd": 0,
+      "host_billed_usd": null,
+      "matched_model_verified": false,
+      "scientific_ranking": null
+    },
+    {
+      "adapter": "epipilot_current",
+      "source_sha": "d20c891a00e4904ff9a262b1eeadc3328cd7f776",
+      "adapter_bundle_sha256": "ac8dcef710b9c90a9f63ec80c1121a748114f254960a03f6b37bbfff9d32bdc7",
+      "timestamp": "2026-11-04T05:16:40.464017+00:00",
+      "task_id": "synthetic-linear",
+      "seed": 17,
+      "status": "offline_pass",
+      "error_class": null,
+      "receipt": "S0_OFFLINE_RUN_RECEIPTS.jsonl#s0-final-normal/epipilot_current",
+      "real_model_calls": 0,
+      "provider_billed_usd": 0,
+      "host_billed_usd": null,
+      "matched_model_verified": false,
+      "scientific_ranking": null
+    }
+  ],
+  "s0_gate": "INCONCLUSIVE",
+  "reason": "Offline plumbing alone does not verify live model parity, full native dependencies or a private scoring deployment",
+  "s1_authorized": false
+}
