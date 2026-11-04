@@ -165,8 +165,7 @@ def compare_receipts(plan: BenchmarkPlan, ledger: Path) -> dict[str, object]:
     for adapter in plan.adapters:
         rows = per_arm[adapter.id]
         differences = [
-            paired_areas[(adapter.id, task.id, rep)]
-            - paired_areas[(baseline_arm, task.id, rep)]
+            paired_areas[(adapter.id, task.id, rep)] - paired_areas[(baseline_arm, task.id, rep)]
             for task in plan.tasks
             for rep in range(plan.replicates)
         ]
