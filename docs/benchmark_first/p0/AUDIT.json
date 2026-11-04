@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "qualification": "NOT_QUALIFIED",
+  "track": "calibration",
+  "formal_s1_started": false,
+  "model_requests": 0,
+  "api_calls": 0,
+  "api_spend_usd": 0,
+  "subscription_cost_usd": null,
+  "hidden_scores": null,
+  "agent_comparisons": null,
+  "host": {"os": "macOS", "arch": "arm64", "logical_cpus": 14, "memory_bytes": 25769803776, "cuda": false},
+  "docker": {"architecture": "linux/arm64", "vm_memory_bytes": 8318976000, "cell_cpus": 2, "cell_memory_mib": 4096, "cell_gpu": 0},
+  "dataset_sha256": "b70182d0d0508e9abbb79306ce5c0cec34869000f8220175ac83d11dbe845401",
+  "task_sha256": "f78f760876ba69fc38ce5b0529ba8fd1ddf37557b35b810d8edb9e94ea395a0b",
+  "reference_dev_rmse": {"ridge": 195.99778506096666, "hist_gradient_boosting": 60.723880675608235},
+  "failed_attempts_retained": true,
+  "aurp": null,
+  "source_licenses": {"aide": "MIT", "aira": "CC-BY-NC-4.0", "mle_bench_code": "MIT", "bike_sharing": "CC-BY-4.0"}
+}

@@ -5,6 +5,14 @@ import pytest
 from epipilot.benchfirst.isolation import Limits, OfflineDocker
 
 
+def test_docker_file_size_limit_is_bytes_not_shell_blocks(tmp_path: Path) -> None:
+    paths = [tmp_path / name for name in ("harness", "source", "work")]
+    for path in paths:
+        path.mkdir()
+    argv = OfflineDocker("sha256:" + "a" * 64).argv("unit", *paths, ("python", "--version"))
+    assert "fsize=16777216:16777216" in argv
+
+
 def test_offline_boundary_has_no_ambient_credentials(tmp_path: Path) -> None:
     sandbox = OfflineDocker("sha256:" + "a" * 64)
     args = sandbox.argv("test", tmp_path, tmp_path, tmp_path, ("python", "driver.py"))

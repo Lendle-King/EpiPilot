@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from uuid import uuid4
 
@@ -62,7 +63,7 @@ class OfflineDocker:
             f"--memory-swap={self.limits.memory_mb}m",
             f"--pids-limit={self.limits.pids}",
             "--ulimit",
-            "fsize=16384:16384",
+            "fsize=16777216:16777216",
             "--tmpfs",
             "/tmp:rw,noexec,nosuid,size=128m",
             "--mount",
@@ -95,7 +96,14 @@ class OfflineDocker:
         )
 
     def run(
-        self, harness: Path, source: Path, work: Path, command: tuple[str, ...], log: Path
+        self,
+        harness: Path,
+        source: Path,
+        work: Path,
+        command: tuple[str, ...],
+        log: Path,
+        *,
+        environment: Mapping[str, str] | None = None,
     ) -> ProcessResult:
         from epipilot.benchfirst.offline import digest
 
@@ -105,7 +113,9 @@ class OfflineDocker:
         timed_out = False
         # Never pipe unlimited candidate output into host memory.
         with log.open("xb") as handle:
-            process = subprocess.Popen(argv, stdout=handle, stderr=subprocess.STDOUT)
+            process = subprocess.Popen(
+                argv, stdout=handle, stderr=subprocess.STDOUT, env=environment
+            )
             reason = ""
             next_sample = 0.0
             try:
