@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "model": "mock-only",
+  "images": {
+    "agent_only": "sha256:635b73bf28a60d061b4c9a1daa0e07d68ca325f3686121db3fb0b0ab5ba7835a",
+    "aide_ml": "sha256:635b73bf28a60d061b4c9a1daa0e07d68ca325f3686121db3fb0b0ab5ba7835a",
+    "aira_dojo": "sha256:b8ddf01b859b3667345f5c8c5c8b7e779991e13105689f608ceef9f308312e00",
+    "epipilot_current": "sha256:635b73bf28a60d061b4c9a1daa0e07d68ca325f3686121db3fb0b0ab5ba7835a"
+  },
+  "limits": {
+    "cpus": 2,
+    "memory_mb": 2048,
+    "pids": 64,
+    "seconds": 90
+  },
+  "budget": {
+    "max_attempts": 4,
+    "max_trials": 3,
+    "wall_seconds": 1800
+  },
+  "evaluator_sha256": "5db685590f3fedd2027b326bf3ff80c798cfde65bdfe62bd7b34b349c540c394",
+  "task": {
+    "task_id": "synthetic-linear",
+    "seed": 17,
+    "objective": "Synthetic plumbing only: predict 2*x and minimize development MSE",
+    "allowed_files": [
+      "candidate.py"
+    ],
+    "expected_outputs": [
+      "candidate.py",
+      "prediction.json"
+    ],
+    "row_ids": [
+      "a",
+      "b"
+    ],
+    "x": [
+      1.0,
+      2.0
+    ],
+    "dev_y": [
+      2.0,
+      4.0
+    ],
+    "synthetic_only": true
+  },
+  "adapters": [
+    {
+      "id": "agent_only",
+      "family": "agent_only",
+      "source_url": "https://github.com/Lendle-King/EpiPilot",
+      "checkout": "checkouts/EpiPilot",
+      "source_sha": "d20c891a00e4904ff9a262b1eeadc3328cd7f776",
+      "license_note": "Apache-2.0",
+      "adapter_qualified": false
+    },
+    {
+      "id": "aide_ml",
+      "family": "aide_ml",
+      "source_url": "https://github.com/WecoAI/aideml",
+      "checkout": "checkouts/aideml",
+      "source_sha": "ad73d227af481bea3de06f884f41b2993dd6453a",
+      "license_note": "MIT",
+      "adapter_qualified": false
+    },
+    {
+      "id": "aira_dojo",
+      "family": "aira_dojo",
+      "source_url": "https://github.com/facebookresearch/aira-dojo",
+      "checkout": "checkouts/aira-dojo",
+      "source_sha": "c795d8649d30b77fa9b8c011b978bba7127507ad",
+      "license_note": "CC BY-NC 4.0; research only",
+      "adapter_qualified": false
+    },
+    {
+      "id": "epipilot_current",
+      "family": "epipilot_current",
+      "source_url": "https://github.com/Lendle-King/EpiPilot",
+      "checkout": "checkouts/EpiPilot",
+      "source_sha": "d20c891a00e4904ff9a262b1eeadc3328cd7f776",
+      "license_note": "Apache-2.0",
+      "adapter_qualified": false
+    }
+  ],
+  "inject_crash": true
+}

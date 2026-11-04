@@ -1,0 +1,246 @@
+{
+  "source_base_sha": "d20c891a00e4904ff9a262b1eeadc3328cd7f776",
+  "adapter_bundle_sha256": "ac8dcef710b9c90a9f63ec80c1121a748114f254960a03f6b37bbfff9d32bdc7",
+  "input_hashes": [
+    {
+      "repository": "aideml",
+      "path": "LICENSE",
+      "sha256": "723b16d1701dfb2d280d229ff84f3056df65b6b00ad8419ec6cb7da2fdd8f616"
+    },
+    {
+      "repository": "aideml",
+      "path": "requirements.txt",
+      "sha256": "ffc11a1b45f207ab8f03e27486cf51fb5637f4f06978347c0644892c16967c51"
+    },
+    {
+      "repository": "aideml",
+      "path": "setup.py",
+      "sha256": "bd4ba456e6103b9ca9767965fb41f58a137338e53add999d37b0318b314f29a8"
+    },
+    {
+      "repository": "aideml",
+      "path": "aide/agent.py",
+      "sha256": "2748e393b4fa1bd9291a50d03dcaf0d62aaea908b4576c9131e9fb7d2b04607a"
+    },
+    {
+      "repository": "aideml",
+      "path": "aide/utils/config.yaml",
+      "sha256": "a4932a02a2e397168338fc58cafa17e1d6f1579d9f0e01016d66e1190dff1ac3"
+    },
+    {
+      "repository": "aira-dojo",
+      "path": "LICENSE",
+      "sha256": "82656a050544ab820c9aa7b61433f5181f8e80cacd042377140962a3e3eb5721"
+    },
+    {
+      "repository": "aira-dojo",
+      "path": "THIRD_PARTY_LICENSES.md",
+      "sha256": "e7aceb2b0964d726c72c76efbbc8b5a60feed6d160aa615171deda2e676d7929"
+    },
+    {
+      "repository": "aira-dojo",
+      "path": "requirements.txt",
+      "sha256": "eaf983659785a6976d5895f75568efd8315b81d6a57e0a1d50e8c506a93c920b"
+    },
+    {
+      "repository": "aira-dojo",
+      "path": "environment.yaml",
+      "sha256": "a8cf740e8edaa65e1c4dae914da406c9eeadea189846079495804ecf724222e0"
+    },
+    {
+      "repository": "aira-dojo",
+      "path": "src/dojo/solvers/greedy/greedy.py",
+      "sha256": "e409435086376089d3ee11b4d5c9e9d8a3f789af9dd1d938d6dc63d7fa802364"
+    },
+    {
+      "repository": "autoresearch",
+      "path": "README.md",
+      "sha256": "3958fd4195ac2f98ed35c4eaa4f3028a335165ee24945e96426c408d25793a41"
+    },
+    {
+      "repository": "autoresearch",
+      "path": "pyproject.toml",
+      "sha256": "675c150a9e0769f0e39a43eb7d836934266fa348d6e2403521f1ff99f9b9f1af"
+    },
+    {
+      "repository": "autoresearch",
+      "path": "uv.lock",
+      "sha256": "03174c5cce6387418c5b6cc9bbe8f71ad0ae1e1d6fedeaecae5cdcf7321da0a3"
+    },
+    {
+      "repository": "autoresearch",
+      "path": "program.md",
+      "sha256": "86cf987a5c381e46eefe0d0a82765223fd766d8d7acdc2afacfbbce15ecacece"
+    },
+    {
+      "repository": "autoresearch",
+      "path": "train.py",
+      "sha256": "2954175f4ac42ad65164aef40910ef953789abcd05a5cc886ac9ba5a00814414"
+    },
+    {
+      "repository": "autoresearch",
+      "path": "prepare.py",
+      "sha256": "4f2ba9cbb8ba8c4a3d35be405a913e2f3be3af9aea103ed52ef7b2a662058150"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/benchmark_first/S0_ADAPTER_CAPABILITY_MATRIX.json",
+      "sha256": "2c64c6fd76c4fe5a548ab1ad6ae06b64353097386041dad549f5a587349f1261"
+    },
+    {
+      "path": "docs/benchmark_first/S0_BUDGET_GUARD_TESTS.md",
+      "sha256": "abd29aba9ba335d96ccca724a77a318ed2844b3851c27d88dbe1fb5156862006"
+    },
+    {
+      "path": "docs/benchmark_first/S0_ENVIRONMENT_AIDE_ML.txt",
+      "sha256": "5cd455da4632ebd8b83b1d41f736379ed905b3fd25a938ae69d7047784d37778"
+    },
+    {
+      "path": "docs/benchmark_first/S0_ENVIRONMENT_AIRA_DOJO.txt",
+      "sha256": "5f954a45469505a1335532ba673a94749a92fcc8fe3c7e575f3e917fe17d4e2c"
+    },
+    {
+      "path": "docs/benchmark_first/S0_FAILURE_RECORDS.md",
+      "sha256": "604ab0dcc0a8cb54ca905965713007f4a11987bb416c66f0347a3536191f507d"
+    },
+    {
+      "path": "docs/benchmark_first/S0_FINAL_CRASH_SUMMARY.json",
+      "sha256": "4bdc0d9e3efb3f0687f49ce542d695785b5ac468b100d3780c3812367a7f9d1d"
+    },
+    {
+      "path": "docs/benchmark_first/S0_FINAL_NORMAL_SUMMARY.json",
+      "sha256": "d6569d63a99c12749145fe2b14d70ae9b8aab3aa3874ad33707cb8eb107f00e7"
+    },
+    {
+      "path": "docs/benchmark_first/S0_GATE_REPORT.md",
+      "sha256": "f55b551f0f704834604dd02a9f53cc788dd956f7fd1fe78f3612632de39e7c9b"
+    },
+    {
+      "path": "docs/benchmark_first/S0_MOCK_BUDGET_EVENTS.jsonl",
+      "sha256": "c7b520c360267d72f671cfc4eb823e8464175d4f435bfd286c920cffbabad0ae"
+    },
+    {
+      "path": "docs/benchmark_first/S0_OFFLINE_RUN_RECEIPTS.jsonl",
+      "sha256": "5e136b39d6c6f6d1b10b064c3524e0f094d5f35739d3d0d24cafee12c1be7cf5"
+    },
+    {
+      "path": "docs/benchmark_first/S0_PRIVATE_EVALUATOR_THREAT_MODEL.md",
+      "sha256": "8b863dc4fa115e13c79c2a9235f9c329480d88a5e918d2d4178dff25d2222070"
+    },
+    {
+      "path": "docs/benchmark_first/S0_RESOURCE_AND_COST_AUDIT.json",
+      "sha256": "596b343e500549cf148a80078e50a6f1a38a7e60a554770fa89ebfb664866d34"
+    },
+    {
+      "path": "docs/benchmark_first/S0_SECURITY_RESULTS.json",
+      "sha256": "5003fb59adeda1a13d323a56a588ee03e4e3fc7a5a29b3e4e7a41bc3b6126086"
+    },
+    {
+      "path": "docs/benchmark_first/S0_SOURCE_AND_LICENSE_AUDIT.md",
+      "sha256": "a2b7aa445310df2f3b0ddf4a337a2ef1cc03e6a9b0f27268ff4cc59cfbecfeb9"
+    },
+    {
+      "path": "docs/benchmark_first/S1_FROZEN_PROPOSAL.md",
+      "sha256": "88ac13abcd27bf18f8b855b8a5323712c283127c8722f0ac94e91e53f24d6a1d"
+    },
+    {
+      "path": "experiments/benchmark_first/s0/Dockerfile",
+      "sha256": "53016be20f0679dea87730e90ed1dd83acecd7ba3c3f248f6d5150ee4da9bd37"
+    },
+    {
+      "path": "experiments/benchmark_first/s0/config.json",
+      "sha256": "96d6146b45cd48f746ecd3f5fd33eeca4b2219cacd15407acb72f9e92b7fc6d2"
+    },
+    {
+      "path": "experiments/benchmark_first/s0/crash-config.json",
+      "sha256": "782a745fcd522e7eba37d9d59fadeb264a89202acd6f5c5b9f59aaca52068499"
+    },
+    {
+      "path": "experiments/benchmark_first/s1_design_frozen.json",
+      "sha256": "9f328561631567b13cbb4d4eb8c853533e8478462a522378eb7bb85af091f0c0"
+    },
+    {
+      "path": "src/epipilot/benchfirst/__init__.py",
+      "sha256": "60f122ba081b09817058170cd89c1246d4688887aff1bd181a942fc6f2e4f10b"
+    },
+    {
+      "path": "src/epipilot/benchfirst/adapters.py",
+      "sha256": "6924a058c793a1301a9d89f177e1c3f966c83bc96cb378d63ae4be177176acca"
+    },
+    {
+      "path": "src/epipilot/benchfirst/cli.py",
+      "sha256": "20dbef5e5417b9e75dff9d43e48316f6d9f1ac09b9db0b00936cf8f9008f7264"
+    },
+    {
+      "path": "src/epipilot/benchfirst/contracts.py",
+      "sha256": "93296ec7e75e6cf4e13cbb059266470de2f961eeff5dcc9bf22a21838f68cbff"
+    },
+    {
+      "path": "src/epipilot/benchfirst/evaluation.py",
+      "sha256": "092e9d23bbbe4780aaec481fef81ef59ca71d8b9008abca5b08a0dca092d2c7d"
+    },
+    {
+      "path": "src/epipilot/benchfirst/isolation.py",
+      "sha256": "1566fcacc9e9b13b365b67919ca3667671b2be217a692935b35690e255a0016b"
+    },
+    {
+      "path": "src/epipilot/benchfirst/native_smoke.py",
+      "sha256": "bc767ed90e345996cb488d0ca7a9637db7cde25f8372141a37592d22b037985b"
+    },
+    {
+      "path": "src/epipilot/benchfirst/offline.py",
+      "sha256": "5db685590f3fedd2027b326bf3ff80c798cfde65bdfe62bd7b34b349c540c394"
+    },
+    {
+      "path": "src/epipilot/benchfirst/preflight.py",
+      "sha256": "df013c42bb815f693eb1d443e15a08bdfb5e75ea3abe652a715474003344a092"
+    },
+    {
+      "path": "src/epipilot/benchfirst/s0.py",
+      "sha256": "f0b1bdbb4d2c1e4af4cf4e9c7ac5da0f11c189cbe344ebf16400f3247e0b855d"
+    },
+    {
+      "path": "tests/benchfirst/test_adapters.py",
+      "sha256": "796f719dd50d2be06f89f8b7d841a2a62ab87f603c3fb13ee9083535d17cd211"
+    },
+    {
+      "path": "tests/benchfirst/test_isolation.py",
+      "sha256": "1439aefbeb6c75a820d1a770625b5d6f6bf78dc0f7141ef6e4828a3a4929babd"
+    },
+    {
+      "path": "tests/benchfirst/test_offline.py",
+      "sha256": "00307cae6d2403137f3b8676bbb1809209191a20a0f3b607fc52e77720d4f709"
+    },
+    {
+      "path": "tests/benchfirst/test_s0.py",
+      "sha256": "d606223546844d862f141a3bbd14e9e5520a17866ffd6264054f34a2670de75e"
+    }
+  ],
+  "private_build_log_hashes": [
+    {
+      "name": "build-2.log",
+      "sha256": "2374c16ef9ede791dbf3fceea3d4799aec9dd8c3e91afbc7f0c9b2b341360a55"
+    },
+    {
+      "name": "build-3.log",
+      "sha256": "33aed95996237f8dbffb97035e8b7bc3fd42a98e84a7df4336e1176d981b2a11"
+    },
+    {
+      "name": "build-4.log",
+      "sha256": "9077464c46428f019f182f5c875d7c01c5647c4ffd61dd8098521344c1835079"
+    },
+    {
+      "name": "build-5.log",
+      "sha256": "cb2907197d3daf0a1dc9d474ba8eeaae451083de7c84b8a0a4970f418afa3de6"
+    },
+    {
+      "name": "build-6.log",
+      "sha256": "283d93ea4d2419020450ae2c768524356802b01c3e6463f1f3a13ee9cac974ff"
+    }
+  ],
+  "baseline_pytest": "202 passed, 1 existing warning",
+  "final_pytest": "218 passed, 1 existing warning",
+  "final_pytest_raw_log_sha256": "2846f5f42e90647119c01a718c80720e7d7c6009175b7b2fe25d8149f74a8d4c",
+  "note": "Index excludes itself; PR head is the delivery code SHA. Private raw logs are not published."
+}
