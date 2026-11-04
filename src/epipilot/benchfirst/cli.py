@@ -39,6 +39,12 @@ def parser() -> argparse.ArgumentParser:
     recover = sub.add_parser("s0-reconcile", help="settle interrupted offline cells without retry")
     recover.add_argument("--workspace", type=Path, required=True)
     recover.add_argument("--output", type=Path, required=True)
+    real = sub.add_parser("real-run", help="operator-approved, metered real Codex/AIDE run")
+    real.add_argument("--plan", type=Path, required=True)
+    real.add_argument("--public", type=Path, required=True)
+    real.add_argument("--output", type=Path, required=True)
+    real.add_argument("--approval", type=Path, required=True)
+    real.add_argument("--provider-key-file", type=Path, required=True)
     return app
 
 
@@ -53,6 +59,23 @@ def dispatch(args: argparse.Namespace) -> object:
         from epipilot.benchfirst.s0 import reconcile_s0
 
         return {"reconciliation": str(reconcile_s0(args.workspace, args.output))}
+    if args.action == "real-run":
+        from epipilot.benchfirst.contracts import read_strict_json
+        from epipilot.benchfirst.live import LivePlan, run_live
+
+        real_plan = LivePlan.model_validate(read_strict_json(args.plan))
+        return {
+            "receipt": str(
+                run_live(
+                    real_plan,
+                    args.public,
+                    args.output,
+                    args.approval,
+                    args.provider_key_file,
+                    Path(__file__).parents[2],
+                )
+            )
+        }
     plan = read_plan(args.manifest)
     if args.action == "validate":
         return {

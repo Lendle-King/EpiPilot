@@ -1,0 +1,28 @@
+# Build with named contexts aira and mlebench, each an audited pinned checkout.
+# AIRA-dojo c795d8649d30b77fa9b8c011b978bba7127507ad (CC BY-NC 4.0).
+# Use its documented MLE-bench pin, NOT an untested current upstream revision.
+# MLE-bench d0f60ad0d3b2287469ac3c8ac9767330c928c980 (MIT code).
+FROM python:3.11-slim@sha256:db20d8506e2f15b6db39b40b6015ca46bae855dec6dd326d462cfe79ae972893
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONDONTWRITEBYTECODE=1 \
+    LOGGING_DIR=/work/logs MLE_BENCH_DATA_DIR=/work/data SUPERIMAGE_DIR=/work/sif \
+    WANDB_MODE=disabled USER=offline HOME=/tmp MPLCONFIGDIR=/tmp/mpl
+RUN apt-get update && apt-get install -y --no-install-recommends git libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=aira /requirements.txt /opt/aira-requirements.txt
+COPY --from=mlebench /pyproject.toml /opt/mlebench/pyproject.toml
+COPY --from=mlebench /README.md /opt/mlebench/README.md
+COPY --from=mlebench /LICENSE /opt/mlebench/LICENSE
+COPY --from=mlebench /mlebench /opt/mlebench/mlebench
+RUN apt-get update && apt-get install -y --no-install-recommends g++ \
+    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/tmp/.cache/pip pip install --timeout=120 --retries=2 \
+    -r /opt/aira-requirements.txt /opt/mlebench tensorflow==2.20.0 python-dotenv==1.1.0 \
+    && pip check && pip freeze --all > /environment.txt
+RUN --mount=type=cache,target=/tmp/.cache/pip pip install --timeout=120 --retries=2 black==26.3.1 \
+    && pip check && pip freeze --all > /environment.txt
+# Native config resolvers import torch, although the upstream requirements omit it.
+# This Linux ARM CPU wheel is a Mac qualification variant, not CUDA parity.
+RUN --mount=type=cache,target=/tmp/.cache/pip pip install --timeout=120 --retries=2 torch==2.5.1 \
+    && pip check && pip freeze --all > /environment.txt
+USER 65534:65534
+WORKDIR /work
