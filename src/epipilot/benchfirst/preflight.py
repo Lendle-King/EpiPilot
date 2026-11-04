@@ -96,7 +96,11 @@ def source_preflight(plan: BenchmarkPlan, workspace: Path) -> dict[str, Any]:
         resolved = candidate.resolve()
         if not resolved.is_relative_to(root) or not candidate.is_dir():
             items.append(
-                {"id": adapter.id, "status": "missing_or_unsafe_checkout", "expected": adapter.source_sha}
+                {
+                    "id": adapter.id,
+                    "status": "missing_or_unsafe_checkout",
+                    "expected": adapter.source_sha,
+                }
             )
             continue
         try:
@@ -124,7 +128,8 @@ def source_preflight(plan: BenchmarkPlan, workspace: Path) -> dict[str, Any]:
             }
         )
     all_pinned = all(
-        item["status"] in ("source_pinned_adapter_claimed_ready", "source_pinned_adapter_not_qualified")
+        item["status"]
+        in ("source_pinned_adapter_claimed_ready", "source_pinned_adapter_not_qualified")
         for item in items
     )
     all_qualified = all(item["status"] == "source_pinned_adapter_claimed_ready" for item in items)

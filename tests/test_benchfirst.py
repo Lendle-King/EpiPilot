@@ -15,10 +15,7 @@ from epipilot.benchfirst.evaluation import compare_receipts, progress_area
 from epipilot.benchfirst.preflight import source_preflight
 
 EXAMPLE = (
-    Path(__file__).resolve().parents[1]
-    / "experiments"
-    / "benchmark_first"
-    / "s0_example.json"
+    Path(__file__).resolve().parents[1] / "experiments" / "benchmark_first" / "s0_example.json"
 )
 
 
@@ -69,9 +66,7 @@ def _make_ledger(tmp_path: Path, plan: BenchmarkPlan) -> Path:
                     }
                 )
     ledger = tmp_path / "ledger.jsonl"
-    ledger.write_text(
-        "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8"
-    )
+    ledger.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
     return ledger
 
 
@@ -148,9 +143,7 @@ def test_missing_cell_and_budget_overrun_are_rejected(tmp_path: Path) -> None:
         compare_receipts(plan, ledger)
     row = json.loads(lines[0])
     row["model_attempts"] = 5
-    ledger.write_text(
-        "\n".join([json.dumps(row), *lines[1:]]) + "\n", encoding="utf-8"
-    )
+    ledger.write_text("\n".join([json.dumps(row), *lines[1:]]) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="budget"):
         compare_receipts(plan, ledger)
 
@@ -160,14 +153,14 @@ def test_unverified_checkpoint_cannot_count(tmp_path: Path) -> None:
     ledger = _make_ledger(tmp_path, plan)
     rows = [json.loads(x) for x in ledger.read_text().splitlines()]
     rows[0]["sealed_scoring"] = False
-    ledger.write_text(
-        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
-    )
+    ledger.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     with pytest.raises(ValueError, match="unverified checkpoint"):
         compare_receipts(plan, ledger)
 
 
-def test_cli_catalog_validate_and_source_preflight(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_catalog_validate_and_source_preflight(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert main(["catalog"]) == 0
     assert "aira_dojo" in capsys.readouterr().out
     assert main(["validate", "--manifest", str(EXAMPLE)]) == 0

@@ -63,9 +63,7 @@ class TaskSpec(Record):
         gap = self.reference - self.baseline
         if abs(gap) < 1e-9:
             raise ValueError("baseline/reference performance gap is zero")
-        if (self.direction == "maximize" and gap < 0) or (
-            self.direction == "minimize" and gap > 0
-        ):
+        if (self.direction == "maximize" and gap < 0) or (self.direction == "minimize" and gap > 0):
             raise ValueError("reference must improve upon the baseline")
         return self
 
@@ -107,8 +105,10 @@ class BenchmarkPlan(Record):
             self.budget.max_model_attempts != 0 or self.budget.max_dev_experiments != 0
         ):
             raise ValueError("S0 is offline-only: budget must allow zero model/experiment calls")
-        if self.stage != "s0" and self.approval_status == "authorized" and (
-            self.evaluation_independence != "private_audited"
+        if (
+            self.stage != "s0"
+            and self.approval_status == "authorized"
+            and (self.evaluation_independence != "private_audited")
         ):
             raise ValueError("paid experiment authorization requires private evaluation audit")
         return self

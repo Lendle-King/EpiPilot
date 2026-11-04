@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Self
 
@@ -19,7 +20,8 @@ from epipilot.benchfirst.contracts import (
     BenchmarkPlan,
     Record,
     normalized_quality,
-    read_strict_json,
+    _no_duplicate_properties,
+    _reject_constant,
 )
 
 
@@ -72,8 +74,6 @@ def _load_receipts(path: Path) -> list[Receipt]:
         if len(line.encode("utf-8")) > 1_048_576:
             raise ValueError("receipt line too large")
         # JSONL is not a separate trust boundary; reject NaN and duplicate keys.
-        from epipilot.benchfirst.contracts import _no_duplicate_properties, _reject_constant
-
         raw = json.loads(
             line,
             object_pairs_hook=_no_duplicate_properties,
@@ -101,6 +101,16 @@ def progress_area(points: list[tuple[float, float]], budget: float) -> float:
     return (area + (budget - elapsed) * best) / budget
 
 
+@dataclass(frozen=True, slots=True)
+class _SummaryRow:
+    area: float
+    final_quality: float
+    model_attempts: int
+    dev_experiments: int
+    elapsed_seconds: float
+    billed_usd: float | None
+
+
 def compare_receipts(plan: BenchmarkPlan, ledger: Path) -> dict[str, object]:
     """Reject missing cells, budget mismatches and forged claims of evaluator version."""
     records = _load_receipts(ledger)
@@ -113,13 +123,11 @@ def compare_receipts(plan: BenchmarkPlan, ledger: Path) -> dict[str, object]:
     found = [(r.adapter_id, r.task_id, r.replicate) for r in records]
     if len(found) != len(set(found)) or set(found) != expected:
         raise ValueError("incomplete, duplicated or unexpected matched research cells")
-    if plan.stage == "s0" and any(
-        r.model_attempts > 0 or r.dev_experiments > 0 for r in records
-    ):
+    if plan.stage == "s0" and any(r.model_attempts > 0 or r.dev_experiments > 0 for r in records):
         raise ValueError("offline S0 contains billable actions")
     tasks = {t.id: t for t in plan.tasks}
-    per_arm: dict[str, list[dict[str, float | int | None]]] = defaultdict(list)
-    task_scores: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    per_arm: dict[str, list[_SummaryRow]] = defaultdict(list)
+    paired_areas: dict[tuple[str, str, int], float] = {}
     unknown_billing = False
     for receipt in records:
         task = tasks[receipt.task_id]
@@ -140,31 +148,43 @@ def compare_receipts(plan: BenchmarkPlan, ledger: Path) -> dict[str, object]:
         best = max((value for _, value in points), default=0.0)
         area = progress_area(points, plan.budget.max_wall_seconds)
         per_arm[receipt.adapter_id].append(
-            {
-                "progress_area": area,
-                "final_quality": best,
-                "model_attempts": receipt.model_attempts,
-                "dev_experiments": receipt.dev_experiments,
-                "elapsed_seconds": receipt.elapsed_seconds,
-                "billed_usd": receipt.billed_usd,
-            }
+            _SummaryRow(
+                area=area,
+                final_quality=best,
+                model_attempts=receipt.model_attempts,
+                dev_experiments=receipt.dev_experiments,
+                elapsed_seconds=receipt.elapsed_seconds,
+                billed_usd=receipt.billed_usd,
+            )
         )
-        task_scores[receipt.adapter_id][receipt.task_id].append(area)
+        paired_areas[(receipt.adapter_id, receipt.task_id, receipt.replicate)] = area
         if receipt.billed_usd is None:
             unknown_billing = True
     summary: dict[str, object] = {}
+    baseline_arm = "agent_only" if "agent_only" in per_arm else plan.adapters[0].id
     for adapter in plan.adapters:
         rows = per_arm[adapter.id]
+        differences = [
+            paired_areas[(adapter.id, task.id, rep)]
+            - paired_areas[(baseline_arm, task.id, rep)]
+            for task in plan.tasks
+            for rep in range(plan.replicates)
+        ]
         summary[adapter.id] = {
-            "mean_progress_area": sum(float(r["progress_area"]) for r in rows) / len(rows),
-            "mean_final_quality": sum(float(r["final_quality"]) for r in rows) / len(rows),
-            "total_model_attempts": sum(int(r["model_attempts"]) for r in rows),
-            "total_dev_experiments": sum(int(r["dev_experiments"]) for r in rows),
-            "total_elapsed_seconds": sum(float(r["elapsed_seconds"]) for r in rows),
+            "mean_progress_area": sum(row.area for row in rows) / len(rows),
+            "mean_final_quality": sum(row.final_quality for row in rows) / len(rows),
+            "total_model_attempts": sum(row.model_attempts for row in rows),
+            "total_dev_experiments": sum(row.dev_experiments for row in rows),
+            "total_elapsed_seconds": sum(row.elapsed_seconds for row in rows),
             "billed_usd": (
-                None if any(r["billed_usd"] is None for r in rows)
-                else sum(float(r["billed_usd"]) for r in rows)
+                None
+                if any(row.billed_usd is None for row in rows)
+                else sum(row.billed_usd for row in rows if row.billed_usd is not None)
             ),
+            "mean_paired_progress_delta": sum(differences) / len(differences),
+            "paired_wins": sum(delta > 1e-12 for delta in differences),
+            "paired_losses": sum(delta < -1e-12 for delta in differences),
+            "paired_ties": sum(abs(delta) <= 1e-12 for delta in differences),
         }
     return {
         "name": plan.name,
@@ -174,6 +194,7 @@ def compare_receipts(plan: BenchmarkPlan, ledger: Path) -> dict[str, object]:
         "replicates_per_task": plan.replicates,
         "cells": len(records),
         "per_adapter": summary,
+        "paired_baseline": baseline_arm,
         "provider_billing_complete": not unknown_billing,
         "evaluation_independence_claim": plan.evaluation_independence,
         "status": "descriptive_only",

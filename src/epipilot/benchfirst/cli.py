@@ -24,7 +24,9 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser("catalog", help="show verified candidate repository metadata, not a winner")
     validate = sub.add_parser("validate", help="validate frozen benchmark manifest offline")
     validate.add_argument("--manifest", type=Path, required=True)
-    preflight = sub.add_parser("preflight", help="check exact local source checkouts without running")
+    preflight = sub.add_parser(
+        "preflight", help="check exact local source checkouts without running"
+    )
     preflight.add_argument("--manifest", type=Path, required=True)
     preflight.add_argument("--workspace", type=Path, required=True)
     compare = sub.add_parser("compare", help="descriptive, complete-paired result audit")
@@ -49,7 +51,9 @@ def dispatch(args: argparse.Namespace) -> object:
             "adapters": [a.id for a in plan.adapters],
             "planned_cells": len(plan.tasks) * len(plan.adapters) * plan.replicates,
             "max_model_attempts_total": (
-                len(plan.tasks) * len(plan.adapters) * plan.replicates
+                len(plan.tasks)
+                * len(plan.adapters)
+                * plan.replicates
                 * plan.budget.max_model_attempts
             ),
             "source_pins_and_private_evaluator_checked": False,
