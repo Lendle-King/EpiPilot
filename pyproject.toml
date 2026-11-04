@@ -26,6 +26,7 @@ dependencies = [
 
 [project.scripts]
 epi = "epipilot.research.cli:main"
+epi-benchmark = "epipilot.benchfirst.cli:main"
 epipilot-install-agent = "epipilot.integrations.agent_installer:main"
 
 [project.urls]
