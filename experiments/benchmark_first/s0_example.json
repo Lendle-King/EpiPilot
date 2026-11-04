@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "name": "S0-demonstration-NOT-a-scientific-benchmark",
+  "stage": "s0",
+  "track": "matched",
+  "model": {
+    "provider": "unverified_for_s0",
+    "model_id": "NO_MODEL_CALLS",
+    "reasoning_effort": "not_applicable",
+    "transport": "not_applicable"
+  },
+  "replicates": 1,
+  "budget": {
+    "max_model_attempts": 0,
+    "max_dev_experiments": 0,
+    "max_wall_seconds": 600
+  },
+  "tasks": [
+    {
+      "id": "task-placeholder-a",
+      "family": "ML-search-placeholder",
+      "dataset_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "evaluator_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "direction": "maximize",
+      "metric_name": "placeholder-quality",
+      "baseline": 0,
+      "reference": 1,
+      "baseline_provenance": "PLACEHOLDER NOT independently evaluated",
+      "task_source_sha": "0000000000000000000000000000000000000000"
+    },
+    {
+      "id": "task-placeholder-b",
+      "family": "reasoning-placeholder",
+      "dataset_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "evaluator_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "direction": "maximize",
+      "metric_name": "placeholder-quality",
+      "baseline": 0,
+      "reference": 1,
+      "baseline_provenance": "PLACEHOLDER NOT independently evaluated",
+      "task_source_sha": "0000000000000000000000000000000000000000"
+    }
+  ],
+  "adapters": [
+    {
+      "id": "agent_only",
+      "family": "agent_only",
+      "source_url": "https://github.com/Lendle-King/EpiPilot",
+      "checkout": "checkouts/EpiPilot",
+      "source_sha": "b7633a0d4b785fa8989cc34afdeeb752c1af0268",
+      "license_note": "Apache-2.0",
+      "adapter_qualified": false
+    },
+    {
+      "id": "aide_ml",
+      "family": "aide_ml",
+      "source_url": "https://github.com/WecoAI/aideml",
+      "checkout": "checkouts/aideml",
+      "source_sha": "ad73d227af481bea3de06f884f41b2993dd6453a",
+      "license_note": "MIT",
+      "adapter_qualified": false
+    },
+    {
+      "id": "aira_dojo",
+      "family": "aira_dojo",
+      "source_url": "https://github.com/facebookresearch/aira-dojo",
+      "checkout": "checkouts/aira-dojo",
+      "source_sha": "c795d8649d30b77fa9b8c011b978bba7127507ad",
+      "license_note": "CC BY-NC 4.0; research only",
+      "adapter_qualified": false
+    },
+    {
+      "id": "autoresearch",
+      "family": "autoresearch",
+      "source_url": "https://github.com/karpathy/autoresearch",
+      "checkout": "checkouts/autoresearch",
+      "source_sha": "228791fb499afffb54b46200aca536f79142f117",
+      "license_note": "License/compute to be reviewed",
+      "adapter_qualified": false
+    },
+    {
+      "id": "epipilot_current",
+      "family": "epipilot_current",
+      "source_url": "https://github.com/Lendle-King/EpiPilot",
+      "checkout": "checkouts/EpiPilot",
+      "source_sha": "b7633a0d4b785fa8989cc34afdeeb752c1af0268",
+      "license_note": "Apache-2.0",
+      "adapter_qualified": false
+    }
+  ],
+  "immutable_protocol_note": "S0 SCHEMA DEMONSTRATION ONLY. Replace task hashes, model and adapter qualification after server verification; no model calls authorized.",
+  "evaluation_independence": "not_audited",
+  "approval_status": "not_authorized"
+}
