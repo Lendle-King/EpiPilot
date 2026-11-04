@@ -19,9 +19,9 @@ from epipilot.benchfirst.contracts import (
     SHA256,
     BenchmarkPlan,
     Record,
-    normalized_quality,
     _no_duplicate_properties,
     _reject_constant,
+    normalized_quality,
 )
 
 
