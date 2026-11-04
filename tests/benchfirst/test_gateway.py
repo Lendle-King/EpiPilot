@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
-from tests.benchfirst.test_metering import policy
+from test_metering import policy
 
 from epipilot.benchfirst.gateway import Gateway, WireReply
 from epipilot.benchfirst.metering import Meter

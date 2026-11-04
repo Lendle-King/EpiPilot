@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from tests.benchfirst.test_metering import policy
-from tests.benchfirst.test_real_agents import task
+from test_metering import policy
+from test_real_agents import task
 
 from epipilot.benchfirst.live import LivePlan, OperatorApproval, read_approval
 
