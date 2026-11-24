@@ -139,7 +139,7 @@ def test_openalex_maps_abstract_authors_metrics_and_references() -> None:
     assert paper.provider_metrics[0].reference_count == 2
     assert len(paper.references) == 2
     assert paper.pdf_url == "https://arxiv.org/pdf/2501.00001"
-    assert "from_publication_date" not in transport.calls[0][0]
+    assert "filter=" in transport.calls[0][0]
     assert "from_publication_date%3A2024-01-01" in transport.calls[0][0]
     assert "test-secret" not in page.source_url
 
@@ -252,12 +252,8 @@ def test_cross_provider_merge_keeps_provider_metrics_separate() -> None:
         doi="10.1234/example",
         url="https://doi.org/10.1234/example",
         relevance_note="OpenAlex result with a persistent DOI.",
-        provider_ids=[
-            PaperIdentifier(provider=LiteratureProvider.OPENALEX, value="W1")
-        ],
-        provider_metrics=[
-            ProviderMetrics(provider=LiteratureProvider.OPENALEX, citation_count=10)
-        ],
+        provider_ids=[PaperIdentifier(provider=LiteratureProvider.OPENALEX, value="W1")],
+        provider_metrics=[ProviderMetrics(provider=LiteratureProvider.OPENALEX, citation_count=10)],
     )
     paper_b = paper_a.model_copy(
         update={
