@@ -27,6 +27,7 @@ dependencies = [
 [project.scripts]
 epi = "epipilot.research.cli:main"
 epipilot-install-agent = "epipilot.integrations.agent_installer:main"
+epidiscover = "epipilot.topic_discovery.cli:main"
 
 [project.urls]
 Repository = "https://github.com/Lendle-King/EpiPilot"
@@ -45,6 +46,7 @@ dev = [
 ]
 
 ui = ["fastapi>=0.115", "uvicorn>=0.30"]
+pdf = ["pymupdf>=1.24"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/epipilot"]
