@@ -22,25 +22,25 @@ def build_paper_analysis_prompt(
     digest = hashlib.sha256(full_text.encode("utf-8")).hexdigest()
     return f"""你是严谨的学术论文分析助手。请只根据给定论文文本提取结构化信息。
 
-论文标题：{paper.title}
-论文年份：{paper.year}
-论文标识：{paper.id}
-来源文本 SHA-256：{digest}
+论文标题:{paper.title}
+论文年份:{paper.year}
+论文标识:{paper.id}
+来源文本 SHA-256:{digest}
 
-任务：提取论文明确提出的 claims、方法依赖的 assumptions，以及作者明确讨论或文本充分支持的 limitations。
+任务:提取论文明确提出的 claims、方法依赖的 assumptions,以及作者明确讨论或文本充分支持的 limitations。
 
-严格规则：
+严格规则:
 1. 不得使用论文文本以外的知识补全结论。
 2. 每条 statement 必须提供 evidence_locator（章节、页码或段落）。
-3. 每条 statement 必须提供 supporting_quote，且必须逐字复制自输入文本。
-4. Claim 应描述论文实际主张，不要把作者的动机改写成已证明结果。
+3. 每条 statement 必须提供 supporting_quote,且必须逐字复制自输入文本。
+4. Claim 应描述论文实际主张,不要把作者的动机改写成已证明结果。
 5. Assumption 应区分作者明确声明的假设与方法隐含的必要条件；无法定位则不要提取。
 6. Limitation 优先提取作者明确承认的局限；不要把未讨论的可能风险伪装成作者结论。
-7. 证据不足时宁可返回空 statements，不要猜测。
-8. confidence 是抽取置信度，不是科学主张为真的概率。
-9. 返回纯 JSON，不要 Markdown 代码围栏或额外解释。
+7. 证据不足时宁可返回空 statements,不要猜测。
+8. confidence 是抽取置信度,不是科学主张为真的概率。
+9. 返回纯 JSON,不要 Markdown 代码围栏或额外解释。
 
-输出 JSON schema：
+输出 JSON schema:
 {{
   "paper_id": "{paper.id}",
   "source_text_sha256": "{digest}",
@@ -58,7 +58,7 @@ def build_paper_analysis_prompt(
   "reviewed_by_human": false
 }}
 
-论文文本开始：
+论文文本开始:
 {text}
 论文文本结束。
 """
