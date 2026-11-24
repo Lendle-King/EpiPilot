@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Mapping, Sequence
 import hashlib
 import json
 import math
 import re
-from collections import Counter
-from collections.abc import Mapping, Sequence
 
 from epipilot.core.models import utc_now
 from epipilot.topic_discovery.identity import merge_papers
@@ -24,7 +24,6 @@ from epipilot.topic_discovery.models import (
 from epipilot.topic_discovery.providers import SearchProvider
 from epipilot.topic_discovery.v02_models import (
     PriorArtChallengeReport,
-    PriorArtComparison,
     PriorArtMatch,
     PriorArtReview,
     PriorArtSearchFailure,
@@ -234,7 +233,7 @@ class PriorArtChallengeService:
 
         retrieved_at = utc_now()
         digest = hashlib.sha256(
-            f"{idea.id}:{'|'.join(queries)}:{retrieved_at.isoformat()}".encode("utf-8")
+            f"{idea.id}:{'|'.join(queries)}:{retrieved_at.isoformat()}".encode()
         ).hexdigest()[:16]
         return PriorArtChallengeReport(
             id=f"challenge-{digest}",
@@ -392,14 +391,15 @@ def build_prior_art_challenge_prompt(
         "retrieval_warnings": report.warnings,
         "nearest_works": match_context,
     }
-    return f"""你是一个严格、怀疑主义的顶会审稿人。你的任务是主动推翻候选课题的原创性主张,而不是帮助作者包装创新。
+    return f"""你是一个严格、怀疑主义的顶会审稿人。你的任务是主动推翻候选课题的原创性主张,
+而不是帮助作者包装创新。
 
 审查问题:
-1. 最近邻工作是否已经解决了同一个研究问题？
-2. 候选方法是否只是已有机制的重新命名、组合或工程化？
-3. 候选声称的机制差异是否会带来可观测、可证伪的预测差异？
-4. 最近邻工作是否已有相同的评价协议、关键变量或理论保证？
-5. 还有哪些关键词、相邻领域或替代术语未被检索？
+1. 最近邻工作是否已经解决了同一个研究问题?
+2. 候选方法是否只是已有机制的重新命名、组合或工程化?
+3. 候选声称的机制差异是否会带来可观测、可证伪的预测差异?
+4. 最近邻工作是否已有相同的评价协议、关键变量或理论保证?
+5. 还有哪些关键词、相邻领域或替代术语未被检索?
 6. 如果摘要证据不足,必须要求全文或补充检索,不能凭标题判断没有重叠。
 
 证据纪律:
@@ -474,9 +474,10 @@ def validate_prior_art_review(
             raise ValueError(
                 f"comparison quote for {paper.id} is not present in supplied source text"
             )
-    if review.verdict is AuditVerdict.PROVISIONALLY_DISTINCT:
-        if len(report.providers_succeeded) < 2 or len(report.papers) < 5:
-            raise ValueError("search coverage is insufficient for a provisionally distinct review")
+    if review.verdict is AuditVerdict.PROVISIONALLY_DISTINCT and (
+        len(report.providers_succeeded) < 2 or len(report.papers) < 5
+    ):
+        raise ValueError("search coverage is insufficient for a provisionally distinct review")
     return review
 
 

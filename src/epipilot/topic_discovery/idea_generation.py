@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from itertools import combinations
 import hashlib
 import json
 import re
-from itertools import combinations
 
 from epipilot.topic_discovery.models import TopicSpec
 from epipilot.topic_discovery.v02_models import IdeaBatch, ResearchSynthesis
@@ -48,19 +48,20 @@ def build_idea_generation_prompt(
     *,
     target_count: int = 6,
 ) -> str:
-    """Ask a model for 5–8 materially different, falsifiable candidate projects."""
+    """Ask a model for 5-8 materially different, falsifiable candidate projects."""
     if not 5 <= target_count <= 8:
         raise ValueError("target_count must be between 5 and 8")
     if synthesis.topic_id != topic.id:
         raise ValueError("research synthesis belongs to a different topic")
     digest = hashlib.sha256(
-        f"{topic.id}:{synthesis.id}:{target_count}".encode("utf-8")
+        f"{topic.id}:{synthesis.id}:{target_count}".encode()
     ).hexdigest()[:16]
     context = {
         "topic": topic.model_dump(mode="json"),
         "synthesis": synthesis.model_dump(mode="json"),
     }
-    return f"""你是顶会级别的研究选题设计者。请基于已验证来源的 Research Synthesis 生成 {target_count} 个真正不同的研究课题候选。
+    return f"""你是顶会级别的研究选题设计者。请基于已验证来源的 Research Synthesis
+生成 {target_count} 个真正不同的研究课题候选。
 
 目标不是生成漂亮标题,而是提出可被实验推翻、且有机会形成实质性学术贡献的研究假说。
 

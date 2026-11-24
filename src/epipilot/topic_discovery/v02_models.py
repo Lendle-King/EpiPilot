@@ -149,7 +149,7 @@ class IdeaCandidateV2(IdeaCandidate):
 
 
 class IdeaBatch(DiscoveryRecord):
-    """A deliberately diverse batch of 5–8 falsifiable research candidates."""
+    """A deliberately diverse batch of 5-8 falsifiable research candidates."""
 
     id: str = Field(min_length=1)
     topic_id: str = Field(min_length=1)
@@ -288,7 +288,8 @@ class PriorArtReview(DiscoveryRecord):
                 raise ValueError("provisionally distinct review requires nearest-work comparisons")
             if set(comparison_ids) != set(self.nearest_work_ids):
                 raise ValueError("every nearest work requires an evidence-backed comparison")
-        if self.verdict is AuditVerdict.OVERLAP_FOUND:
-            if not self.nearest_work_ids or not self.comparisons:
-                raise ValueError("overlap_found review requires a cited overlapping work")
+        if self.verdict is AuditVerdict.OVERLAP_FOUND and (
+            not self.nearest_work_ids or not self.comparisons
+        ):
+            raise ValueError("overlap_found review requires a cited overlapping work")
         return self

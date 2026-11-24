@@ -68,7 +68,7 @@ def build_research_synthesis_prompt(
     source_ids = [analysis.paper_id for analysis in analyses]
     source_hashes = {analysis.paper_id: analysis.source_text_sha256 for analysis in analyses}
     digest = hashlib.sha256(
-        f"{topic.id}:{'|'.join(sorted(source_ids))}".encode("utf-8")
+        f"{topic.id}:{'|'.join(sorted(source_ids))}".encode()
     ).hexdigest()[:16]
     source_metadata = [
         {
@@ -97,14 +97,17 @@ Synthesis ID: synthesis-{digest}
 1. 归纳 3-8 个有区分度的研究主题,解释它们之间的关系。
 2. 找出不同论文之间真正存在的机制差异、假设冲突、评价缺口和未解决问题。
 3. 提出 1-5 个 provisional research gap hypotheses。研究空白是待验证假说,不是“文献没有做过”的断言。
-4. 每个 gap 必须引用 supporting_evidence_ids;若存在反例、相邻工作或相反结果,必须放入 counterevidence_evidence_ids。
-5. supporting_source_ids 和 counterevidence_source_ids 必须分别精确等于对应 evidence IDs 的 paper_id 集合。
+4. 每个 gap 必须引用 supporting_evidence_ids;若存在反例、相邻工作或相反结果,
+   必须放入 counterevidence_evidence_ids。
+5. supporting_source_ids 和 counterevidence_source_ids 必须分别精确等于
+   对应 evidence IDs 的 paper_id 集合。
 6. 不得把论文未提及某事解释为该领域从未研究该问题。
 7. 证据覆盖不足时,写入 coverage_limitations 和 unresolved_questions,不得补造事实。
 
 证据规则:
 - 只能使用 evidence_index 中的 ID 和原文。
-- 不得修改、重写或创造 evidence_index 项;响应中不要输出 evidence_index,验证器会从输入 analyses 注入不可变索引。
+- 不得修改、重写或创造 evidence_index 项;响应中不要输出 evidence_index,
+  验证器会从输入 analyses 注入不可变索引。
 - 每个 theme 至少引用一个 evidence ID。
 - 不要把同一条证据同时作为 gap 的支持与反证。
 - Claim、Assumption、Limitation 必须区分;作者的动机不等于实验结论。

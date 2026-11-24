@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from epipilot.topic_discovery.cli import main
 from epipilot.topic_discovery.idea_generation import (
     build_idea_generation_prompt,
     validate_idea_batch,
@@ -52,7 +53,6 @@ from epipilot.topic_discovery.v02_models import (
     ResearchTheme,
     SynthesisGap,
 )
-from epipilot.topic_discovery.cli import main
 
 
 def _topic() -> TopicSpec:
@@ -181,7 +181,6 @@ def _synthesis() -> ResearchSynthesis:
     papers = _papers()
     analyses = _analyses()
     evidence = build_evidence_index(papers, analyses)
-    evidence_by_id = {item.id: item for item in evidence}
     support_id = "paper-1::claim-1"
     counter_id = "paper-2::limitation-1"
     return ResearchSynthesis(
