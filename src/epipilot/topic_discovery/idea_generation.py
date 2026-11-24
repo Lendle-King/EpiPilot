@@ -53,9 +53,7 @@ def build_idea_generation_prompt(
         raise ValueError("target_count must be between 5 and 8")
     if synthesis.topic_id != topic.id:
         raise ValueError("research synthesis belongs to a different topic")
-    digest = hashlib.sha256(
-        f"{topic.id}:{synthesis.id}:{target_count}".encode()
-    ).hexdigest()[:16]
+    digest = hashlib.sha256(f"{topic.id}:{synthesis.id}:{target_count}".encode()).hexdigest()[:16]
     context = {
         "topic": topic.model_dump(mode="json"),
         "synthesis": synthesis.model_dump(mode="json"),

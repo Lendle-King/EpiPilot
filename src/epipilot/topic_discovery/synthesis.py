@@ -67,9 +67,7 @@ def build_research_synthesis_prompt(
     paper_by_id = {paper.id: paper for paper in papers}
     source_ids = [analysis.paper_id for analysis in analyses]
     source_hashes = {analysis.paper_id: analysis.source_text_sha256 for analysis in analyses}
-    digest = hashlib.sha256(
-        f"{topic.id}:{'|'.join(sorted(source_ids))}".encode()
-    ).hexdigest()[:16]
+    digest = hashlib.sha256(f"{topic.id}:{'|'.join(sorted(source_ids))}".encode()).hexdigest()[:16]
     source_metadata = [
         {
             "paper_id": paper_id,
