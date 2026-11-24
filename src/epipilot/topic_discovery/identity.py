@@ -162,8 +162,7 @@ def _merge_pair(current: PaperReference, paper: PaperReference) -> PaperReferenc
     return current.model_copy(
         update={
             "doi": normalize_doi(current.doi) or normalize_doi(paper.doi),
-            "arxiv_id": normalize_arxiv_id(current.arxiv_id)
-            or normalize_arxiv_id(paper.arxiv_id),
+            "arxiv_id": normalize_arxiv_id(current.arxiv_id) or normalize_arxiv_id(paper.arxiv_id),
             "url": current.url or paper.url,
             "pdf_url": current.pdf_url or paper.pdf_url,
             "venue": current.venue or paper.venue,
