@@ -340,6 +340,7 @@ epidiscover challenge \
 
 ~~~python
 from epipilot.topic_discovery.prior_art import (
+    attach_prior_art_review,
     validate_prior_art_review,
     confirm_prior_art_review,
 )
@@ -348,6 +349,14 @@ review = validate_prior_art_review(idea, challenge_report, model_response_json)
 
 # 必须在人工逐篇检查后，显式确认才能进入现有 NoveltyAudit gate。
 audit = confirm_prior_art_review(review, human_approved=True)
+
+# 或直接将论文和 audit 接入已有 DiscoveryWorkspace。
+workspace = attach_prior_art_review(
+    workspace,
+    challenge_report,
+    review,
+    human_approved=True,
+)
 ~~~
 
 校验器检查 challenge/idea ID、查询和 provider coverage、检索论文 ID、最近邻 ID，以及每条比较的 supporting quote 是否出现在对应摘要或调用方提供的全文中。模型不能将自己标记为 human-reviewed。只有显式人工确认后才生成现有 \`NoveltyAudit\`；provisionally distinct 的比较必须保留原文 quote。
