@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib
-import os
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
@@ -36,14 +35,13 @@ class PyMuPDFTextExtractor:
         max_characters: int,
     ) -> tuple[str, int]:
         try:
-            fitz = importlib.import_module("fitz")
+            fitz = cast(Any, importlib.import_module("fitz"))
         except ImportError as exc:
             raise RuntimeError(
                 "PDF text extraction requires the optional epipilot[pdf] extra"
             ) from exc
 
-        open_document = cast(Any, getattr(fitz, "open"))
-        document = open_document(str(pdf_path))
+        document = fitz.open(str(pdf_path))
         chunks: list[str] = []
         characters = 0
         page_count = min(int(document.page_count), max_pages)
@@ -105,7 +103,7 @@ def download_open_access_pdf(
         with tempfile.NamedTemporaryFile(dir=root, prefix=".download-", delete=False) as handle:
             temporary_path = Path(handle.name)
             handle.write(response.body)
-        os.replace(temporary_path, destination)
+        temporary_path.replace(destination)
     finally:
         if temporary_path is not None and temporary_path.exists():
             temporary_path.unlink()
@@ -150,7 +148,7 @@ def extract_pdf_text(
         ) as handle:
             temporary_path = Path(handle.name)
             handle.write(encoded)
-        os.replace(temporary_path, text_path)
+        temporary_path.replace(text_path)
     finally:
         if temporary_path is not None and temporary_path.exists():
             temporary_path.unlink()
