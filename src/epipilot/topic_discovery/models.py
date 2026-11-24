@@ -138,6 +138,7 @@ class ProviderMetrics(DiscoveryRecord):
 
 PaperReference.model_rebuild()
 
+
 class LiteratureSearchQuery(DiscoveryRecord):
     query: str = Field(min_length=2, max_length=500)
     year_from: int | None = Field(default=None, ge=1900, le=2200)
