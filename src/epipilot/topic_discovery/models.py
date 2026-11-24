@@ -21,6 +21,13 @@ class DiscoveryRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class LiteratureProvider(StrEnum):
+    OPENALEX = "openalex"
+    SEMANTIC_SCHOLAR = "semantic_scholar"
+    ARXIV = "arxiv"
+    OPENREVIEW = "openreview"
+
+
 class PaperSourceKind(StrEnum):
     PAPER = "paper"
     PREPRINT = "preprint"
@@ -89,12 +96,145 @@ class PaperReference(DiscoveryRecord):
     arxiv_id: str | None = None
     url: str | None = None
     relevance_note: str = Field(min_length=8)
+    abstract: str | None = Field(default=None, max_length=100_000)
+    authors: list[str] = Field(default_factory=list, max_length=200)
+    publication_date: str | None = None
+    keywords: list[str] = Field(default_factory=list, max_length=200)
+    pdf_url: str | None = None
+    provider_ids: list["PaperIdentifier"] = Field(default_factory=list)
+    provider_metrics: list["ProviderMetrics"] = Field(default_factory=list)
+    references: list["PaperIdentifier"] = Field(default_factory=list, max_length=500)
 
     @model_validator(mode="after")
     def require_source_locator(self) -> Self:
         if not any((self.doi, self.arxiv_id, self.url)):
             raise ValueError("paper reference requires a DOI, arXiv ID, or URL")
+        provider_keys = [(item.provider, item.value) for item in self.provider_ids]
+        if len(provider_keys) != len(set(provider_keys)):
+            raise ValueError("paper provider identifiers must be unique")
+        metric_providers = [item.provider for item in self.provider_metrics]
+        if len(metric_providers) != len(set(metric_providers)):
+            raise ValueError("paper provider metrics must be unique per provider")
+        reference_keys = [(item.provider, item.value) for item in self.references]
+        if len(reference_keys) != len(set(reference_keys)):
+            raise ValueError("paper references must be unique")
         return self
+
+
+class PaperIdentifier(DiscoveryRecord):
+    """A provider-scoped identifier; IDs from different providers are not interchangeable."""
+
+    provider: LiteratureProvider
+    value: str = Field(min_length=1, max_length=500)
+
+
+class ProviderMetrics(DiscoveryRecord):
+    """Provider-specific counts; citation counts from different sources are not pooled."""
+
+    provider: LiteratureProvider
+    citation_count: int | None = Field(default=None, ge=0)
+    reference_count: int | None = Field(default=None, ge=0)
+
+
+class LiteratureSearchQuery(DiscoveryRecord):
+    query: str = Field(min_length=2, max_length=500)
+    year_from: int | None = Field(default=None, ge=1900, le=2200)
+    year_to: int | None = Field(default=None, ge=1900, le=2200)
+    venue: str | None = Field(default=None, max_length=200)
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_query_window(self) -> Self:
+        if not self.query.strip():
+            raise ValueError("literature query must not be blank")
+        if (
+            self.year_from is not None
+            and self.year_to is not None
+            and self.year_from > self.year_to
+        ):
+            raise ValueError("year_from must not exceed year_to")
+        return self
+
+
+class LiteratureSearchPage(DiscoveryRecord):
+    provider: LiteratureProvider
+    query: LiteratureSearchQuery
+    papers: list[PaperReference] = Field(default_factory=list)
+    total_count: int | None = Field(default=None, ge=0)
+    next_offset: int | None = Field(default=None, ge=0)
+    source_url: str
+    retrieved_at: AwareDatetime = Field(default_factory=utc_now)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ProviderSearchError(DiscoveryRecord):
+    provider: LiteratureProvider
+    message: str = Field(min_length=1)
+
+
+class LiteratureSearchReport(DiscoveryRecord):
+    query: LiteratureSearchQuery
+    pages: list[LiteratureSearchPage] = Field(default_factory=list)
+    papers: list[PaperReference] = Field(default_factory=list)
+    provider_errors: list[ProviderSearchError] = Field(default_factory=list)
+    retrieved_at: AwareDatetime = Field(default_factory=utc_now)
+
+
+class CitationEdge(DiscoveryRecord):
+    source_paper_id: str = Field(min_length=1)
+    target_identifier: PaperIdentifier
+    target_paper_id: str | None = None
+
+
+class ResearchLandscape(DiscoveryRecord):
+    topic_id: str = Field(min_length=1)
+    query: LiteratureSearchQuery
+    papers: list[PaperReference] = Field(default_factory=list)
+    citation_edges: list[CitationEdge] = Field(default_factory=list)
+    provider_counts: dict[str, int] = Field(default_factory=dict)
+    year_counts: dict[int, int] = Field(default_factory=dict)
+    unresolved_reference_count: int = Field(default=0, ge=0)
+    provider_errors: list[ProviderSearchError] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    created_at: AwareDatetime = Field(default_factory=utc_now)
+
+
+class FullTextArtifact(DiscoveryRecord):
+    paper_id: str = Field(min_length=1)
+    source_url: str
+    pdf_path: str
+    pdf_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    pdf_bytes: int = Field(gt=0)
+    text_path: str | None = None
+    text_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    text_characters: int | None = Field(default=None, ge=0)
+    page_count: int | None = Field(default=None, ge=0)
+    retrieved_at: AwareDatetime = Field(default_factory=utc_now)
+
+
+class StatementKind(StrEnum):
+    CLAIM = "claim"
+    ASSUMPTION = "assumption"
+    LIMITATION = "limitation"
+
+
+class ExtractedStatement(DiscoveryRecord):
+    id: str = Field(min_length=1)
+    kind: StatementKind
+    statement: str = Field(min_length=8)
+    evidence_locator: str = Field(min_length=3)
+    supporting_quote: str | None = Field(default=None, max_length=1200)
+    confidence: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+
+
+class PaperAnalysis(DiscoveryRecord):
+    """Provisional extraction; statements require source review before scientific use."""
+
+    paper_id: str = Field(min_length=1)
+    statements: list[ExtractedStatement] = Field(default_factory=list)
+    reviewed_by_human: bool = False
+    created_at: AwareDatetime = Field(default_factory=utc_now)
 
 
 class ResearchGap(DiscoveryRecord):
