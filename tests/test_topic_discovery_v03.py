@@ -390,12 +390,8 @@ def test_counterevidence_cannot_satisfy_a_causal_evidence_gate() -> None:
     project = _project()
     relationship = project.relationships[0].model_dump(mode="json")
     relationship["kind"] = RelationshipKind.CAUSAL.value
-    relationship["supporting_evidence"] = [
-        project.phenomena[0].evidence[0].model_dump(mode="json")
-    ]
-    relationship["counterevidence"] = [
-        project.phenomena[0].evidence[1].model_dump(mode="json")
-    ]
+    relationship["supporting_evidence"] = [project.phenomena[0].evidence[0].model_dump(mode="json")]
+    relationship["counterevidence"] = [project.phenomena[0].evidence[1].model_dump(mode="json")]
     with pytest.raises(
         ValidationError,
         match="causal maturity requires intervention experiment evidence",

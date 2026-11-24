@@ -121,9 +121,7 @@ def validate_scientific_relationships(
             for variable_id in phenomenon.variable_ids
         }
         if not set(relationship.variable_ids).issubset(phenomenon_variables):
-            raise ValueError(
-                f"relationship {relationship.id} uses variables outside its phenomena"
-            )
+            raise ValueError(f"relationship {relationship.id} uses variables outside its phenomena")
         for evidence in [*relationship.supporting_evidence, *relationship.counterevidence]:
             if known_evidence.get(evidence.id) != evidence:
                 raise ValueError(
