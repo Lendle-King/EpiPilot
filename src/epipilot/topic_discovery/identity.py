@@ -65,9 +65,7 @@ def canonical_paper_id(
     """Create a stable identifier from the strongest available scholarly identifier."""
     normalized_doi = normalize_doi(doi)
     normalized_arxiv = normalize_arxiv_id(arxiv_id)
-    provider_tokens = sorted(
-        f"{item.provider.value}:{item.value}" for item in provider_ids
-    )
+    provider_tokens = sorted(f"{item.provider.value}:{item.value}" for item in provider_ids)
     if normalized_doi is not None:
         identity = f"doi:{normalized_doi}"
     elif normalized_arxiv is not None:
