@@ -130,14 +130,22 @@ def _experiment(
     informative: bool = True,
     cost: float = 20.0,
 ) -> DiscriminativeExperiment:
-    first = {"success": 0.9, "failure": 0.1} if informative else {
-        "success": 0.5,
-        "failure": 0.5,
-    }
-    second = {"success": 0.1, "failure": 0.9} if informative else {
-        "success": 0.5,
-        "failure": 0.5,
-    }
+    first = (
+        {"success": 0.9, "failure": 0.1}
+        if informative
+        else {
+            "success": 0.5,
+            "failure": 0.5,
+        }
+    )
+    second = (
+        {"success": 0.1, "failure": 0.9}
+        if informative
+        else {
+            "success": 0.5,
+            "failure": 0.5,
+        }
+    )
     return DiscriminativeExperiment(
         id=identifier,
         title="Matched contact intervention under delayed observation",
@@ -336,9 +344,7 @@ def test_bayesian_update_moves_probability_toward_better_predicting_hypothesis()
 def test_bayesian_update_rejects_outcomes_impossible_under_every_hypothesis() -> None:
     experiment = _experiment(informative=False)
     predictions = [
-        item.model_copy(
-            update={"outcome_probabilities": {"success": 0.0, "failure": 1.0}}
-        )
+        item.model_copy(update={"outcome_probabilities": {"success": 0.0, "failure": 1.0}})
         for item in experiment.predictions
     ]
     impossible = experiment.model_copy(update={"predictions": predictions})
@@ -501,9 +507,7 @@ def test_relationship_prompt_and_validator_preserve_registered_evidence() -> Non
     project = _project()
     prompt = build_scientific_relationship_prompt(project)
     assert "不能把相关性直接写成因果" in prompt
-    candidate = project.relationships[0].model_copy(
-        update={"id": "relation-new"}
-    )
+    candidate = project.relationships[0].model_copy(update={"id": "relation-new"})
     validated = validate_scientific_relationships(
         project,
         json.dumps([candidate.model_dump(mode="json")]),
@@ -615,9 +619,7 @@ def test_cli_scientific_readiness_writes_gate_report(tmp_path: Path) -> None:
 
 def test_experiment_ranking_rejects_incomparable_cost_units() -> None:
     first = _experiment("experiment-gpu", cost=10.0)
-    second = _experiment("experiment-cloud", cost=10.0).model_copy(
-        update={"cost_unit": "USD"}
-    )
+    second = _experiment("experiment-cloud", cost=10.0).model_copy(update={"cost_unit": "USD"})
     with pytest.raises(ValueError, match="different cost units"):
         rank_discriminative_experiments([first, second])
 

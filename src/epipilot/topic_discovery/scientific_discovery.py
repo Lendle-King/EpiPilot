@@ -54,9 +54,7 @@ def build_scientific_relationship_prompt(
         raise ValueError("relationship prompt references unknown phenomenon IDs")
     variable_ids = {value for item in phenomena for value in item.variable_ids}
     variables = [item for item in project.variables if item.id in variable_ids]
-    existing = [
-        item for item in project.relationships if set(item.phenomenon_ids) & selected_ids
-    ]
+    existing = [item for item in project.relationships if set(item.phenomenon_ids) & selected_ids]
     context = {
         "topic": project.discovery_workspace.topic.model_dump(mode="json"),
         "variables": [item.model_dump(mode="json") for item in variables],
@@ -302,22 +300,18 @@ def score_discriminative_experiment(
         raise ValueError("experiment priors and predictions must cover the same hypotheses")
 
     prior_entropy = -sum(
-        probability * math.log2(probability)
-        for probability in priors.values()
-        if probability > 0
+        probability * math.log2(probability) for probability in priors.values() if probability > 0
     )
     expected_posterior_entropy = 0.0
     for outcome in experiment.outcome_labels:
         marginal_probability = sum(
-            priors[hypothesis_id] * predictions[hypothesis_id][outcome]
-            for hypothesis_id in priors
+            priors[hypothesis_id] * predictions[hypothesis_id][outcome] for hypothesis_id in priors
         )
         if marginal_probability <= 0:
             continue
         posterior = {
             hypothesis_id: (
-                priors[hypothesis_id] * predictions[hypothesis_id][outcome]
-                / marginal_probability
+                priors[hypothesis_id] * predictions[hypothesis_id][outcome] / marginal_probability
             )
             for hypothesis_id in priors
         }
@@ -329,12 +323,8 @@ def score_discriminative_experiment(
         expected_posterior_entropy += marginal_probability * posterior_entropy
 
     information_gain = max(0.0, prior_entropy - expected_posterior_entropy)
-    within_budget = (
-        budget_limit is None
-        or (
-            budget_unit == experiment.cost_unit
-            and experiment.estimated_cost <= budget_limit
-        )
+    within_budget = budget_limit is None or (
+        budget_unit == experiment.cost_unit and experiment.estimated_cost <= budget_limit
     )
     return ExperimentInformationScore(
         experiment_id=experiment.id,
@@ -421,13 +411,9 @@ def update_hypothesis_beliefs(
             "observed outcomes are impossible under every hypothesis; revise the hypothesis set"
         )
     maximum = max(finite_values)
-    log_evidence = maximum + math.log(
-        sum(math.exp(value - maximum) for value in finite_values)
-    )
+    log_evidence = maximum + math.log(sum(math.exp(value - maximum) for value in finite_values))
     posterior = {
-        hypothesis_id: (
-            math.exp(value - log_evidence) if math.isfinite(value) else 0.0
-        )
+        hypothesis_id: (math.exp(value - log_evidence) if math.isfinite(value) else 0.0)
         for hypothesis_id, value in log_joint.items()
     }
     return HypothesisBeliefUpdate(

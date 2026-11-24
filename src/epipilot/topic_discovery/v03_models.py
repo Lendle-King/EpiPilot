@@ -205,7 +205,9 @@ class ScientificRelationship(DiscoveryRecord):
         if self.maturity is RelationshipMaturity.INDEPENDENTLY_REPLICATED:
             studies = {item.study_id for item in self.supporting_evidence}
             if len(studies) < 2 or EvidenceKind.INDEPENDENT_REPLICATION not in kinds:
-                raise ValueError("independent replication requires multiple studies and replication evidence")
+                raise ValueError(
+                    "independent replication requires multiple studies and replication evidence"
+                )
         if self.maturity is RelationshipMaturity.CROSS_ENVIRONMENT_REPLICATED:
             environments = {
                 item.environment_id
@@ -319,9 +321,7 @@ class DiscriminativeExperiment(DiscoveryRecord):
     def validate_experiment_predictions(self) -> Self:
         prior_ids = set(self.hypothesis_priors)
         if any(
-            not hypothesis_id.strip()
-            or not math.isfinite(probability)
-            or not 0 <= probability <= 1
+            not hypothesis_id.strip() or not math.isfinite(probability) or not 0 <= probability <= 1
             for hypothesis_id, probability in self.hypothesis_priors.items()
         ):
             raise ValueError("hypothesis priors must be finite probabilities in [0, 1]")
@@ -392,8 +392,7 @@ class HypothesisBeliefUpdate(DiscoveryRecord):
             raise ValueError("prior and posterior hypothesis IDs must match")
         for probabilities in (self.prior_probabilities, self.posterior_probabilities):
             if any(
-                not math.isfinite(value) or not 0 <= value <= 1
-                for value in probabilities.values()
+                not math.isfinite(value) or not 0 <= value <= 1 for value in probabilities.values()
             ):
                 raise ValueError("belief probabilities must be finite values in [0, 1]")
             if not math.isclose(sum(probabilities.values()), 1.0, abs_tol=1e-6):
@@ -447,7 +446,9 @@ class ValidatedPrinciple(DiscoveryRecord):
                 EvidenceKind.MECHANISTIC_ANALYSIS,
             }
             if not required.issubset(kinds):
-                raise ValueError("mechanistic principle requires intervention and mechanism evidence")
+                raise ValueError(
+                    "mechanistic principle requires intervention and mechanism evidence"
+                )
         if self.evidence_level is PrincipleEvidenceLevel.INDEPENDENTLY_REPLICATED:
             studies = {item.study_id for item in self.supporting_evidence}
             if len(studies) < 2 or EvidenceKind.INDEPENDENT_REPLICATION not in kinds:
@@ -558,8 +559,8 @@ class ScientificDiscoveryProject(DiscoveryRecord):
                 raise ValueError(f"hypothesis {hypothesis.id} cites unrelated supporting evidence")
             if not set(hypothesis.counterevidence_ids).issubset(allowed_counter):
                 raise ValueError(f"hypothesis {hypothesis.id} cites unrelated counterevidence")
-            referenced_evidence = (
-                set(hypothesis.supporting_evidence_ids) | set(hypothesis.counterevidence_ids)
+            referenced_evidence = set(hypothesis.supporting_evidence_ids) | set(
+                hypothesis.counterevidence_ids
             )
             if not referenced_evidence.issubset(known_evidence_ids):
                 raise ValueError(f"hypothesis {hypothesis.id} references unknown evidence")
@@ -578,7 +579,9 @@ class ScientificDiscoveryProject(DiscoveryRecord):
             register_evidence(result.evidence)
         for update in self.belief_updates:
             if update.experiment_id not in experiment_ids:
-                raise ValueError(f"belief update references unknown experiment {update.experiment_id}")
+                raise ValueError(
+                    f"belief update references unknown experiment {update.experiment_id}"
+                )
             if update.result_id not in result_ids:
                 raise ValueError(f"belief update references unknown result {update.result_id}")
             if not set(update.posterior_probabilities).issubset(hypothesis_ids):
