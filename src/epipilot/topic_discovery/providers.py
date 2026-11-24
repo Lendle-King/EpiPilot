@@ -181,9 +181,12 @@ class OpenAlexProvider(BaseSearchProvider):
             paper for item in raw_results if (paper := self._paper(_as_dict(item))) is not None
         ][skip:]
         total = _as_int(meta.get("count"))
-        next_offset: int | None = query.offset + len(papers)
-        if total is None or next_offset >= total:
-            next_offset = None
+        candidate_offset = query.offset + len(papers)
+        next_offset = (
+            candidate_offset
+            if total is not None and candidate_offset < total
+            else None
+        )
         return LiteratureSearchPage(
             provider=self.provider,
             query=query,
@@ -401,9 +404,12 @@ class ArxivProvider(BaseSearchProvider):
                 namespaces={"opensearch": "http://a9.com/-/spec/opensearch/1.1/"},
             )
         )
-        next_offset = query.offset + len(papers)
-        if len(papers) < query.limit or (total is not None and next_offset >= total):
-            next_offset = None
+        candidate_offset = query.offset + len(papers)
+        next_offset = (
+            None
+            if len(papers) < query.limit or (total is not None and candidate_offset >= total)
+            else candidate_offset
+        )
         return LiteratureSearchPage(
             provider=self.provider,
             query=query,
@@ -497,9 +503,12 @@ class OpenReviewProvider(BaseSearchProvider):
             and _within_years(paper.year, query)
         ]
         total = _as_int(payload.get("count"))
-        next_offset: int | None = query.offset + len(raw_notes)
-        if total is None or next_offset >= total or len(raw_notes) < query.limit:
-            next_offset = None
+        candidate_offset = query.offset + len(raw_notes)
+        next_offset = (
+            None
+            if total is None or candidate_offset >= total or len(raw_notes) < query.limit
+            else candidate_offset
+        )
         return LiteratureSearchPage(
             provider=self.provider,
             query=query,
