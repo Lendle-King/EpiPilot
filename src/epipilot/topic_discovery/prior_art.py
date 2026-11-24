@@ -282,7 +282,7 @@ def rank_prior_art(
         }
         for paper in papers
     ]
-    document_frequency: collections.Counter[str] = Counter()
+    document_frequency: collections.Counter[str] = collections.Counter()
     for fields in document_fields:
         document_frequency.update(set().union(*fields.values()))
     count = len(papers)

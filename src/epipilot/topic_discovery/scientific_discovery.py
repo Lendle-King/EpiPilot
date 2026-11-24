@@ -66,14 +66,15 @@ def build_scientific_relationship_prompt(
 研究范围: {project.discovery_workspace.topic.title}
 
 任务:
-1. 区分关联、因果、条件依赖、不变关系和机制关系，不得把相关性直接写成因果。
+1. 区分关联、因果、条件依赖、不变关系和机制关系,不得把相关性直接写成因果。
 2. 说明变量的操作化定义、关系方向、适用条件和可能的数学形式。
 3. 每个关系必须引用已有 phenomenon ID、variable ID 和原始 evidence ID。
 4. 显式列出混杂因素、替代解释、隐含假设和反例。
 5. 证据不足时将 maturity 设为 descriptive 或 observationally_supported。
-6. 只有存在干预证据时才能提出 intervention_supported；机制支持必须同时有干预和机制分析证据。
-7. 不得创建、改写或伪造 evidence reference；supporting_evidence 和 counterevidence 必须逐字复用输入证据对象。
-8. 关系的适用范围必须明确；不要将局部实验现象概括成普适定律。
+6. 只有存在干预证据时才能提出 intervention_supported;机制支持必须同时有干预和机制分析证据。
+7. 不得创建、改写或伪造 evidence reference;
+   supporting_evidence 和 counterevidence 必须逐字复用输入证据对象。
+8. 关系的适用范围必须明确;不要将局部实验现象概括成普适定律。
 
 返回纯 JSON 数组。每个对象字段:
 id, statement, kind, maturity, phenomenon_ids, variable_ids, mathematical_form,
@@ -150,13 +151,13 @@ def build_scientific_hypothesis_prompt(
 任务:
 1. 至少提出两个机制上不同、能够相互区分的假说。
 2. 每个假说都必须引用已有 relationship IDs 和 evidence IDs。
-3. 每个假说至少给出两个可观测预测，明确预测条件、指标、方向和可选定量值。
+3. 每个假说至少给出两个可观测预测,明确预测条件、指标、方向和可选定量值。
 4. 给出竞争性解释、适用范围和明确的证伪条件。
-5. 区分“解释已有数据”与“预测未见数据”；优先产生未见条件下可区分的预测。
-6. 不要将一个算法设计包装成科学假说；先解释变量之间为什么存在这种关系。
-7. 不能仅凭自然语言置信度宣称因果；因果解释必须明确需要什么干预证据。
+5. 区分“解释已有数据”与“预测未见数据”;优先产生未见条件下可区分的预测。
+6. 不要将一个算法设计包装成科学假说;先解释变量之间为什么存在这种关系。
+7. 不能仅凭自然语言置信度宣称因果;因果解释必须明确需要什么干预证据。
 
-返回纯 JSON 数组，元素符合 ScientificHypothesis:
+返回纯 JSON 数组,元素符合 ScientificHypothesis:
 id, title, statement, proposed_mechanism, relationship_ids, scope_conditions,
 predictions, competing_explanations, falsification_conditions,
 supporting_evidence_ids, counterevidence_ids, status。
@@ -239,14 +240,14 @@ def build_discriminative_experiment_prompt(
     return f"""你是严谨的实验设计研究员。请设计一个能够区分所选竞争性科学假说的实验。
 
 设计原则:
-1. 实验必须让至少两个假说产生不同的结果分布；如果预测完全相同，实验没有区分能力。
+1. 实验必须让至少两个假说产生不同的结果分布;如果预测完全相同,实验没有区分能力。
 2. 明确干预变量、干预类型、控制变量、采样单位和独立性单位。
-3. outcome_labels 必须是互斥且穷尽的类别；每个假说对所有类别给出概率，且概率和为 1。
+3. outcome_labels 必须是互斥且穷尽的类别;每个假说对所有类别给出概率,且概率和为 1。
 4. 明确主要指标、结果定义、样本量、分析计划、证伪规则和留出条件。
 5. 说明随机化、混杂控制、测量误差、统计功效和可能的失效边界。
-6. 预算单位必须与主题预算一致；不要虚构可用资源。
-7. 预期信息增益由程序根据先验和预测似然计算，不要手工填写或优化一个宣传分数。
-8. 设计必须能被预注册，并且清楚标注哪些选择是在观察结果前确定的。
+6. 预算单位必须与主题预算一致;不要虚构可用资源。
+7. 预期信息增益由程序根据先验和预测似然计算,不要手工填写或优化一个宣传分数。
+8. 设计必须能被预注册,并且清楚标注哪些选择是在观察结果前确定的。
 
 返回一个 DiscriminativeExperiment JSON 对象:
 id, title, hypothesis_priors, outcome_labels, predictions, interventions, controls,
@@ -254,7 +255,7 @@ primary_metric, outcome_definition, sampling_unit, independence_unit, analysis_p
 falsification_rule, held_out_conditions, estimated_sample_size, estimated_cost,
 cost_unit, preregistration_sha256。
 
-predictions 是数组，每个元素:
+predictions 是数组,每个元素:
 hypothesis_id, outcome_probabilities。
 
 输入材料:

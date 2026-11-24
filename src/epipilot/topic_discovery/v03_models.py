@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import re
 from enum import StrEnum
 from typing import Self
 
@@ -194,9 +193,11 @@ class ScientificRelationship(DiscoveryRecord):
             and EvidenceKind.INTERVENTION_EXPERIMENT not in kinds
         ):
             raise ValueError("causal maturity requires intervention experiment evidence")
-        if self.maturity is RelationshipMaturity.INTERVENTION_SUPPORTED:
-            if EvidenceKind.INTERVENTION_EXPERIMENT not in kinds:
-                raise ValueError("intervention-supported maturity requires intervention evidence")
+        if (
+            self.maturity is RelationshipMaturity.INTERVENTION_SUPPORTED
+            and EvidenceKind.INTERVENTION_EXPERIMENT not in kinds
+        ):
+            raise ValueError("intervention-supported maturity requires intervention evidence")
         if self.maturity is RelationshipMaturity.MECHANISTICALLY_SUPPORTED:
             if EvidenceKind.MECHANISTIC_ANALYSIS not in kinds:
                 raise ValueError("mechanistic maturity requires mechanistic analysis evidence")
@@ -437,9 +438,11 @@ class ValidatedPrinciple(DiscoveryRecord):
             raise ValueError("causal principle claims require intervention experiment evidence")
         if self.causal_claim and self.evidence_level is PrincipleEvidenceLevel.OBSERVATIONAL:
             raise ValueError("observational evidence level cannot support a causal principle")
-        if self.evidence_level is PrincipleEvidenceLevel.INTERVENTION_SUPPORTED:
-            if EvidenceKind.INTERVENTION_EXPERIMENT not in kinds:
-                raise ValueError("intervention-supported principle requires intervention evidence")
+        if (
+            self.evidence_level is PrincipleEvidenceLevel.INTERVENTION_SUPPORTED
+            and EvidenceKind.INTERVENTION_EXPERIMENT not in kinds
+        ):
+            raise ValueError("intervention-supported principle requires intervention evidence")
         if self.evidence_level is PrincipleEvidenceLevel.MECHANISTICALLY_SUPPORTED:
             required = {
                 EvidenceKind.INTERVENTION_EXPERIMENT,

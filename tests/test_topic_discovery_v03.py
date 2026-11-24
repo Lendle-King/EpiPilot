@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from epipilot.topic_discovery.cli import main
 from epipilot.topic_discovery.models import (
+    DiscoveryWorkspace,
     MetricDirection,
     TopicSpec,
 )
@@ -46,7 +47,6 @@ from epipilot.topic_discovery.v03_models import (
     ValidatedPrinciple,
     VariableRole,
 )
-from epipilot.topic_discovery.models import DiscoveryWorkspace
 
 
 def _topic() -> TopicSpec:
