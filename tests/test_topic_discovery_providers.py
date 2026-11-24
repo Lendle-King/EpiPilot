@@ -39,6 +39,7 @@ class StaticTransport:
         self.body = body
         self.final_url = final_url
         self.calls: list[tuple[str, int]] = []
+        self.request_headers: list[Mapping[str, str]] = []
 
     def get(
         self,
@@ -49,6 +50,7 @@ class StaticTransport:
         max_bytes: int,
     ) -> HttpResponse:
         self.calls.append((url, max_bytes))
+        self.request_headers.append(dict(headers))
         if len(self.body) > max_bytes:
             raise LiteratureProviderError("test response exceeds size limit")
         return HttpResponse(
@@ -230,7 +232,7 @@ def test_openreview_parses_public_submission_notes() -> None:
         ],
     }
     transport = StaticTransport(json.dumps(body).encode())
-    page = OpenReviewProvider(transport).search(
+    page = OpenReviewProvider(transport, access_token="test-session").search(
         LiteratureSearchQuery(query="research method", venue="ICLR", year_from=2026)
     )
     paper = page.papers[0]
@@ -239,6 +241,7 @@ def test_openreview_parses_public_submission_notes() -> None:
     assert paper.authors == ["A. Researcher"]
     assert paper.url == "https://openreview.net/forum?id=forum-1"
     assert paper.pdf_url == "https://openreview.net/pdf?id=forum-1"
+    assert transport.request_headers[0]["Cookie"] == "openreview.accessToken=test-session"
 
 
 def test_cross_provider_merge_keeps_provider_metrics_separate() -> None:
