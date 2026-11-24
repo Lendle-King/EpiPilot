@@ -226,7 +226,7 @@ class ExtractedStatement(DiscoveryRecord):
     kind: StatementKind
     statement: str = Field(min_length=8)
     evidence_locator: str = Field(min_length=3)
-    supporting_quote: str | None = Field(default=None, max_length=1200)
+    supporting_quote: str = Field(min_length=8, max_length=1200)
     confidence: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
 
 
@@ -234,6 +234,8 @@ class PaperAnalysis(DiscoveryRecord):
     """Provisional extraction; statements require source review before scientific use."""
 
     paper_id: str = Field(min_length=1)
+    source_text_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    extraction_model: str | None = None
     statements: list[ExtractedStatement] = Field(default_factory=list)
     reviewed_by_human: bool = False
     created_at: AwareDatetime = Field(default_factory=utc_now)
