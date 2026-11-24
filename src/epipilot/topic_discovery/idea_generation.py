@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
-from itertools import combinations
 
 from epipilot.topic_discovery.models import TopicSpec
 from epipilot.topic_discovery.v02_models import IdeaBatch, ResearchSynthesis
@@ -150,7 +150,7 @@ def validate_idea_batch(
             raise ValueError(f"idea {candidate.id} references unknown evidence")
 
     duplicate_pairs: list[tuple[str, str, float]] = []
-    for left, right in combinations(batch.candidates, 2):
+    for left, right in itertools.combinations(batch.candidates, 2):
         similarity = _idea_similarity(
             left.title,
             left.proposed_mechanism,

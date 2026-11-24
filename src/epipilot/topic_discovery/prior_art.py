@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import collections
+import collections.abc
 import hashlib
 import json
 import math
 import re
-from collections import Counter
-from collections.abc import Mapping, Sequence
 
 from epipilot.core.models import utc_now
 from epipilot.topic_discovery.identity import merge_papers
@@ -97,7 +97,7 @@ class PriorArtChallengeService:
 
     def __init__(
         self,
-        providers: Sequence[SearchProvider],
+        providers: collections.abc.Sequence[SearchProvider],
         *,
         max_queries: int = 4,
         limit_per_query: int = 20,
@@ -252,7 +252,7 @@ class PriorArtChallengeService:
 
 def rank_prior_art(
     idea: IdeaCandidate,
-    papers: Sequence[PaperReference],
+    papers: collections.abc.Sequence[PaperReference],
     *,
     top_k: int = 12,
 ) -> list[PriorArtMatch]:
@@ -280,7 +280,7 @@ def rank_prior_art(
         }
         for paper in papers
     ]
-    document_frequency: Counter[str] = Counter()
+    document_frequency: collections.Counter[str] = Counter()
     for fields in document_fields:
         document_frequency.update(set().union(*fields.values()))
     count = len(papers)
@@ -446,7 +446,7 @@ def validate_prior_art_review(
     report: PriorArtChallengeReport,
     raw_json: str,
     *,
-    source_texts: Mapping[str, str] | None = None,
+    source_texts: collections.abc.Mapping[str, str] | None = None,
 ) -> PriorArtReview:
     """Validate report lineage and verbatim prior-art evidence in a model review."""
     review = PriorArtReview.model_validate_json(raw_json)

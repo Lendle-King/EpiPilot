@@ -9,7 +9,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from epipilot.topic_discovery.idea_generation import build_idea_generation_prompt
 from epipilot.topic_discovery.landscape import build_research_landscape, search_report_summary
@@ -27,8 +27,22 @@ from epipilot.topic_discovery.prior_art import (
 )
 from epipilot.topic_discovery.providers import SearchProvider, build_default_providers
 from epipilot.topic_discovery.service import LiteratureSearchService
+from epipilot.topic_discovery.scientific_discovery import (
+    assess_scientific_readiness,
+    build_discriminative_experiment_prompt,
+    build_scientific_hypothesis_prompt,
+    build_scientific_relationship_prompt,
+    rank_discriminative_experiments,
+    update_hypothesis_beliefs,
+    validate_experiment_result,
+)
 from epipilot.topic_discovery.synthesis import build_research_synthesis_prompt
 from epipilot.topic_discovery.v02_models import ResearchSynthesis
+from epipilot.topic_discovery.v03_models import (
+    DiscriminativeExperiment,
+    ExperimentResult,
+    ScientificDiscoveryProject,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -102,6 +116,78 @@ def _parser() -> argparse.ArgumentParser:
         "--prompt-output",
         type=Path,
         default=Path(".topic-discovery") / "prior_art_challenge_prompt.md",
+    )
+    relationship_prompt = subparsers.add_parser(
+        "scientific-relationships-prompt",
+        help="build a source-grounded scientific relationship discovery prompt",
+    )
+    relationship_prompt.add_argument("--project", type=Path, required=True)
+    relationship_prompt.add_argument("--phenomenon-id", action="append", default=None)
+    relationship_prompt.add_argument(
+        "--output",
+        type=Path,
+        default=Path(".topic-discovery") / "scientific_relationships_prompt.md",
+    )
+
+    hypothesis_prompt = subparsers.add_parser(
+        "scientific-hypotheses-prompt",
+        help="build competing scientific hypothesis prompts",
+    )
+    hypothesis_prompt.add_argument("--project", type=Path, required=True)
+    hypothesis_prompt.add_argument("--relationship-id", action="append", default=None)
+    hypothesis_prompt.add_argument(
+        "--output",
+        type=Path,
+        default=Path(".topic-discovery") / "scientific_hypotheses_prompt.md",
+    )
+
+    experiment_prompt = subparsers.add_parser(
+        "scientific-experiment-prompt",
+        help="design experiments that discriminate between scientific hypotheses",
+    )
+    experiment_prompt.add_argument("--project", type=Path, required=True)
+    experiment_prompt.add_argument("--hypothesis-id", action="append", required=True)
+    experiment_prompt.add_argument(
+        "--output",
+        type=Path,
+        default=Path(".topic-discovery") / "discriminative_experiment_prompt.md",
+    )
+
+    score_experiments = subparsers.add_parser(
+        "scientific-score-experiments",
+        help="rank experiments by expected information gain per unit cost",
+    )
+    score_experiments.add_argument("--experiments", type=Path, required=True)
+    score_experiments.add_argument("--budget", type=float, required=True)
+    score_experiments.add_argument("--budget-unit", required=True)
+    score_experiments.add_argument(
+        "--output",
+        type=Path,
+        default=Path(".topic-discovery") / "experiment_scores.json",
+    )
+
+    update_beliefs = subparsers.add_parser(
+        "scientific-update-beliefs",
+        help="update competing hypothesis probabilities from observed experiment outcomes",
+    )
+    update_beliefs.add_argument("--experiment", type=Path, required=True)
+    update_beliefs.add_argument("--result", type=Path, required=True)
+    update_beliefs.add_argument(
+        "--output",
+        type=Path,
+        default=Path(".topic-discovery") / "hypothesis_belief_update.json",
+    )
+
+    scientific_readiness = subparsers.add_parser(
+        "scientific-readiness",
+        help="check whether a discriminative experiment is ready for human review",
+    )
+    scientific_readiness.add_argument("--project", type=Path, required=True)
+    scientific_readiness.add_argument("--experiment-id", required=True)
+    scientific_readiness.add_argument(
+        "--output",
+        type=Path,
+        default=Path(".topic-discovery") / "scientific_readiness.json",
     )
     return parser
 
@@ -294,6 +380,166 @@ def _challenge(args: argparse.Namespace, root: Path) -> tuple[dict[str, object],
     }, bool(report.providers_succeeded)
 
 
+def _load_scientific_project(root: Path, path: Path) -> ScientificDiscoveryProject:
+    return ScientificDiscoveryProject.model_validate_json(
+        _resolve_input(root, path).read_text(encoding="utf-8")
+    )
+
+
+def _write_json(root: Path, path: Path, payload: object) -> Path:
+    destination = _resolve_output(root, path)
+    if isinstance(payload, BaseModel):
+        data = payload.model_dump(mode="json")
+    else:
+        data = payload
+    destination.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return destination
+
+
+def _scientific_relationships_prompt(
+    args: argparse.Namespace,
+    root: Path,
+) -> tuple[dict[str, object], bool]:
+    project = _load_scientific_project(root, args.project)
+    prompt = build_scientific_relationship_prompt(
+        project,
+        phenomenon_ids=args.phenomenon_id,
+    )
+    destination = _resolve_output(root, args.output)
+    destination.write_text(prompt, encoding="utf-8")
+    return {
+        "project_id": project.id,
+        "phenomena_count": len(args.phenomenon_id or project.phenomena),
+        "output": str(destination),
+        "next_step": (
+            "Validate model output with "
+            "validate_scientific_relationships() before adding relations."
+        ),
+    }, True
+
+
+def _scientific_hypotheses_prompt(
+    args: argparse.Namespace,
+    root: Path,
+) -> tuple[dict[str, object], bool]:
+    project = _load_scientific_project(root, args.project)
+    prompt = build_scientific_hypothesis_prompt(
+        project,
+        relationship_ids=args.relationship_id,
+    )
+    destination = _resolve_output(root, args.output)
+    destination.write_text(prompt, encoding="utf-8")
+    return {
+        "project_id": project.id,
+        "relationship_count": len(args.relationship_id or project.relationships),
+        "output": str(destination),
+        "next_step": "Validate the competing hypotheses with validate_scientific_hypotheses().",
+    }, True
+
+
+def _scientific_experiment_prompt(
+    args: argparse.Namespace,
+    root: Path,
+) -> tuple[dict[str, object], bool]:
+    project = _load_scientific_project(root, args.project)
+    prompt = build_discriminative_experiment_prompt(
+        project,
+        hypothesis_ids=args.hypothesis_id,
+    )
+    destination = _resolve_output(root, args.output)
+    destination.write_text(prompt, encoding="utf-8")
+    return {
+        "project_id": project.id,
+        "hypothesis_ids": args.hypothesis_id,
+        "output": str(destination),
+        "next_step": (
+            "Validate the experiment with validate_discriminative_experiment() "
+            "and inspect its likelihood assumptions."
+        ),
+    }, True
+
+
+def _scientific_score_experiments(
+    args: argparse.Namespace,
+    root: Path,
+) -> tuple[dict[str, object], bool]:
+    experiments = TypeAdapter(list[DiscriminativeExperiment]).validate_python(
+        _load_json(root, args.experiments)
+    )
+    scores = rank_discriminative_experiments(
+        experiments,
+        budget_limit=args.budget,
+        budget_unit=args.budget_unit,
+    )
+    destination = _write_json(
+        root,
+        args.output,
+        [score.model_dump(mode="json") for score in scores],
+    )
+    feasible = [score for score in scores if score.within_budget]
+    return {
+        "experiment_count": len(experiments),
+        "feasible_count": len(feasible),
+        "selected_experiment_id": feasible[0].experiment_id if feasible else None,
+        "scores": [score.model_dump(mode="json") for score in scores],
+        "output": str(destination),
+        "warning": (
+            "Expected information gain depends on the supplied hypothesis priors and "
+            "likelihoods; it is not a guarantee of scientific value."
+        ),
+    }, bool(feasible)
+
+
+def _scientific_update_beliefs(
+    args: argparse.Namespace,
+    root: Path,
+) -> tuple[dict[str, object], bool]:
+    experiment = DiscriminativeExperiment.model_validate_json(
+        _resolve_input(root, args.experiment).read_text(encoding="utf-8")
+    )
+    result = ExperimentResult.model_validate_json(
+        _resolve_input(root, args.result).read_text(encoding="utf-8")
+    )
+    validated_result = validate_experiment_result(experiment, result.model_dump_json())
+    update = update_hypothesis_beliefs(experiment, validated_result)
+    destination = _write_json(root, args.output, update)
+    return {
+        "experiment_id": experiment.id,
+        "result_id": result.id,
+        "posterior_probabilities": update.posterior_probabilities,
+        "log_evidence": update.log_evidence,
+        "output": str(destination),
+        "warning": (
+            "The update assumes conditionally independent categorical observations "
+            "within the declared independence unit."
+        ),
+    }, True
+
+
+def _scientific_readiness(
+    args: argparse.Namespace,
+    root: Path,
+) -> tuple[dict[str, object], bool]:
+    project = _load_scientific_project(root, args.project)
+    report = assess_scientific_readiness(
+        project,
+        experiment_id=args.experiment_id,
+    )
+    destination = _write_json(root, args.output, report)
+    return {
+        "project_id": project.id,
+        "experiment_id": args.experiment_id,
+        "ready_for_human_review": report.ready_for_human_review,
+        "expected_information_gain_bits": report.expected_information_gain_bits,
+        "blockers": report.blockers,
+        "warnings": report.warnings,
+        "output": str(destination),
+    }, report.ready_for_human_review
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     root = args.root.resolve()
@@ -306,6 +552,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             summary, succeeded = _ideas_prompt(args, root)
         elif args.command == "challenge":
             summary, succeeded = _challenge(args, root)
+        elif args.command == "scientific-relationships-prompt":
+            summary, succeeded = _scientific_relationships_prompt(args, root)
+        elif args.command == "scientific-hypotheses-prompt":
+            summary, succeeded = _scientific_hypotheses_prompt(args, root)
+        elif args.command == "scientific-experiment-prompt":
+            summary, succeeded = _scientific_experiment_prompt(args, root)
+        elif args.command == "scientific-score-experiments":
+            summary, succeeded = _scientific_score_experiments(args, root)
+        elif args.command == "scientific-update-beliefs":
+            summary, succeeded = _scientific_update_beliefs(args, root)
+        elif args.command == "scientific-readiness":
+            summary, succeeded = _scientific_readiness(args, root)
         else:
             raise ValueError(f"unknown command: {args.command}")
         print(json.dumps(summary, ensure_ascii=False, indent=2))
