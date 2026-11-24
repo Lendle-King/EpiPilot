@@ -257,3 +257,121 @@ analysis = validate_paper_analysis(paper, model_json, text)
 ~~~
 
 验证器检查 paper ID、源文本 SHA-256，以及每条 claim/assumption/limitation 的 supporting quote 是否确实出现在对应文本中。它不能证明抽取语义完全正确，也不替代人工复核；\`reviewed_by_human\` 默认保持 false。
+
+
+## 16. V0.2：Research Idea Discovery
+
+V0.2 在 V0.1 文献检索和逐篇证据抽取之上，增加跨论文综合、候选课题生成和主动 prior-art challenge。它仍然是 model-agnostic：模块生成可审计 prompt 并校验模型响应，不隐式调用外部 LLM。
+
+### 16.1 Research Synthesis
+
+先为每条已验证的 Claim / Assumption / Limitation 建立 paper-qualified evidence ID：
+
+\`<paper_id>::<statement_id>\`
+
+同一篇论文中的 \`claim-1\` 与另一篇论文中的 \`claim-1\` 不会发生 ID 冲突。Evidence index 同时保存原文 quote、evidence locator 和来源论文 ID。
+
+CLI：
+
+~~~bash
+epidiscover synthesis-prompt \
+  --topic .topic-discovery/topic.json \
+  --papers .topic-discovery/papers.json \
+  --analyses .topic-discovery/analyses.json \
+  --output .topic-discovery/synthesis_prompt.md
+~~~
+
+其中 \`papers.json\` 和 \`analyses.json\` 是对应 Pydantic records 的 JSON 数组。将生成的 prompt 交给已配置的 LLM，保存返回的 JSON 后，使用：
+
+~~~python
+from epipilot.topic_discovery.synthesis import validate_research_synthesis
+
+synthesis = validate_research_synthesis(
+    topic,
+    papers,
+    analyses,
+    model_response_json,
+)
+~~~
+
+验证器要求 topic ID、论文 ID 集合、源文本 SHA-256 和完整 evidence index 与输入完全一致；theme 和 gap 只能引用已存在的 evidence IDs。Gap 的 supporting/counterevidence source IDs 必须与其 statement-level evidence 对应。
+
+### 16.2 Diverse Idea Generation
+
+从经过验证的 synthesis 生成 5–8 个候选课题：
+
+~~~bash
+epidiscover ideas-prompt \
+  --topic .topic-discovery/topic.json \
+  --synthesis .topic-discovery/synthesis.json \
+  --target-count 6 \
+  --output .topic-discovery/ideas_prompt.md
+~~~
+
+响应由 \`validate_idea_batch(topic, synthesis, raw_json)\` 校验。每个候选必须：
+- 关联一个已存在的 research gap；
+- 至少引用一条 gap 支持证据；
+- 反例引用只能来自该 gap 已登记的 counterevidence；
+- 提供研究问题、机制、预期贡献、替代解释和可证伪条件；
+- 声明 problem / method / mechanism / scenario / insight 中的创新维度。
+
+批次至少覆盖三个创新维度。验证器还会对标题和 proposed mechanism 做词项 Jaccard 近重复检查（默认阈值 0.82）。这只是重复候选的快速筛查，不是语义多样性或原创性证明。
+
+### 16.3 Prior-Art Challenger
+
+对单个候选进行主动反向检索：
+
+~~~bash
+epidiscover challenge \
+  --idea .topic-discovery/idea-1.json \
+  --year-from 2022 \
+  --year-to 2026 \
+  --limit 20 \
+  --top-k 12 \
+  --output .topic-discovery/idea-1-prior-art.json \
+  --prompt-output .topic-discovery/idea-1-challenger.md
+~~~
+
+默认使用四个公开来源。查询从候选标题、研究问题、机制和预期贡献构造；每个来源、每个查询最多读取三页。结果按 DOI / arXiv / provider-scoped ID 去重，再用 \`weighted_field_coverage_v1\` 排序。
+
+排序分数来自标题、摘要和关键词的加权词项覆盖度，**不是 embedding 相似度、语义相似度或 novelty score**。报告保留查询、来源覆盖、失败记录、原始论文元数据、匹配词项和覆盖警告。
+
+将 challenger prompt 交给 LLM 后，用以下接口校验：
+
+~~~python
+from epipilot.topic_discovery.prior_art import (
+    validate_prior_art_review,
+    confirm_prior_art_review,
+)
+
+review = validate_prior_art_review(idea, challenge_report, model_response_json)
+
+# 必须在人工逐篇检查后，显式确认才能进入现有 NoveltyAudit gate。
+audit = confirm_prior_art_review(review, human_approved=True)
+~~~
+
+校验器检查 challenge/idea ID、查询和 provider coverage、检索论文 ID、最近邻 ID，以及每条比较的 supporting quote 是否出现在对应摘要或调用方提供的全文中。模型不能将自己标记为 human-reviewed。只有显式人工确认后才生成现有 \`NoveltyAudit\`；provisionally distinct 的比较必须保留原文 quote。
+
+### 16.4 V0.2 的证据边界
+
+- Research Synthesis 是跨论文证据组织，不会自动证明某个 gap 真实存在。
+- Candidate diversity 是结构和词项层面的初筛，不代表研究思想具有实质差异。
+- Prior-art lexical ranking 可能漏掉同义表述、跨领域术语和未被索引的工作；必须检查原文和反例。
+- 少于两个成功 provider 或少于五篇唯一论文时，系统会给出覆盖警告；不能据此给出 provisionally distinct 结论。
+- 模型输出的 novelty verdict 只是待审意见；人工确认之前不能进入 experiment-readiness gate。
+- V0.2 不自动调用 LLM、不自动提交论文、不自动执行实验，也不承诺生成 Oral / Best Paper 级选题。
+
+## 17. V0.2 验收目标
+
+| 验收项 | 通过条件 |
+|---|---|
+| Evidence lineage | 每条综合结论可回溯到 paper ID、statement ID、原文 quote |
+| Synthesis integrity | 源文本哈希、证据索引和来源集合完全匹配 |
+| Idea batch | 生成 5–8 个候选，覆盖至少三个创新维度 |
+| Candidate quality contract | 每个候选有支持证据、替代解释和可证伪条件 |
+| Diversity check | 不存在超过阈值的词项近重复候选 |
+| Prior-art coverage | 保存多查询、多来源结果、分页和失败记录 |
+| Adversarial review | 最近邻比较有原文 quote，覆盖不足时拒绝 distinct verdict |
+| Human gate | 只有显式人工确认才能转为 NoveltyAudit |
+
+V0.2 的完成标志是得到一批**可追溯、可反驳、可淘汰**的候选课题，而不是直接自动宣布某个课题具有顶会级创新性。下一阶段才是 V0.3：为优先候选设计最小区分性实验、强基线、反事实控制、统计判据和预算上限。
