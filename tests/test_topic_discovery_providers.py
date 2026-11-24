@@ -461,3 +461,27 @@ def test_doi_arxiv_alias_bridges_cross_provider_records() -> None:
     assert merged[0].doi == "10.5555/alias"
     assert merged[0].arxiv_id == "2501.12345"
     assert len(merged[0].provider_ids) == 3
+
+
+def test_provider_only_records_with_same_title_keep_distinct_ids() -> None:
+    from epipilot.topic_discovery.identity import merge_papers
+
+    openalex_record = PaperReference(
+        id="openalex-title-only",
+        title="A Generic Research Title",
+        year=2025,
+        url="https://openalex.org/W100",
+        relevance_note="A title-only OpenAlex record without DOI or arXiv ID.",
+        provider_ids=[PaperIdentifier(provider=LiteratureProvider.OPENALEX, value="W100")],
+    )
+    openreview_record = PaperReference(
+        id="openreview-title-only",
+        title="A Generic Research Title",
+        year=2025,
+        url="https://openreview.net/forum?id=F100",
+        relevance_note="A separate title-only OpenReview record.",
+        provider_ids=[PaperIdentifier(provider=LiteratureProvider.OPENREVIEW, value="F100")],
+    )
+    merged = merge_papers([openalex_record, openreview_record])
+    assert len(merged) == 2
+    assert len({paper.id for paper in merged}) == 2
