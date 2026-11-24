@@ -181,7 +181,7 @@ class OpenAlexProvider(BaseSearchProvider):
             paper for item in raw_results if (paper := self._paper(_as_dict(item))) is not None
         ][skip:]
         total = _as_int(meta.get("count"))
-        next_offset = query.offset + len(papers)
+        next_offset: int | None = query.offset + len(papers)
         if total is None or next_offset >= total:
             next_offset = None
         return LiteratureSearchPage(
@@ -497,7 +497,7 @@ class OpenReviewProvider(BaseSearchProvider):
             and _within_years(paper.year, query)
         ]
         total = _as_int(payload.get("count"))
-        next_offset = query.offset + len(raw_notes)
+        next_offset: int | None = query.offset + len(raw_notes)
         if total is None or next_offset >= total or len(raw_notes) < query.limit:
             next_offset = None
         return LiteratureSearchPage(
