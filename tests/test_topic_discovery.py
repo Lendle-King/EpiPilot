@@ -144,9 +144,7 @@ def test_missing_budget_blocks_experiment_review() -> None:
 
 
 def test_overlapping_prior_art_blocks_experiment_review() -> None:
-    report = assess_experiment_readiness(
-        _workspace(verdict=AuditVerdict.OVERLAP_FOUND)
-    )
+    report = assess_experiment_readiness(_workspace(verdict=AuditVerdict.OVERLAP_FOUND))
     assert report.ready_for_human_review is False
     assert any("found a potentially overlapping work" in blocker for blocker in report.blockers)
 
@@ -192,9 +190,7 @@ def test_topic_budget_requires_a_unit() -> None:
 
 
 def test_insufficient_search_blocks_experiment_review() -> None:
-    report = assess_experiment_readiness(
-        _workspace(verdict=AuditVerdict.INSUFFICIENT_SEARCH)
-    )
+    report = assess_experiment_readiness(_workspace(verdict=AuditVerdict.INSUFFICIENT_SEARCH))
     assert report.ready_for_human_review is False
     assert any("insufficient search" in blocker for blocker in report.blockers)
 
