@@ -72,9 +72,7 @@ class UrllibTransport:
                 body = response.read(max_bytes + 1)
                 if len(body) > max_bytes:
                     raise LiteratureProviderError("upstream response exceeds configured size limit")
-                response_headers = {
-                    key.lower(): value for key, value in response.headers.items()
-                }
+                response_headers = {key.lower(): value for key, value in response.headers.items()}
                 return HttpResponse(
                     status=response.status,
                     headers=response_headers,
@@ -82,13 +80,9 @@ class UrllibTransport:
                     final_url=response.geturl(),
                 )
         except urllib.error.HTTPError as exc:
-            raise LiteratureProviderError(
-                f"upstream returned HTTP {exc.code}"
-            ) from exc
+            raise LiteratureProviderError(f"upstream returned HTTP {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise LiteratureProviderError(
-                f"upstream request failed: {type(exc).__name__}"
-            ) from exc
+            raise LiteratureProviderError(f"upstream request failed: {type(exc).__name__}") from exc
 
 
 class SearchProvider(Protocol):
@@ -184,9 +178,7 @@ class OpenAlexProvider(BaseSearchProvider):
         meta = _as_dict(payload.get("meta"))
         raw_results = _as_list(payload.get("results"))
         papers = [
-            paper
-            for item in raw_results
-            if (paper := self._paper(_as_dict(item))) is not None
+            paper for item in raw_results if (paper := self._paper(_as_dict(item))) is not None
         ][skip:]
         total = _as_int(meta.get("count"))
         next_offset = query.offset + len(papers)
@@ -276,9 +268,7 @@ class SemanticScholarProvider(BaseSearchProvider):
     def search(self, query: LiteratureSearchQuery) -> LiteratureSearchPage:
         year_filter = None
         if query.year_from is not None or query.year_to is not None:
-            year_filter = (
-                f"{query.year_from or 1900}-{query.year_to or datetime.now(UTC).year}"
-            )
+            year_filter = f"{query.year_from or 1900}-{query.year_to or datetime.now(UTC).year}"
         params: dict[str, object] = {
             "query": query.query,
             "limit": query.limit,
@@ -292,9 +282,7 @@ class SemanticScholarProvider(BaseSearchProvider):
         payload = _json_object(response.body, self.provider)
         raw_results = _as_list(payload.get("data"))
         papers = [
-            paper
-            for item in raw_results
-            if (paper := self._paper(_as_dict(item))) is not None
+            paper for item in raw_results if (paper := self._paper(_as_dict(item))) is not None
         ]
         total = _as_int(payload.get("total"))
         next_offset = _as_int(payload.get("next"))
@@ -380,9 +368,7 @@ class ArxivProvider(BaseSearchProvider):
         if query.year_from is not None or query.year_to is not None:
             start_year = query.year_from or 1900
             end_year = query.year_to or datetime.now(UTC).year
-            date_filter = (
-                f"submittedDate:[{start_year}01010000 TO {end_year}12312359]"
-            )
+            date_filter = f"submittedDate:[{start_year}01010000 TO {end_year}12312359]"
             search_expression += f" AND {date_filter}"
         params = {
             "search_query": search_expression,
@@ -512,13 +498,9 @@ class OpenReviewProvider(BaseSearchProvider):
         if year is None:
             return None
         authors_value = _content_value(content, "authors")
-        authors = [
-            value for item in _as_list(authors_value) if (value := _as_str(item))
-        ]
+        authors = [value for item in _as_list(authors_value) if (value := _as_str(item))]
         keywords_value = _content_value(content, "keywords")
-        keywords = [
-            value for item in _as_list(keywords_value) if (value := _as_str(item))
-        ]
+        keywords = [value for item in _as_list(keywords_value) if (value := _as_str(item))]
         identifier = provider_identifier(self.provider, forum_id)
         return PaperReference(
             id=canonical_paper_id(title=title, year=year),
