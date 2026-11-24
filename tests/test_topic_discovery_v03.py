@@ -568,7 +568,7 @@ def test_relationship_prompt_and_validator_preserve_registered_evidence() -> Non
     invalid = candidate.model_copy(
         update={
             "supporting_evidence": [
-                candidate.supporting_evidence[0].model_copy(
+                candidate.supporting_evidence[1].model_copy(
                     update={"source_id": "fabricated-source"}
                 )
             ]
