@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from collections.abc import Mapping, Sequence
 import hashlib
 import json
 import math
 import re
+from collections import Counter
+from collections.abc import Mapping, Sequence
 
 from epipilot.core.models import utc_now
 from epipilot.topic_discovery.identity import merge_papers

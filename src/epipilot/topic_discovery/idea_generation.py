@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from itertools import combinations
 import hashlib
 import json
 import re
+from itertools import combinations
 
 from epipilot.topic_discovery.models import TopicSpec
 from epipilot.topic_discovery.v02_models import IdeaBatch, ResearchSynthesis
