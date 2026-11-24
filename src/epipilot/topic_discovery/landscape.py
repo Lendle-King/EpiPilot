@@ -34,9 +34,7 @@ def build_research_landscape(
     unresolved = 0
     for paper in papers:
         for reference in paper.references:
-            target = identifier_to_paper.get(
-                (reference.provider.value, reference.value)
-            )
+            target = identifier_to_paper.get((reference.provider.value, reference.value))
             key = (paper.id, reference.provider.value, reference.value)
             if key in edge_keys:
                 continue
@@ -51,9 +49,7 @@ def build_research_landscape(
                 )
             )
 
-    warnings = [
-        f"{error.provider.value}: {error.message}" for error in report.provider_errors
-    ]
+    warnings = [f"{error.provider.value}: {error.message}" for error in report.provider_errors]
     if not papers:
         warnings.append("No papers were returned; inspect query wording and provider coverage.")
     return ResearchLandscape(
@@ -82,4 +78,3 @@ def search_report_summary(report: LiteratureSearchReport) -> dict[str, object]:
         "unique_papers": len(report.papers),
         "retrieved_at": report.retrieved_at.isoformat(),
     }
-
