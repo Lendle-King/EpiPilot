@@ -177,6 +177,7 @@ def _merge_pair(current: PaperReference, paper: PaperReference) -> PaperReferenc
         }
     )
 
+
 def _longer(left: str | None, right: str | None) -> str | None:
     if left is None:
         return right
