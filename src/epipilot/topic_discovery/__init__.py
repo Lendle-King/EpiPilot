@@ -10,6 +10,10 @@ from epipilot.topic_discovery.fulltext import (
     download_open_access_pdf,
     extract_pdf_text,
 )
+from epipilot.topic_discovery.idea_generation import (
+    build_idea_generation_prompt,
+    validate_idea_batch,
+)
 from epipilot.topic_discovery.landscape import build_research_landscape
 from epipilot.topic_discovery.models import (
     AuditVerdict,
@@ -39,6 +43,15 @@ from epipilot.topic_discovery.models import (
     StatementKind,
     TopicSpec,
 )
+from epipilot.topic_discovery.prior_art import (
+    PriorArtChallengeService,
+    attach_prior_art_review,
+    build_prior_art_challenge_prompt,
+    build_prior_art_queries,
+    confirm_prior_art_review,
+    rank_prior_art,
+    validate_prior_art_review,
+)
 from epipilot.topic_discovery.providers import (
     ArxivProvider,
     OpenAlexProvider,
@@ -48,17 +61,38 @@ from epipilot.topic_discovery.providers import (
 )
 from epipilot.topic_discovery.readiness import assess_experiment_readiness
 from epipilot.topic_discovery.service import LiteratureSearchService
+from epipilot.topic_discovery.synthesis import (
+    build_evidence_index,
+    build_research_synthesis_prompt,
+    validate_research_synthesis,
+)
+from epipilot.topic_discovery.v02_models import (
+    EvidenceStatementRef,
+    IdeaBatch,
+    IdeaCandidateV2,
+    PriorArtChallengeReport,
+    PriorArtComparison,
+    PriorArtMatch,
+    PriorArtReview,
+    PriorArtSearchFailure,
+    ResearchSynthesis,
+    ResearchTheme,
+    SynthesisGap,
+)
 
 __all__ = [
     "ArxivProvider",
     "AuditVerdict",
     "CitationEdge",
     "DiscoveryWorkspace",
+    "EvidenceStatementRef",
     "ExperimentDesign",
     "ExperimentReadiness",
     "ExtractedStatement",
     "FullTextArtifact",
+    "IdeaBatch",
     "IdeaCandidate",
+    "IdeaCandidateV2",
     "LiteratureProvider",
     "LiteratureSearchPage",
     "LiteratureSearchQuery",
@@ -74,20 +108,40 @@ __all__ = [
     "PaperIdentifier",
     "PaperReference",
     "PaperSourceKind",
+    "PriorArtChallengeReport",
+    "PriorArtChallengeService",
+    "PriorArtComparison",
+    "PriorArtMatch",
+    "PriorArtReview",
+    "PriorArtSearchFailure",
     "ProviderMetrics",
     "ProviderSearchError",
     "PyMuPDFTextExtractor",
     "ResearchGap",
     "ResearchLandscape",
+    "ResearchSynthesis",
+    "ResearchTheme",
     "SemanticScholarProvider",
     "StatementKind",
+    "SynthesisGap",
     "TopicSpec",
     "assess_experiment_readiness",
+    "attach_prior_art_review",
     "build_default_providers",
+    "build_evidence_index",
+    "build_idea_generation_prompt",
     "build_paper_analysis_prompt",
+    "build_prior_art_challenge_prompt",
+    "build_prior_art_queries",
     "build_research_landscape",
+    "build_research_synthesis_prompt",
+    "confirm_prior_art_review",
     "download_open_access_pdf",
     "extract_pdf_text",
     "load_paper_text",
+    "rank_prior_art",
+    "validate_idea_batch",
     "validate_paper_analysis",
+    "validate_prior_art_review",
+    "validate_research_synthesis",
 ]

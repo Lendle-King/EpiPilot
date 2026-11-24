@@ -44,6 +44,7 @@ def _workspace(
             title="A prior skill chaining study",
             year=2024,
             relevance_note="Studies composition through learned initiation sets.",
+            abstract="We model physical contact as a state variable.",
             url="https://example.org/papers/skill-chaining",
         ),
         PaperReference(
@@ -96,6 +97,7 @@ def _workspace(
                     "The prediction target and evidence requirements differ materially."
                 ),
                 evidence_locator="Methods, Section 3",
+                supporting_quote="We model physical contact as a state variable.",
             )
         ],
         overlap_risks=["The relationship to robust option initiation sets needs deeper review."],

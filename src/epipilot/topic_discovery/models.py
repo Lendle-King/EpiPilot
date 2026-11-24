@@ -272,6 +272,9 @@ class IdeaCandidate(DiscoveryRecord):
     expected_contribution: str = Field(min_length=12)
     alternative_explanations: list[str] = Field(min_length=1)
     falsification_conditions: list[str] = Field(min_length=1)
+    novelty_dimension: NoveltyDimension | None = None
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    counterevidence_evidence_ids: list[str] = Field(default_factory=list)
 
 
 class NoveltyDifference(DiscoveryRecord):
@@ -283,6 +286,7 @@ class NoveltyDifference(DiscoveryRecord):
     proposed_difference: str = Field(min_length=12)
     materiality_rationale: str = Field(min_length=12)
     evidence_locator: str = Field(min_length=3)
+    supporting_quote: str | None = Field(default=None, min_length=8, max_length=1200)
 
 
 class NoveltyAudit(DiscoveryRecord):
@@ -329,6 +333,8 @@ class NoveltyAudit(DiscoveryRecord):
             difference_work_ids = {item.nearest_work_id for item in self.differences}
             if not difference_work_ids.issubset(set(self.nearest_work_ids)):
                 raise ValueError("every novelty difference must reference a listed nearest work")
+            if any(not item.supporting_quote for item in self.differences):
+                raise ValueError("provisionally distinct novelty differences require source quotes")
         if self.verdict is AuditVerdict.OVERLAP_FOUND and not self.nearest_work_ids:
             raise ValueError("overlap_found audit must identify at least one nearest work")
         return self
