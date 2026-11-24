@@ -172,10 +172,6 @@ def _require_allowed_https_host(url: str, allowed_hosts: Sequence[str]) -> None:
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("PDF URLs must not contain embedded credentials")
     hostname = parsed.hostname.casefold().rstrip(".")
-    approved = {
-        host.casefold().rstrip(".")
-        for host in allowed_hosts
-        if host.strip()
-    }
+    approved = {host.casefold().rstrip(".") for host in allowed_hosts if host.strip()}
     if not any(hostname == host or hostname.endswith(f".{host}") for host in approved):
         raise ValueError(f"PDF host {hostname!r} is not in the explicit allowlist")
