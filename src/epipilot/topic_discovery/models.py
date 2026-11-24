@@ -101,9 +101,9 @@ class PaperReference(DiscoveryRecord):
     publication_date: str | None = None
     keywords: list[str] = Field(default_factory=list, max_length=200)
     pdf_url: str | None = None
-    provider_ids: list["PaperIdentifier"] = Field(default_factory=list)
-    provider_metrics: list["ProviderMetrics"] = Field(default_factory=list)
-    references: list["PaperIdentifier"] = Field(default_factory=list, max_length=500)
+    provider_ids: list[PaperIdentifier] = Field(default_factory=list)
+    provider_metrics: list[ProviderMetrics] = Field(default_factory=list)
+    references: list[PaperIdentifier] = Field(default_factory=list, max_length=500)
 
     @model_validator(mode="after")
     def require_source_locator(self) -> Self:
