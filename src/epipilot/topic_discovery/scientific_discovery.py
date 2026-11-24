@@ -100,6 +100,8 @@ def validate_scientific_relationships(
 ) -> list[ScientificRelationship]:
     """Validate relationship references and prohibit invented evidence provenance."""
     relationships = TypeAdapter(list[ScientificRelationship]).validate_json(raw_json)
+    if not relationships:
+        raise ValueError("at least one scientific relationship candidate is required")
     known_phenomena = {item.id for item in project.phenomena}
     known_variables = {item.id for item in project.variables}
     known_evidence = _evidence_index(project)
@@ -112,6 +114,16 @@ def validate_scientific_relationships(
             raise ValueError(f"relationship {relationship.id} references unknown phenomena")
         if not set(relationship.variable_ids).issubset(known_variables):
             raise ValueError(f"relationship {relationship.id} references unknown variables")
+        phenomenon_variables = {
+            variable_id
+            for phenomenon in project.phenomena
+            if phenomenon.id in relationship.phenomenon_ids
+            for variable_id in phenomenon.variable_ids
+        }
+        if not set(relationship.variable_ids).issubset(phenomenon_variables):
+            raise ValueError(
+                f"relationship {relationship.id} uses variables outside its phenomena"
+            )
         for evidence in [*relationship.supporting_evidence, *relationship.counterevidence]:
             if known_evidence.get(evidence.id) != evidence:
                 raise ValueError(
@@ -177,6 +189,8 @@ def validate_scientific_hypotheses(
 ) -> list[ScientificHypothesis]:
     """Validate hypotheses against registered relationships and evidence lineage."""
     hypotheses = TypeAdapter(list[ScientificHypothesis]).validate_json(raw_json)
+    if len(hypotheses) < 2:
+        raise ValueError("at least two competing scientific hypotheses are required")
     known_relationships = {item.id: item for item in project.relationships}
     known_evidence = _evidence_index(project)
     existing_ids = {item.id for item in project.hypotheses}

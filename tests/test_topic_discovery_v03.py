@@ -386,6 +386,61 @@ def test_causal_relationship_cannot_claim_intervention_support_without_intervent
         ScientificRelationship.model_validate(relationship.model_dump())
 
 
+def test_counterevidence_cannot_satisfy_a_causal_evidence_gate() -> None:
+    project = _project()
+    relationship = project.relationships[0].model_dump(mode="json")
+    relationship["kind"] = RelationshipKind.CAUSAL.value
+    relationship["supporting_evidence"] = [
+        project.phenomena[0].evidence[0].model_dump(mode="json")
+    ]
+    relationship["counterevidence"] = [
+        project.phenomena[0].evidence[1].model_dump(mode="json")
+    ]
+    with pytest.raises(
+        ValidationError,
+        match="causal maturity requires intervention experiment evidence",
+    ):
+        ScientificRelationship.model_validate(relationship)
+
+
+def test_hypothesis_validator_requires_competing_hypotheses() -> None:
+    project = _project()
+    candidate = _hypothesis(
+        "hypothesis-new-only",
+        "A single proposed explanation",
+        "Contact mode changes the reachable state set under delayed observation.",
+    )
+    with pytest.raises(ValueError, match="at least two competing scientific hypotheses"):
+        validate_scientific_hypotheses(
+            project,
+            json.dumps([candidate.model_dump(mode="json")]),
+        )
+
+
+def test_project_registers_result_and_bayesian_update_together() -> None:
+    project = _project()
+    experiment = project.experiments[0]
+    result = ExperimentResult(
+        id="result-registered",
+        experiment_id=experiment.id,
+        observed_outcome_counts={"success": 9, "failure": 1},
+        evidence=[
+            _evidence(
+                "evidence-registered-result",
+                EvidenceKind.INTERVENTION_EXPERIMENT,
+                study_id="study-registered-result",
+                digest_char="f",
+            )
+        ],
+    )
+    update = update_hypothesis_beliefs(experiment, result)
+    payload = project.model_dump(mode="json")
+    payload["experiment_results"] = [result.model_dump(mode="json")]
+    payload["belief_updates"] = [update.model_dump(mode="json")]
+    registered = ScientificDiscoveryProject.model_validate(payload)
+    assert registered.belief_updates[0].result_id == result.id
+
+
 def test_mechanistic_principle_requires_intervention_and_mechanism_evidence() -> None:
     observational = _evidence(
         "principle-observation",

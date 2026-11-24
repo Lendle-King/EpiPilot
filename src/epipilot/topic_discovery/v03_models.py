@@ -180,8 +180,7 @@ class ScientificRelationship(DiscoveryRecord):
             if not math.isfinite(lower) or not math.isfinite(upper) or lower > upper:
                 raise ValueError("uncertainty interval must be finite and ordered")
 
-        all_evidence = [*self.supporting_evidence, *self.counterevidence]
-        kinds = {item.kind for item in all_evidence}
+        supporting_kinds = {item.kind for item in self.supporting_evidence}
         if self.kind is RelationshipKind.CAUSAL and (
             self.maturity
             in {
@@ -190,22 +189,22 @@ class ScientificRelationship(DiscoveryRecord):
                 RelationshipMaturity.INDEPENDENTLY_REPLICATED,
                 RelationshipMaturity.CROSS_ENVIRONMENT_REPLICATED,
             }
-            and EvidenceKind.INTERVENTION_EXPERIMENT not in kinds
+            and EvidenceKind.INTERVENTION_EXPERIMENT not in supporting_kinds
         ):
             raise ValueError("causal maturity requires intervention experiment evidence")
         if (
             self.maturity is RelationshipMaturity.INTERVENTION_SUPPORTED
-            and EvidenceKind.INTERVENTION_EXPERIMENT not in kinds
+            and EvidenceKind.INTERVENTION_EXPERIMENT not in supporting_kinds
         ):
             raise ValueError("intervention-supported maturity requires intervention evidence")
         if self.maturity is RelationshipMaturity.MECHANISTICALLY_SUPPORTED:
-            if EvidenceKind.MECHANISTIC_ANALYSIS not in kinds:
+            if EvidenceKind.MECHANISTIC_ANALYSIS not in supporting_kinds:
                 raise ValueError("mechanistic maturity requires mechanistic analysis evidence")
-            if EvidenceKind.INTERVENTION_EXPERIMENT not in kinds:
+            if EvidenceKind.INTERVENTION_EXPERIMENT not in supporting_kinds:
                 raise ValueError("mechanistic maturity requires intervention evidence")
         if self.maturity is RelationshipMaturity.INDEPENDENTLY_REPLICATED:
             studies = {item.study_id for item in self.supporting_evidence}
-            if len(studies) < 2 or EvidenceKind.INDEPENDENT_REPLICATION not in kinds:
+            if len(studies) < 2 or EvidenceKind.INDEPENDENT_REPLICATION not in supporting_kinds:
                 raise ValueError(
                     "independent replication requires multiple studies and replication evidence"
                 )
@@ -434,13 +433,13 @@ class ValidatedPrinciple(DiscoveryRecord):
         if set(support_ids) & set(counter_ids):
             raise ValueError("principle support and counterevidence must be disjoint")
         kinds = {item.kind for item in self.supporting_evidence}
-        if self.causal_claim and EvidenceKind.INTERVENTION_EXPERIMENT not in kinds:
+        if self.causal_claim and EvidenceKind.INTERVENTION_EXPERIMENT not in supporting_kinds:
             raise ValueError("causal principle claims require intervention experiment evidence")
         if self.causal_claim and self.evidence_level is PrincipleEvidenceLevel.OBSERVATIONAL:
             raise ValueError("observational evidence level cannot support a causal principle")
         if (
             self.evidence_level is PrincipleEvidenceLevel.INTERVENTION_SUPPORTED
-            and EvidenceKind.INTERVENTION_EXPERIMENT not in kinds
+            and EvidenceKind.INTERVENTION_EXPERIMENT not in supporting_kinds
         ):
             raise ValueError("intervention-supported principle requires intervention evidence")
         if self.evidence_level is PrincipleEvidenceLevel.MECHANISTICALLY_SUPPORTED:
@@ -454,7 +453,7 @@ class ValidatedPrinciple(DiscoveryRecord):
                 )
         if self.evidence_level is PrincipleEvidenceLevel.INDEPENDENTLY_REPLICATED:
             studies = {item.study_id for item in self.supporting_evidence}
-            if len(studies) < 2 or EvidenceKind.INDEPENDENT_REPLICATION not in kinds:
+            if len(studies) < 2 or EvidenceKind.INDEPENDENT_REPLICATION not in supporting_kinds:
                 raise ValueError("independently replicated principle requires multiple studies")
         if self.evidence_level is PrincipleEvidenceLevel.CROSS_ENVIRONMENT_REPLICATED:
             environments = {
@@ -466,7 +465,7 @@ class ValidatedPrinciple(DiscoveryRecord):
             if (
                 len(environments) < 2
                 or len(studies) < 2
-                or EvidenceKind.INDEPENDENT_REPLICATION not in kinds
+                or EvidenceKind.INDEPENDENT_REPLICATION not in supporting_kinds
             ):
                 raise ValueError(
                     "cross-environment principle requires two environments, "
@@ -580,6 +579,7 @@ class ScientificDiscoveryProject(DiscoveryRecord):
             if not set(result.observed_outcome_counts).issubset(known_outcomes):
                 raise ValueError(f"experiment result {result.id} contains unknown outcomes")
             register_evidence(result.evidence)
+        result_by_id = {item.id: item for item in self.experiment_results}
         for update in self.belief_updates:
             if update.experiment_id not in experiment_ids:
                 raise ValueError(
@@ -587,10 +587,16 @@ class ScientificDiscoveryProject(DiscoveryRecord):
                 )
             if update.result_id not in result_ids:
                 raise ValueError(f"belief update references unknown result {update.result_id}")
-            if not set(update.posterior_probabilities).issubset(hypothesis_ids):
-                raise ValueError("belief update references unknown hypotheses")
-            if not set(update.prior_probabilities).issubset(hypothesis_ids):
-                raise ValueError("belief update prior references unknown hypotheses")
+            if result_by_id[update.result_id].experiment_id != update.experiment_id:
+                raise ValueError("belief update result and experiment IDs do not match")
+            expected_hypotheses = set(experiment_by_id[update.experiment_id].hypothesis_priors)
+            if set(update.posterior_probabilities) != expected_hypotheses:
+                raise ValueError("belief update must preserve every experiment hypothesis")
+            if (
+                update.prior_probabilities
+                != experiment_by_id[update.experiment_id].hypothesis_priors
+            ):
+                raise ValueError("belief update priors must match the registered experiment")
         for principle in self.principles:
             if not principle.reviewed_by_human:
                 raise ValueError(
