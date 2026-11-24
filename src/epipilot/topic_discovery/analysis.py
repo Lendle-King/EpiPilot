@@ -31,11 +31,11 @@ def build_paper_analysis_prompt(
 
 严格规则:
 1. 不得使用论文文本以外的知识补全结论。
-2. 每条 statement 必须提供 evidence_locator（章节、页码或段落）。
+2. 每条 statement 必须提供 evidence_locator(章节、页码或段落)。
 3. 每条 statement 必须提供 supporting_quote,且必须逐字复制自输入文本。
 4. Claim 应描述论文实际主张,不要把作者的动机改写成已证明结果。
-5. Assumption 应区分作者明确声明的假设与方法隐含的必要条件；无法定位则不要提取。
-6. Limitation 优先提取作者明确承认的局限；不要把未讨论的可能风险伪装成作者结论。
+5. Assumption 应区分作者明确声明的假设与方法隐含的必要条件;无法定位则不要提取。
+6. Limitation 优先提取作者明确承认的局限;不要把未讨论的可能风险伪装成作者结论。
 7. 证据不足时宁可返回空 statements,不要猜测。
 8. confidence 是抽取置信度,不是科学主张为真的概率。
 9. 返回纯 JSON,不要 Markdown 代码围栏或额外解释。
