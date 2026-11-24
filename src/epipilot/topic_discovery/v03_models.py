@@ -432,7 +432,7 @@ class ValidatedPrinciple(DiscoveryRecord):
             raise ValueError("principle counterevidence IDs must be unique")
         if set(support_ids) & set(counter_ids):
             raise ValueError("principle support and counterevidence must be disjoint")
-        kinds = {item.kind for item in self.supporting_evidence}
+        supporting_kinds = {item.kind for item in self.supporting_evidence}
         if self.causal_claim and EvidenceKind.INTERVENTION_EXPERIMENT not in supporting_kinds:
             raise ValueError("causal principle claims require intervention experiment evidence")
         if self.causal_claim and self.evidence_level is PrincipleEvidenceLevel.OBSERVATIONAL:
@@ -447,7 +447,7 @@ class ValidatedPrinciple(DiscoveryRecord):
                 EvidenceKind.INTERVENTION_EXPERIMENT,
                 EvidenceKind.MECHANISTIC_ANALYSIS,
             }
-            if not required.issubset(kinds):
+            if not required.issubset(supporting_kinds):
                 raise ValueError(
                     "mechanistic principle requires intervention and mechanism evidence"
                 )
