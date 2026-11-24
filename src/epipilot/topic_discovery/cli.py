@@ -26,7 +26,6 @@ from epipilot.topic_discovery.prior_art import (
     build_prior_art_challenge_prompt,
 )
 from epipilot.topic_discovery.providers import SearchProvider, build_default_providers
-from epipilot.topic_discovery.service import LiteratureSearchService
 from epipilot.topic_discovery.scientific_discovery import (
     assess_scientific_readiness,
     build_discriminative_experiment_prompt,
@@ -36,6 +35,7 @@ from epipilot.topic_discovery.scientific_discovery import (
     update_hypothesis_beliefs,
     validate_experiment_result,
 )
+from epipilot.topic_discovery.service import LiteratureSearchService
 from epipilot.topic_discovery.synthesis import build_research_synthesis_prompt
 from epipilot.topic_discovery.v02_models import ResearchSynthesis
 from epipilot.topic_discovery.v03_models import (
@@ -388,10 +388,7 @@ def _load_scientific_project(root: Path, path: Path) -> ScientificDiscoveryProje
 
 def _write_json(root: Path, path: Path, payload: object) -> Path:
     destination = _resolve_output(root, path)
-    if isinstance(payload, BaseModel):
-        data = payload.model_dump(mode="json")
-    else:
-        data = payload
+    data = payload.model_dump(mode="json") if isinstance(payload, BaseModel) else payload
     destination.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8",

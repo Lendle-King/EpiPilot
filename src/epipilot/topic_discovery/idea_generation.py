@@ -1,5 +1,7 @@
 """Diverse, evidence-linked research idea generation contracts and validators."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 import hashlib
