@@ -386,3 +386,164 @@ workspace = attach_prior_art_review(
 | Human gate | 只有显式人工确认才能转为 NoveltyAudit |
 
 V0.2 的完成标志是得到一批**可追溯、可反驳、可淘汰**的候选课题，而不是直接自动宣布某个课题具有顶会级创新性。下一阶段才是 V0.3：为优先候选设计最小区分性实验、强基线、反事实控制、统计判据和预算上限。
+
+
+## 18. V0.3：Principle-Driven Scientific Discovery
+
+V0.3 在 V0.1/V0.2 的文献和原创性审查能力之上，增加一条以科学关系为中心的发现协议。它不替换现有 \`DiscoveryWorkspace\`，而是通过 \`ScientificDiscoveryProject.discovery_workspace\` 将科学发现层接入原有研究工作区。
+
+### 18.1 五个核心科学对象
+
+| 对象 | 研究含义 | 必须具备的证据 |
+|---|---|---|
+| \`ScientificPhenomenon\` | 值得解释的观测现象 | 操作化变量、观测条件、来源和数据哈希 |
+| \`ScientificRelationship\` | 变量之间的候选关系 | 现象 ID、变量 ID、支持证据、反证、假设和适用条件 |
+| \`ScientificHypothesis\` | 对关系的竞争性解释 | 机制、前瞻预测、竞争解释和证伪条件 |
+| \`DiscriminativeExperiment\` | 区分竞争假说的实验 | 干预、对照、采样单位、独立性单位、预测似然和分析计划 |
+| \`ValidatedPrinciple\` | 经分级证据支持的科学原理 | 支持证据、反证、适用范围、边界、预测后果和人工审查 |
+
+辅助对象包括 \`ScientificVariable\`、\`EvidenceReference\`、\`ExperimentResult\` 和 \`HypothesisBeliefUpdate\`。所有跨对象引用由 \`ScientificDiscoveryProject\` 校验。
+
+### 18.2 关系成熟度不能混为一谈
+
+\`RelationshipMaturity\` 明确区分：
+
+- \`descriptive\`：仅记录观察到的模式。
+- \`observationally_supported\`：有观测数据支持，但不能据此声称因果。
+- \`intervention_supported\`：有干预实验支持。
+- \`mechanistically_supported\`：同时有干预证据和机制分析。
+- \`independently_replicated\`：有多个研究及独立复现证据。
+- \`cross_environment_replicated\`：至少两个独立研究、两个环境中的复现证据。
+
+因果成熟度必须有干预证据；机制成熟度必须同时有干预和机制分析；跨环境复现不能只靠同一环境中的重复采样。以上是证据门槛，不是自动证明某个关系为普适定律。
+
+### 18.3 科学关系发现与假说生成
+
+先把观测数据整理为带操作化定义的变量、现象和证据引用，再生成关系候选：
+
+~~~bash
+epidiscover scientific-relationships-prompt \
+  --project .topic-discovery/scientific_project.json \
+  --output .topic-discovery/relationships_prompt.md
+~~~
+
+模型响应必须通过 \`validate_scientific_relationships(project, raw_json)\`。验证器只允许复用项目中已经登记的现象、变量和原始证据，不允许模型自行编造证据来源。
+
+从通过验证的关系生成竞争性假说：
+
+~~~bash
+epidiscover scientific-hypotheses-prompt \
+  --project .topic-discovery/scientific_project.json \
+  --output .topic-discovery/hypotheses_prompt.md
+~~~
+
+每个假说必须给出至少一个前瞻预测、竞争解释、适用范围和证伪条件。用 \`validate_scientific_hypotheses(project, raw_json)\` 检查关系和证据引用。
+
+### 18.4 区分性实验与预期信息增益
+
+生成实验设计：
+
+~~~bash
+epidiscover scientific-experiment-prompt \
+  --project .topic-discovery/scientific_project.json \
+  --hypothesis-id hypothesis-contact \
+  --hypothesis-id hypothesis-feature \
+  --output .topic-discovery/experiment_prompt.md
+~~~
+
+实验对每个竞争假说给出相同 outcome space 上的类别概率分布。系统据此计算预期信息增益：
+
+\[
+\operatorname{EIG}(e)
+=
+H(H)-\sum_o P(o\mid e)H(H\mid o,e)
+\]
+
+并按实验成本归一化：
+
+\[
+\operatorname{Score}(e)=\frac{\operatorname{EIG}(e)}{\operatorname{Cost}(e)}
+\]
+
+排序命令：
+
+~~~bash
+epidiscover scientific-score-experiments \
+  --experiments .topic-discovery/experiment_candidates.json \
+  --budget 100 \
+  --budget-unit GPU-hour \
+  --output .topic-discovery/experiment_scores.json
+~~~
+
+这一步选择的是在给定假说先验和预测似然下，预期最能区分假说的实验。它不是实验效果保证，也不是统计功效计算；错误的假说先验或概率预测会导致错误排序。
+
+### 18.5 实验结果与假说更新
+
+执行实验后，保存 \`ExperimentResult\`，其中包含观测类别计数、结果证据、数据哈希、样本量和协议偏差。然后运行：
+
+~~~bash
+epidiscover scientific-update-beliefs \
+  --experiment .topic-discovery/experiment.json \
+  --result .topic-discovery/experiment_result.json \
+  --output .topic-discovery/hypothesis_update.json
+~~~
+
+当前 V0.3 的贝叶斯更新使用实验中声明的类别似然，并假设在声明的 independence unit 内观测条件独立。若同一物理根下的多个 rollout 相关，不能把它们伪装成独立样本；需要先按根聚合，或为聚类/序贯数据实现匹配的似然模型。
+
+如果观测结果在所有假说下的概率都为零，更新器会报错，而不是强行把概率分配给某个假说。这通常表示假说集合遗漏了真实机制、实验记录错误或预测模型失配。
+
+### 18.6 科学实验准备度
+
+~~~bash
+epidiscover scientific-readiness \
+  --project .topic-discovery/scientific_project.json \
+  --experiment-id experiment-contact-delay \
+  --output .topic-discovery/scientific_readiness.json
+~~~
+
+准备度检查至少要求：
+- 已有证据支持的现象和关系；
+- 实验能够区分至少两个竞争假说；
+- 预期信息增益大于零；
+- 明确主题预算、成本单位和实验成本。
+
+通过仅代表可以进入人工实验审核，不代表因果有效、统计功效充分或假说成立。
+
+### 18.7 Validated Principle 的人工门槛
+
+\`ValidatedPrinciple\` 的证据等级为：
+
+- \`observational\`
+- \`intervention_supported\`
+- \`mechanistically_supported\`
+- \`independently_replicated\`
+- \`cross_environment_replicated\`
+
+每个等级有对应证据要求。因果原理必须具有干预证据；机制原理必须同时具有干预和机制分析；独立复现需要多个研究；跨环境复现需要多个研究和多个环境。
+
+原则记录默认不是人工审查状态。必须显式调用：
+
+~~~python
+from epipilot.topic_discovery.scientific_discovery import confirm_validated_principle
+
+principle = confirm_validated_principle(
+    principle_candidate,
+    human_approved=True,
+)
+~~~
+
+未经过人工确认的原则不能注册到 \`ScientificDiscoveryProject.principles\`。反证、适用范围、边界条件和未解决局限必须随原则一起保留。
+
+### 18.8 V0.3 当前边界与下一轮验收
+
+V0.3 当前实现的是结构化科学发现协议、模型无关提示词、证据引用校验、预期信息增益排序和基于声明似然的贝叶斯更新。它**尚未**实现：
+
+- 原始实验数据的通用自动导入、清洗和变量识别；
+- 自动因果发现算法或自动符号回归；
+- 面向任意数据结构的统计功效分析；
+- 真实机器人/仿真执行器的通用适配；
+- 自动判断一条规律是否足够普适或具有 ICLR Oral 潜力。
+
+这些能力必须通过具体领域的实验适配器和独立验证逐步增加，不能由 LLM 自我宣称完成。
+
+V0.3 的验收重点是：系统能否把真实观测整理成可追溯现象，提出可验证的变量关系和竞争假说，选择具有正信息增益的区分性实验，并在结果返回后合理更新假说。第一验证领域设为具身技能能力边界和物理干预。
