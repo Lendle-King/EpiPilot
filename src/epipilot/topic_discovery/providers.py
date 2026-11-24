@@ -463,6 +463,15 @@ class OpenReviewProvider(BaseSearchProvider):
     provider = LiteratureProvider.OPENREVIEW
     base_url = "https://api2.openreview.net/notes/search"
 
+    def __init__(
+        self,
+        transport: HttpTransport | None = None,
+        *,
+        access_token: str | None = None,
+    ) -> None:
+        super().__init__(transport)
+        self.access_token = access_token
+
     def search(self, query: LiteratureSearchQuery) -> LiteratureSearchPage:
         params: dict[str, object] = {
             "query": query.query,
@@ -475,7 +484,12 @@ class OpenReviewProvider(BaseSearchProvider):
         if query.venue:
             params["venue"] = query.venue
         url = self._url(self.base_url, params)
-        response = self._get(url)
+        headers = (
+            {"Cookie": f"openreview.accessToken={self.access_token}"}
+            if self.access_token
+            else {}
+        )
+        response = self._get(url, headers=headers)
         payload = _json_object(response.body, self.provider)
         raw_notes = _as_list(payload.get("notes"))
         papers = [
@@ -544,7 +558,7 @@ def build_default_providers(
             api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY"),
         ),
         ArxivProvider(transport),
-        OpenReviewProvider(transport),
+        OpenReviewProvider(transport, access_token=os.environ.get("OPENREVIEW_ACCESS_TOKEN")),
     ]
 
 
