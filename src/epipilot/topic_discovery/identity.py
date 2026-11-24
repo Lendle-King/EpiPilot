@@ -45,7 +45,7 @@ def normalize_arxiv_id(value: str | None) -> str | None:
             identifier = identifier[len(prefix) :]
             break
     identifier = identifier.removesuffix(".pdf")
-    identifier = re.sub(r"\.v\d+$", "", identifier)
+    identifier = re.sub(r"v\d+$", "", identifier)
     return identifier or None
 
 
