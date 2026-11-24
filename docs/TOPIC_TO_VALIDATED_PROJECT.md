@@ -111,8 +111,8 @@ NoveltyAudit 的 verdict 只有三种：
 - [x] 论文元数据、provider-scoped ID、provider-specific citation metrics 和引用关系。
 - [x] 轻量 Research Landscape 汇总与 JSON CLI 输出。
 - [x] 显式 allowlist 的 OA PDF 下载；PyMuPDF 文本抽取为可选依赖。
-- [x] Claim / Assumption / Limitation 抽取结果的数据契约（尚未连接 LLM 抽取器）。
-- [ ] 全文结构化解析、主张抽取和人工复核流程。
+- [x] Claim / Assumption / Limitation 抽取结果的数据契约、提示词构造和逐条原文引用校验。
+- [ ] LLM Provider 接入、抽取结果的人工复核 UI/CLI 和跨论文主张综合。
 - [ ] LLM Provider / Agent 适配器。
 - [ ] 持久化工作区与完整 CLI 生命周期。
 - [ ] 实验执行和独立验证集成。
@@ -236,3 +236,24 @@ python -m pip install -e '.[pdf]'
 - OpenReview API v2: https://docs.openreview.net/reference/api-v2/openapi-definition
 
 Provider 接口仅面向公开文献元数据和公开内容。受限论文、私有投稿、审稿人信息和需要登录的内容不会被绕过。
+
+
+### 15.1 结构化主张抽取（当前为模型无关接口）
+
+从已下载并提取的文本文件读取内容：
+
+~~~python
+from pathlib import Path
+
+from epipilot.topic_discovery.analysis import (
+    build_paper_analysis_prompt,
+    validate_paper_analysis,
+)
+
+text = Path("paper.txt").read_text(encoding="utf-8")
+prompt = build_paper_analysis_prompt(paper, text)
+# 将 prompt 交给调用方已经配置好的 LLM；本模块不隐式发起模型请求。
+analysis = validate_paper_analysis(paper, model_json, text)
+~~~
+
+验证器检查 paper ID、源文本 SHA-256，以及每条 claim/assumption/limitation 的 supporting quote 是否确实出现在对应文本中。它不能证明抽取语义完全正确，也不替代人工复核；\`reviewed_by_human\` 默认保持 false。
