@@ -1,6 +1,5 @@
-"""Adversarial prior-art retrieval, ranking, prompt construction and review validation."""
-
 # ruff: noqa: I001
+"""Adversarial prior-art retrieval, ranking, prompt construction and review validation."""
 
 from __future__ import annotations
 

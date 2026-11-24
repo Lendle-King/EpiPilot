@@ -1,6 +1,5 @@
-"""Diverse, evidence-linked research idea generation contracts and validators."""
-
 # ruff: noqa: I001
+"""Diverse, evidence-linked research idea generation contracts and validators."""
 
 from __future__ import annotations
 
