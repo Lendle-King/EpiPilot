@@ -225,7 +225,7 @@ python -m pip install -e '.[pdf]'
 - assumption：方法或理论成立所依赖的假设；
 - limitation：作者明确说明或证据支持的局限。
 
-每条抽取必须带有章节/页码等 evidence locator；可选保留短的 supporting quote。当前仅实现数据契约，**尚未实现 LLM 抽取、自动判断主张真伪或自动将抽取内容提升为研究事实**。后续抽取器应保留原文位置并允许人工复核。
+每条抽取必须带有章节/页码等 evidence locator 和可逐字核验的短 supporting quote。当前仅实现数据契约，**尚未实现 LLM 抽取、自动判断主张真伪或自动将抽取内容提升为研究事实**。后续抽取器应保留原文位置并允许人工复核。
 
 ## 15. API 参考
 
