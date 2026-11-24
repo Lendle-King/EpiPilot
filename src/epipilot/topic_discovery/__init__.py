@@ -29,6 +29,11 @@ from epipilot.topic_discovery.models import (
     TopicSpec,
 )
 from epipilot.topic_discovery.readiness import assess_experiment_readiness
+from epipilot.topic_discovery.analysis import (
+    build_paper_analysis_prompt,
+    load_paper_text,
+    validate_paper_analysis,
+)
 from epipilot.topic_discovery.service import LiteratureSearchService
 from epipilot.topic_discovery.landscape import build_research_landscape
 from epipilot.topic_discovery.providers import (
@@ -82,4 +87,7 @@ __all__ = [
     "PyMuPDFTextExtractor",
     "download_open_access_pdf",
     "extract_pdf_text",
+    "build_paper_analysis_prompt",
+    "load_paper_text",
+    "validate_paper_analysis",
 ]
