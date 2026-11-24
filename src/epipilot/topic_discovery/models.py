@@ -37,6 +37,11 @@ class NoveltyDimension(StrEnum):
     INSIGHT = "insight"
 
 
+class MetricDirection(StrEnum):
+    MAXIMIZE = "maximize"
+    MINIMIZE = "minimize"
+
+
 class AuditVerdict(StrEnum):
     INSUFFICIENT_SEARCH = "insufficient_search"
     OVERLAP_FOUND = "overlap_found"
@@ -84,6 +89,12 @@ class PaperReference(DiscoveryRecord):
     arxiv_id: str | None = None
     url: str | None = None
     relevance_note: str = Field(min_length=8)
+
+    @model_validator(mode="after")
+    def require_source_locator(self) -> Self:
+        if not any((self.doi, self.arxiv_id, self.url)):
+            raise ValueError("paper reference requires a DOI, arXiv ID, or URL")
+        return self
 
 
 class ResearchGap(DiscoveryRecord):
@@ -147,6 +158,8 @@ class NoveltyAudit(DiscoveryRecord):
         ):
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} must not contain duplicates")
+        if any(not value.strip() for value in self.search_platforms + self.search_queries):
+            raise ValueError("search platforms and queries must not contain blank values")
         if self.verdict is AuditVerdict.PROVISIONALLY_DISTINCT:
             required = {
                 "search_platforms": self.search_platforms,
@@ -161,6 +174,9 @@ class NoveltyAudit(DiscoveryRecord):
                     "provisionally distinct audit requires recorded search coverage "
                     f"and nearest-work differences: {', '.join(missing)}"
                 )
+            difference_work_ids = {item.nearest_work_id for item in self.differences}
+            if not difference_work_ids.issubset(set(self.nearest_work_ids)):
+                raise ValueError("every novelty difference must reference a listed nearest work")
         if self.verdict is AuditVerdict.OVERLAP_FOUND and not self.nearest_work_ids:
             raise ValueError("overlap_found audit must identify at least one nearest work")
         return self
@@ -173,7 +189,7 @@ class ExperimentDesign(DiscoveryRecord):
     idea_id: str = Field(min_length=1)
     dataset_or_environment: str = Field(min_length=3)
     primary_metric: str = Field(min_length=2)
-    metric_direction: str = Field(pattern=r"^(maximize|minimize)$")
+    metric_direction: MetricDirection
     baseline_refs: list[str] = Field(min_length=1)
     controls: list[str] = Field(min_length=1)
     protocol: str = Field(min_length=20)
