@@ -182,11 +182,7 @@ class OpenAlexProvider(BaseSearchProvider):
         ][skip:]
         total = _as_int(meta.get("count"))
         candidate_offset = query.offset + len(papers)
-        next_offset = (
-            candidate_offset
-            if total is not None and candidate_offset < total
-            else None
-        )
+        next_offset = candidate_offset if total is not None and candidate_offset < total else None
         return LiteratureSearchPage(
             provider=self.provider,
             query=query,
