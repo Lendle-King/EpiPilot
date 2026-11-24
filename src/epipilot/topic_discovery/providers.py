@@ -485,9 +485,7 @@ class OpenReviewProvider(BaseSearchProvider):
             params["venue"] = query.venue
         url = self._url(self.base_url, params)
         headers = (
-            {"Cookie": f"openreview.accessToken={self.access_token}"}
-            if self.access_token
-            else {}
+            {"Cookie": f"openreview.accessToken={self.access_token}"} if self.access_token else {}
         )
         response = self._get(url, headers=headers)
         payload = _json_object(response.body, self.provider)
