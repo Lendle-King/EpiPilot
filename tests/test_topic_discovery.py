@@ -12,6 +12,7 @@ from epipilot.topic_discovery.models import (
     DiscoveryWorkspace,
     ExperimentDesign,
     IdeaCandidate,
+    MetricDirection,
     NoveltyAudit,
     NoveltyDifference,
     NoveltyDimension,
@@ -43,12 +44,14 @@ def _workspace(
             title="A prior skill chaining study",
             year=2024,
             relevance_note="Studies composition through learned initiation sets.",
+            url="https://example.org/papers/skill-chaining",
         ),
         PaperReference(
             id="paper-2",
             title="A contact-aware manipulation study",
             year=2025,
             relevance_note="Models contact conditions for manipulation execution.",
+            url="https://example.org/papers/contact-manipulation",
         ),
     ]
     gap = ResearchGap(
@@ -65,9 +68,13 @@ def _workspace(
         research_question="Can physical structure improve prediction of frozen-skill success?",
         hypothesis="Structured physical evidence improves prediction on held-out contact modes.",
         proposed_mechanism="The representation preserves contact variables that affect execution.",
-        expected_contribution="A transferable, calibrated model of skill-specific execution conditions.",
+        expected_contribution=(
+            "A transferable, calibrated model of skill-specific execution conditions."
+        ),
         alternative_explanations=["The gain comes only from additional input features."],
-        falsification_conditions=["Matched-feature critics perform equally on held-out conditions."],
+        falsification_conditions=[
+            "Matched-feature critics perform equally on held-out conditions."
+        ],
     )
     audit = NoveltyAudit(
         id="audit-1",
@@ -82,8 +89,12 @@ def _workspace(
                 dimension=NoveltyDimension.MECHANISM,
                 nearest_work_id="paper-1",
                 prior_art_claim="The prior work composes skills using learned initiation sets.",
-                proposed_difference="The candidate predicts policy-specific competence under physical conditions.",
-                materiality_rationale="The prediction target and evidence requirements differ materially.",
+                proposed_difference=(
+                    "The candidate predicts policy-specific competence under physical conditions."
+                ),
+                materiality_rationale=(
+                    "The prediction target and evidence requirements differ materially."
+                ),
                 evidence_locator="Methods, Section 3",
             )
         ],
@@ -95,7 +106,7 @@ def _workspace(
         idea_id="idea-1",
         dataset_or_environment="A held-out contact-rich manipulation benchmark",
         primary_metric="Brier score",
-        metric_direction="minimize",
+        metric_direction=MetricDirection.MINIMIZE,
         baseline_refs=["matched-feature critic", "success-rate classifier"],
         controls=["same training roots", "same observations", "same model-size budget"],
         protocol="Train on fixed physical roots and evaluate on unseen contact modes.",
@@ -177,4 +188,29 @@ def test_topic_budget_requires_a_unit() -> None:
             description="A sufficiently long research description for validation.",
             research_area="Machine Learning",
             budget_limit=4,
+        )
+
+
+def test_insufficient_search_blocks_experiment_review() -> None:
+    report = assess_experiment_readiness(
+        _workspace(verdict=AuditVerdict.INSUFFICIENT_SEARCH)
+    )
+    assert report.ready_for_human_review is False
+    assert any("insufficient search" in blocker for blocker in report.blockers)
+
+
+def test_novelty_difference_must_reference_a_listed_nearest_work() -> None:
+    workspace = _workspace().model_dump()
+    workspace["novelty_audits"][0]["nearest_work_ids"] = ["paper-2"]
+    with pytest.raises(ValidationError, match="listed nearest work"):
+        DiscoveryWorkspace.model_validate(workspace)
+
+
+def test_paper_reference_requires_a_traceable_locator() -> None:
+    with pytest.raises(ValidationError, match="requires a DOI, arXiv ID, or URL"):
+        PaperReference(
+            id="paper-untraceable",
+            title="Untraceable paper",
+            year=2025,
+            relevance_note="This fixture intentionally lacks a source locator.",
         )
