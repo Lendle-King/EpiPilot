@@ -225,7 +225,12 @@ class OpenAlexProvider(BaseSearchProvider):
         ]
         publication_date = _as_str(item.get("publication_date"))
         return PaperReference(
-            id=canonical_paper_id(title=title, year=year, doi=doi),
+            id=canonical_paper_id(
+                title=title,
+                year=year,
+                doi=doi,
+                provider_ids=[identifier] if identifier is not None else [],
+            ),
             title=title,
             year=year,
             source_kind=PaperSourceKind.PAPER,
@@ -329,6 +334,7 @@ class SemanticScholarProvider(BaseSearchProvider):
                 year=year,
                 doi=doi,
                 arxiv_id=arxiv_id,
+                provider_ids=[identifier] if identifier is not None else [],
             ),
             title=title,
             year=year,
@@ -432,7 +438,12 @@ class ArxivProvider(BaseSearchProvider):
                 break
         identifier = provider_identifier(self.provider, arxiv_id)
         return PaperReference(
-            id=canonical_paper_id(title=title, year=year, arxiv_id=arxiv_id),
+            id=canonical_paper_id(
+                title=title,
+                year=year,
+                arxiv_id=arxiv_id,
+                provider_ids=[identifier] if identifier is not None else [],
+            ),
             title=title,
             year=year,
             source_kind=PaperSourceKind.PREPRINT,
@@ -503,7 +514,11 @@ class OpenReviewProvider(BaseSearchProvider):
         keywords = [value for item in _as_list(keywords_value) if (value := _as_str(item))]
         identifier = provider_identifier(self.provider, forum_id)
         return PaperReference(
-            id=canonical_paper_id(title=title, year=year),
+            id=canonical_paper_id(
+                title=title,
+                year=year,
+                provider_ids=[identifier] if identifier is not None else [],
+            ),
             title=title,
             year=year,
             source_kind=PaperSourceKind.PAPER,
