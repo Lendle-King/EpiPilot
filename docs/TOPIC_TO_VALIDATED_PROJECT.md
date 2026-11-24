@@ -182,7 +182,7 @@ epidiscover search \
 
 ## 12. 去重、引用与来源边界
 
-- DOI 归一化优先；其次使用 arXiv ID；缺少持久标识符时才使用严格的规范化标题 + 年份。
+- DOI 归一化优先，其次使用 arXiv ID，再使用带 provider 命名空间的持久 ID；只有完全没有持久标识符时才回退到严格的规范化标题 + 年份。
 - 不使用模糊标题相似度自动合并，避免把不同版本、同名工作或不同论文错误合并。
 - Provider ID 必须带来源命名空间，例如 OpenAlex ID 不等于 Semantic Scholar paperId。
 - Citation edge 只在当前结果集中能够解析目标论文时连接到本地 paper ID；其余保留 provider-scoped target identifier，并计入 unresolved references。
