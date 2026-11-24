@@ -42,9 +42,7 @@ def assess_experiment_readiness(workspace: DiscoveryWorkspace) -> ExperimentRead
                 f"unresolved prior-art question: {question}"
                 for question in latest_audit.blocking_overlap_questions
             )
-        warnings.extend(
-            f"residual prior-art risk: {risk}" for risk in latest_audit.overlap_risks
-        )
+        warnings.extend(f"residual prior-art risk: {risk}" for risk in latest_audit.overlap_risks)
 
     designs = [design for design in workspace.experiment_designs if design.idea_id == selected_id]
     if not designs:
