@@ -98,7 +98,7 @@ NoveltyAudit 的 verdict 只有三种：
 - 预算超限：缩小实验或淘汰，不得静默超支。
 - 实验无效或证据不足：保留失败记录，不得提升为支持性结论。
 
-第一版只实现核心数据模型和实验准备度检查，不持久化上述生命周期状态；状态存储、搜索适配器、Agent 编排和实验执行将在后续阶段分别设计与验收。
+第一版实现核心数据模型、实验准备度检查、公开文献搜索、跨来源去重、引用边整理和显式 PDF 获取。它仍不持久化完整生命周期状态；Agent 编排、自动主张抽取和实验执行将在后续阶段分别设计与验收。
 
 ## 8. 第一版验收范围
 
@@ -107,10 +107,14 @@ NoveltyAudit 的 verdict 只有三种：
 - [x] 最近邻审查的最低证据要求。
 - [x] 实验准备度和预算检查。
 - [x] 单元测试覆盖有效、重叠、检索不足、引用错误和超预算场景。
-- [ ] 学术搜索 API 适配器。
-- [ ] 全文解析和主张抽取。
+- [x] OpenAlex、Semantic Scholar、arXiv、OpenReview 公开搜索适配器。
+- [x] 论文元数据、provider-scoped ID、provider-specific citation metrics 和引用关系。
+- [x] 轻量 Research Landscape 汇总与 JSON CLI 输出。
+- [x] 显式 allowlist 的 OA PDF 下载；PyMuPDF 文本抽取为可选依赖。
+- [x] Claim / Assumption / Limitation 抽取结果的数据契约（尚未连接 LLM 抽取器）。
+- [ ] 全文结构化解析、主张抽取和人工复核流程。
 - [ ] LLM Provider / Agent 适配器。
-- [ ] CLI 与持久化。
+- [ ] 持久化工作区与完整 CLI 生命周期。
 - [ ] 实验执行和独立验证集成。
 - [ ] 专家盲评 Benchmark。
 
@@ -128,3 +132,107 @@ NoveltyAudit 的 verdict 只有三种：
 本框架借鉴了文献驱动研究想法生成、研究想法新颖性评价、Agentic Scientific Discovery 和开放式机器学习科研评测等方向的已有工作，包括 SciMON、ResearchAgent、Chain of Ideas、Google Co-Scientist、The AI Scientist-v2、RINoBench、AlphaIdeaBench 与 MLR-Bench。
 
 这些工作用于确定能力边界和评价维度，不意味着本项目复现了它们，也不意味着本框架已经优于它们。后续若形成系统级研究主张，必须对最近邻方法进行版本化文献审计，并以等预算实验验证。
+
+
+## 11. V0.1 Literature Discovery 使用方法
+
+安装开发依赖：
+
+~~~bash
+python -m pip install -e '.[dev]'
+~~~
+
+执行主题文献检索：
+
+~~~bash
+epidiscover search \
+  --query "embodied skill generalization" \
+  --research-area "Embodied AI" \
+  --year-from 2022 \
+  --year-to 2026 \
+  --limit 20 \
+  --output .topic-discovery/embodied-skills.json
+~~~
+
+也可以只选择某些来源：
+
+~~~bash
+epidiscover search \
+  --query "contact-aware manipulation" \
+  --provider openalex \
+  --provider arxiv \
+  --limit 30
+~~~
+
+支持的来源：
+
+| Provider | 公共接口 | 主要元数据 |
+|---|---|---|
+| OpenAlex | \`/works?search=...\` | DOI、摘要、作者、venue、引用数、参考文献、OA PDF |
+| Semantic Scholar | \`/graph/v1/paper/search\` | 摘要、作者、DOI/arXiv ID、引用数、参考文献、OA PDF |
+| arXiv | Atom API | arXiv ID、摘要、作者、分类、PDF |
+| OpenReview | API v2 \`/notes/search\` | 公开投稿标题、摘要、作者、venue、PDF |
+
+可选环境变量：
+
+- \`OPENALEX_API_KEY\`：提高 OpenAlex API 额度；无 key 也可以使用公共接口。
+- \`SEMANTIC_SCHOLAR_API_KEY\`：通过 \`x-api-key\` 请求头发送。
+
+检索结果写入一个 JSON 文件，包含原始 provider pages、去重后的论文记录、provider 错误和 Research Landscape。不同 provider 的引用数保留为独立指标，**不会混合成一个貌似可比的引用分数**。
+
+## 12. 去重、引用与来源边界
+
+- DOI 归一化优先；其次使用 arXiv ID；缺少持久标识符时才使用严格的规范化标题 + 年份。
+- 不使用模糊标题相似度自动合并，避免把不同版本、同名工作或不同论文错误合并。
+- Provider ID 必须带来源命名空间，例如 OpenAlex ID 不等于 Semantic Scholar paperId。
+- Citation edge 只在当前结果集中能够解析目标论文时连接到本地 paper ID；其余保留 provider-scoped target identifier，并计入 unresolved references。
+- OpenAlex 与 Semantic Scholar 的 citation counts 各自保留，不进行跨数据库数值比较。
+- arXiv 和 OpenReview 的排序、年份过滤与其他 provider 不完全相同；跨来源搜索结果不是严格的统一排名。
+
+## 13. 显式获取开放 PDF
+
+PDF 下载不在普通搜索中自动发生。调用方必须提供允许访问的 HTTPS host：
+
+~~~python
+from pathlib import Path
+
+from epipilot.topic_discovery.fulltext import (
+    download_open_access_pdf,
+    extract_pdf_text,
+)
+
+artifact = download_open_access_pdf(
+    selected_paper,
+    Path(".topic-discovery/fulltext"),
+    allowed_hosts=["arxiv.org", "openreview.net"],
+)
+artifact = extract_pdf_text(artifact)
+~~~
+
+PyMuPDF 文本抽取需要额外安装：
+
+~~~bash
+python -m pip install -e '.[pdf]'
+~~~
+
+下载器会检查 PDF magic bytes、大小上限、HTTPS、显式 host allowlist 和重定向后的最终 host；不允许仅凭论文元数据中的任意 URL 下载文件。机构仓库或出版社域名需要调用者显式加入 allowlist。PDF 和文本均按内容哈希记录。
+
+## 14. Claim / Assumption / Limitation 抽取边界
+
+\`PaperAnalysis\`、\`ExtractedStatement\` 和 \`StatementKind\` 已定义结构化输出：
+
+- claim：论文明确主张或贡献；
+- assumption：方法或理论成立所依赖的假设；
+- limitation：作者明确说明或证据支持的局限。
+
+每条抽取必须带有章节/页码等 evidence locator；可选保留短的 supporting quote。当前仅实现数据契约，**尚未实现 LLM 抽取、自动判断主张真伪或自动将抽取内容提升为研究事实**。后续抽取器应保留原文位置并允许人工复核。
+
+## 15. API 参考
+
+- OpenAlex API: https://help.openalex.org/api/
+- OpenAlex Works search: https://help.openalex.org/api/searching/
+- Semantic Scholar Academic Graph API: https://api.semanticscholar.org/api-docs/
+- arXiv API User Manual: https://info.arxiv.org/help/api/user-manual.html
+- OpenReview API v2: https://docs.openreview.net/reference/api-v2/openapi-definition
+
+Provider 接口仅面向公开文献元数据和公开内容。受限论文、私有投稿、审稿人信息和需要登录的内容不会被绕过。
