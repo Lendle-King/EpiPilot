@@ -240,6 +240,13 @@ class PaperAnalysis(DiscoveryRecord):
     reviewed_by_human: bool = False
     created_at: AwareDatetime = Field(default_factory=utc_now)
 
+    @model_validator(mode="after")
+    def unique_statement_ids(self) -> Self:
+        identifiers = [statement.id for statement in self.statements]
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("paper analysis statement IDs must be unique")
+        return self
+
 
 class ResearchGap(DiscoveryRecord):
     """A provisional gap grounded in prior work and explicit counterevidence."""
