@@ -6,6 +6,19 @@ from epipilot.topic_discovery.models import (
     ExperimentDesign,
     ExperimentReadiness,
     IdeaCandidate,
+    CitationEdge,
+    ExtractedStatement,
+    FullTextArtifact,
+    LiteratureProvider,
+    LiteratureSearchPage,
+    LiteratureSearchQuery,
+    LiteratureSearchReport,
+    PaperAnalysis,
+    PaperIdentifier,
+    ProviderMetrics,
+    ProviderSearchError,
+    ResearchLandscape,
+    StatementKind,
     MetricDirection,
     NoveltyAudit,
     NoveltyDifference,
@@ -16,6 +29,20 @@ from epipilot.topic_discovery.models import (
     TopicSpec,
 )
 from epipilot.topic_discovery.readiness import assess_experiment_readiness
+from epipilot.topic_discovery.service import LiteratureSearchService
+from epipilot.topic_discovery.landscape import build_research_landscape
+from epipilot.topic_discovery.providers import (
+    ArxivProvider,
+    OpenAlexProvider,
+    OpenReviewProvider,
+    SemanticScholarProvider,
+    build_default_providers,
+)
+from epipilot.topic_discovery.fulltext import (
+    PyMuPDFTextExtractor,
+    download_open_access_pdf,
+    extract_pdf_text,
+)
 
 __all__ = [
     "AuditVerdict",
@@ -23,6 +50,19 @@ __all__ = [
     "ExperimentDesign",
     "ExperimentReadiness",
     "IdeaCandidate",
+    "CitationEdge",
+    "ExtractedStatement",
+    "FullTextArtifact",
+    "LiteratureProvider",
+    "LiteratureSearchPage",
+    "LiteratureSearchQuery",
+    "LiteratureSearchReport",
+    "PaperAnalysis",
+    "PaperIdentifier",
+    "ProviderMetrics",
+    "ProviderSearchError",
+    "ResearchLandscape",
+    "StatementKind",
     "MetricDirection",
     "NoveltyAudit",
     "NoveltyDifference",
@@ -32,4 +72,14 @@ __all__ = [
     "ResearchGap",
     "TopicSpec",
     "assess_experiment_readiness",
+    "LiteratureSearchService",
+    "build_research_landscape",
+    "ArxivProvider",
+    "OpenAlexProvider",
+    "OpenReviewProvider",
+    "SemanticScholarProvider",
+    "build_default_providers",
+    "PyMuPDFTextExtractor",
+    "download_open_access_pdf",
+    "extract_pdf_text",
 ]
