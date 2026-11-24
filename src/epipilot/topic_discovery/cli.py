@@ -216,8 +216,7 @@ def _synthesis_prompt(args: argparse.Namespace, root: Path) -> tuple[dict[str, o
         "evidence_statement_count": sum(len(item.statements) for item in analyses),
         "output": str(destination),
         "next_step": (
-            "Send this prompt to an LLM, then validate its JSON "
-            "with validate_research_synthesis()."
+            "Send this prompt to an LLM, then validate its JSON with validate_research_synthesis()."
         ),
     }, True
 
@@ -238,8 +237,7 @@ def _ideas_prompt(args: argparse.Namespace, root: Path) -> tuple[dict[str, objec
         "target_count": args.target_count,
         "output": str(destination),
         "next_step": (
-            "Validate the model response with validate_idea_batch() "
-            "before prior-art search."
+            "Validate the model response with validate_idea_batch() before prior-art search."
         ),
     }, True
 

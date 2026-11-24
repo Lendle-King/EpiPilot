@@ -66,9 +66,7 @@ def build_research_synthesis_prompt(
         )
     paper_by_id = {paper.id: paper for paper in papers}
     source_ids = [analysis.paper_id for analysis in analyses]
-    source_hashes = {
-        analysis.paper_id: analysis.source_text_sha256 for analysis in analyses
-    }
+    source_hashes = {analysis.paper_id: analysis.source_text_sha256 for analysis in analyses}
     digest = hashlib.sha256(
         f"{topic.id}:{'|'.join(sorted(source_ids))}".encode("utf-8")
     ).hexdigest()[:16]
@@ -165,18 +163,14 @@ def validate_research_synthesis(
         parsed_index = TypeAdapter(list[EvidenceStatementRef]).validate_python(supplied_index)
         if parsed_index != expected_evidence:
             raise ValueError("research synthesis changed or omitted the immutable evidence index")
-    payload["evidence_index"] = [
-        item.model_dump(mode="json") for item in expected_evidence
-    ]
+    payload["evidence_index"] = [item.model_dump(mode="json") for item in expected_evidence]
     synthesis = ResearchSynthesis.model_validate(payload)
     if synthesis.topic_id != topic.id:
         raise ValueError("research synthesis references a different topic")
     expected_ids = {analysis.paper_id for analysis in analyses}
     if set(synthesis.source_paper_ids) != expected_ids:
         raise ValueError("research synthesis source paper IDs do not match supplied analyses")
-    expected_hashes = {
-        analysis.paper_id: analysis.source_text_sha256 for analysis in analyses
-    }
+    expected_hashes = {analysis.paper_id: analysis.source_text_sha256 for analysis in analyses}
     if synthesis.source_text_sha256 != expected_hashes:
         raise ValueError("research synthesis source-text hashes do not match supplied analyses")
     if synthesis.evidence_index != expected_evidence:

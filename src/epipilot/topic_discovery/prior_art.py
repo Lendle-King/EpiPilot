@@ -286,8 +286,7 @@ def rank_prior_art(
         document_frequency.update(set().union(*fields.values()))
     count = len(papers)
     term_weights = {
-        term: math.log(1 + (count + 0.5) / (document_frequency[term] + 0.5))
-        for term in query_terms
+        term: math.log(1 + (count + 0.5) / (document_frequency[term] + 0.5)) for term in query_terms
     }
     total_weight = sum(term_weights.values())
     weighted_fields = (("title", 0.60), ("abstract", 0.30), ("keywords", 0.10))
@@ -307,9 +306,7 @@ def rank_prior_art(
             available_weights += field_weight
             matches = query_terms & fields[field_name]
             score = (
-                sum(term_weights[term] for term in matches) / total_weight
-                if total_weight
-                else 0.0
+                sum(term_weights[term] for term in matches) / total_weight if total_weight else 0.0
             )
             field_scores[field_name] = score
             weighted_score += field_weight * score
@@ -543,9 +540,8 @@ def attach_prior_art_review(
     for paper in report.papers:
         existing = papers_by_id.get(paper.id)
         if existing is not None:
-            if (
-                existing.title.casefold() != paper.title.casefold()
-                or (existing.doi and paper.doi and existing.doi.casefold() != paper.doi.casefold())
+            if existing.title.casefold() != paper.title.casefold() or (
+                existing.doi and paper.doi and existing.doi.casefold() != paper.doi.casefold()
             ):
                 raise ValueError(f"paper ID collision while attaching prior art: {paper.id}")
             continue
@@ -561,11 +557,7 @@ def attach_prior_art_review(
 
 
 def _tokens(value: str) -> set[str]:
-    return {
-        token
-        for token in _TOKEN_PATTERN.findall(value.casefold())
-        if token not in _STOPWORDS
-    }
+    return {token for token in _TOKEN_PATTERN.findall(value.casefold()) if token not in _STOPWORDS}
 
 
 def _normalize_quote(value: str) -> str:

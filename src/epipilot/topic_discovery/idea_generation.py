@@ -146,9 +146,7 @@ def validate_idea_batch(
                 f"idea {candidate.id} uses evidence outside its gap's supporting evidence"
             )
         if not counter.issubset(set(gap.counterevidence_evidence_ids)):
-            raise ValueError(
-                f"idea {candidate.id} uses evidence outside its gap's counterevidence"
-            )
+            raise ValueError(f"idea {candidate.id} uses evidence outside its gap's counterevidence")
         if not supporting.issubset(evidence_ids) or not counter.issubset(evidence_ids):
             raise ValueError(f"idea {candidate.id} references unknown evidence")
 

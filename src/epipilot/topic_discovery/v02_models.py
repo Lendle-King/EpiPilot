@@ -220,9 +220,7 @@ class PriorArtChallengeReport(DiscoveryRecord):
             raise ValueError("search queries must not contain blank values")
         if not set(self.providers_succeeded).issubset(set(self.providers_attempted)):
             raise ValueError("successful providers must be included in providers_attempted")
-        if any(
-            failure.provider not in self.providers_attempted for failure in self.failures
-        ):
+        if any(failure.provider not in self.providers_attempted for failure in self.failures):
             raise ValueError("provider failures must reference an attempted provider")
         paper_ids = [paper.id for paper in self.papers]
         if len(paper_ids) != len(set(paper_ids)):
