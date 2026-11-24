@@ -284,6 +284,8 @@ epidiscover synthesis-prompt \
 其中 \`papers.json\` 和 \`analyses.json\` 是对应 Pydantic records 的 JSON 数组。将生成的 prompt 交给已配置的 LLM，保存返回的 JSON 后，使用：
 
 ~~~python
+from pathlib import Path
+
 from epipilot.topic_discovery.synthesis import validate_research_synthesis
 
 synthesis = validate_research_synthesis(
