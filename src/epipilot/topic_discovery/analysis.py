@@ -27,7 +27,8 @@ def build_paper_analysis_prompt(
 论文标识:{paper.id}
 来源文本 SHA-256:{digest}
 
-任务:提取论文明确提出的 claims、方法依赖的 assumptions,以及作者明确讨论或文本充分支持的 limitations。
+任务:提取论文明确提出的 claims、方法依赖的 assumptions,以及作者明确讨论或文本充分支持的
+limitations。
 
 严格规则:
 1. 不得使用论文文本以外的知识补全结论。
