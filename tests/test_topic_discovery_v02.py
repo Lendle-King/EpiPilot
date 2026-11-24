@@ -450,7 +450,7 @@ def test_synthesis_validator_checks_source_hashes_and_evidence_index() -> None:
     )
     assert validated.id == synthesis.id
 
-    payload = synthesis.model_dump()
+    payload = synthesis.model_dump(mode="json")
     payload["evidence_index"][0]["supporting_quote"] = "A fabricated source quote."
     with pytest.raises(ValueError, match="changed or omitted the immutable evidence index"):
         validate_research_synthesis(_topic(), _papers(), _analyses(), json.dumps(payload))
@@ -458,7 +458,7 @@ def test_synthesis_validator_checks_source_hashes_and_evidence_index() -> None:
 
 def test_synthesis_validator_injects_immutable_evidence_index() -> None:
     synthesis = _synthesis()
-    payload = synthesis.model_dump()
+    payload = synthesis.model_dump(mode="json")
     payload.pop("evidence_index")
     validated = validate_research_synthesis(
         _topic(),

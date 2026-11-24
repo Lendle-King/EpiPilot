@@ -506,7 +506,7 @@ def test_scientific_readiness_requires_positive_information_gain_and_budget() ->
 def test_relationship_prompt_and_validator_preserve_registered_evidence() -> None:
     project = _project()
     prompt = build_scientific_relationship_prompt(project)
-    assert "不能把相关性直接写成因果" in prompt
+    assert "不得把相关性直接写成因果" in prompt
     candidate = project.relationships[0].model_copy(update={"id": "relation-new"})
     validated = validate_scientific_relationships(
         project,
