@@ -60,14 +60,20 @@ def canonical_paper_id(
     year: int,
     doi: str | None = None,
     arxiv_id: str | None = None,
+    provider_ids: Iterable[PaperIdentifier] = (),
 ) -> str:
     """Create a stable identifier from the strongest available scholarly identifier."""
     normalized_doi = normalize_doi(doi)
     normalized_arxiv = normalize_arxiv_id(arxiv_id)
+    provider_tokens = sorted(
+        f"{item.provider.value}:{item.value}" for item in provider_ids
+    )
     if normalized_doi is not None:
         identity = f"doi:{normalized_doi}"
     elif normalized_arxiv is not None:
         identity = f"arxiv:{normalized_arxiv}"
+    elif provider_tokens:
+        identity = f"provider:{'|'.join(provider_tokens)}"
     else:
         identity = f"title:{normalize_title(title)}:{year}"
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
@@ -118,6 +124,7 @@ def merge_papers(papers: Iterable[PaperReference]) -> list[PaperReference]:
             year=current.year,
             doi=current.doi,
             arxiv_id=current.arxiv_id,
+            provider_ids=current.provider_ids,
         )
         merged.append(current.model_copy(update={"id": canonical_id}))
     return merged
