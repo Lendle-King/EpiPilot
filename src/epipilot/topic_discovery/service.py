@@ -7,14 +7,12 @@ from collections.abc import Sequence
 from epipilot.topic_discovery.identity import merge_papers
 from epipilot.topic_discovery.models import (
     LiteratureProvider,
+    LiteratureSearchPage,
     LiteratureSearchQuery,
     LiteratureSearchReport,
     ProviderSearchError,
 )
-from epipilot.topic_discovery.providers import (
-    LiteratureProviderError,
-    SearchProvider,
-)
+from epipilot.topic_discovery.providers import SearchProvider
 
 
 class LiteratureSearchService:
@@ -32,17 +30,14 @@ class LiteratureSearchService:
         *,
         selected_providers: set[LiteratureProvider] | None = None,
     ) -> LiteratureSearchReport:
-        pages = []
+        pages: list[LiteratureSearchPage] = []
         errors: list[ProviderSearchError] = []
         for provider in self.providers:
-            if (
-                selected_providers is not None
-                and provider.provider not in selected_providers
-            ):
+            if selected_providers is not None and provider.provider not in selected_providers:
                 continue
             try:
                 pages.append(provider.search(query))
-            except (LiteratureProviderError, ValueError, OSError, RuntimeError) as exc:
+            except (ValueError, OSError, RuntimeError) as exc:
                 errors.append(
                     ProviderSearchError(
                         provider=provider.provider,
@@ -50,9 +45,7 @@ class LiteratureSearchService:
                     )
                 )
 
-        papers = merge_papers(
-            paper for page in pages for paper in page.papers
-        )
+        papers = merge_papers(paper for page in pages for paper in page.papers)
         return LiteratureSearchReport(
             query=query,
             pages=pages,
