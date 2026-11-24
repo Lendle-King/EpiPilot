@@ -8,17 +8,15 @@ from collections.abc import Sequence
 
 from pydantic import TypeAdapter
 
-from epipilot.topic_discovery.models import DiscoveryWorkspace
 from epipilot.topic_discovery.v03_models import (
     DiscriminativeExperiment,
     EvidenceReference,
     ExperimentInformationScore,
     ExperimentResult,
     HypothesisBeliefUpdate,
-    ScientificDiscoveryProject,
     RelationshipMaturity,
+    ScientificDiscoveryProject,
     ScientificHypothesis,
-    ScientificPhenomenon,
     ScientificReadinessReport,
     ScientificRelationship,
     ValidatedPrinciple,
